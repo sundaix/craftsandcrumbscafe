@@ -1,0 +1,760 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Crafts & Crumbs — Freshly Brewed Comfort</title>
+<meta name="description" content="Handcrafted coffee, freshly baked pastries, and charming accessories — brewed and made in small batches, delivered or ready for pickup.">
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Lora:ital,wght@0,500;0,600;0,700;1,500;1,600&family=Poppins:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+
+<link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div class="scroll-progress" id="scrollProgress"></div>
+<header class="site-nav">
+  <div class="nav-inner">
+    <div class="nav-left">
+      <button class="hamburger" id="hamburgerBtn" aria-label="Menu">
+        <span></span><span></span><span></span>
+      </button>
+      <div class="search-box header-search">
+        <input type="text" id="headerSearch" placeholder="Search" aria-label="Search products">
+        <button class="search-btn" id="headerSearchBtn" aria-label="Search">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><circle cx="11" cy="11" r="7" stroke="currentColor" stroke-width="1.8"/><path d="m20 20-3.5-3.5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
+        </button>
+      </div>
+    </div>
+    <nav class="nav-links" id="navLinks">
+      <a data-nav="menu" href="#">Menu</a>
+      <a data-nav="merchandise" href="#">Merchandise</a>
+      <a class="logo" data-nav="home" href="#" aria-label="Crafts and Crumbs — Home">
+        <img src="logo-mark.png" alt="Crafts and Crumbs">
+      </a>
+      <a data-nav="contact" href="#">Contact Us</a>
+      <a data-nav="faqs" href="#">FAQs</a>
+    </nav>
+    <div class="nav-actions">
+      <div class="cart-dropdown-wrap" id="cartDropdownWrap">
+        <button class="icon-btn" id="cartBtn" title="Cart" aria-label="Cart">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M3 4h2l2.4 12.2a2 2 0 0 0 2 1.6h7.7a2 2 0 0 0 2-1.6L21 8H6" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/><circle cx="10" cy="21" r="1.4" fill="currentColor"/><circle cx="18" cy="21" r="1.4" fill="currentColor"/></svg>
+          <span class="cart-count" id="cartCount" style="display:none;">0</span>
+        </button>
+        <div class="cart-dropdown" id="cartDropdown">
+          <div class="cart-dropdown-items" id="cartDropdownItems"></div>
+          <div class="cart-dropdown-footer" id="cartDropdownFooter"></div>
+        </div>
+      </div>
+      <div class="account-dropdown-wrap" id="accountDropdownWrap">
+        <button class="icon-btn" id="accountBtn" title="Account" aria-label="Account">
+          <svg width="19" height="19" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="9.4" stroke="currentColor" stroke-width="1.5"/><circle cx="12" cy="9.6" r="3.1" stroke="currentColor" stroke-width="1.5"/><path d="M5.7 18.6c1.1-3 3.7-4.7 6.3-4.7s5.2 1.7 6.3 4.7" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+          <span class="account-status-dot" id="accountStatusDot" style="display:none;"></span>
+        </button>
+        <div class="cart-dropdown account-dropdown" id="accountDropdown">
+          <div id="accountDropdownContent"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</header>
+
+<main id="app">
+
+<!-- home page -->
+<div class="page active" data-page="home">
+
+  <section class="hero" style="background-image:linear-gradient(90deg, rgba(30,22,15,0.72) 0%, rgba(30,22,15,0.42) 42%, rgba(30,22,15,0.06) 68%), url('hero-banner.jpg');">
+    <div class="container hero-inner">
+      <div>
+        <div class="eyebrow hero-eyebrow">Handcrafted daily, since the first pour</div>
+        <h1>Freshly Brewed <em>Comfort</em> in Every Sip & Bite</h1>
+        <p class="lead">Discover handcrafted coffee, freshly baked pastries, and charming accessories made to brighten your day.</p>
+        <div class="hero-actions">
+          <button class="btn btn-primary" data-nav="menu">Order Now</button>
+          <button class="btn btn-secondary-outline" data-nav="menu">Explore Menu</button>
+        </div>
+      </div>
+    </div>
+    <div class="hero-scroll-cue" aria-hidden="true"><span>Scroll</span><i></i></div>
+  </section>
+
+  <section class="reveal">
+    <div class="container">
+      <div class="section-head">
+        <div>
+          <div class="eyebrow">What we make</div>
+          <h2>Three crafts, one counter</h2>
+          <p>Coffee, pastry, and a handful of things worth taking home — each made the same unhurried way.</p>
+        </div>
+      </div>
+      <div class="cat-grid" id="categoryGrid"></div>
+    </div>
+  </section>
+
+  <section class="reveal">
+    <div class="container brewed-split">
+      <div class="brewed-img">
+        <img src="espresso-pic.jpg" alt="Espresso being pulled into white cups on a machine">
+      </div>
+      <div class="brewed-text">
+        <h2>Brewed to Perfection</h2>
+        <p>Every cup starts with carefully sourced beans, roasted in small batches to bring out their fullest flavor. From the first pour to the last sip, we take our time to get it right — because great coffee isn't rushed, it's crafted.</p>
+        <button class="btn btn-outline">Discover More</button>
+      </div>
+    </div>
+  </section>
+
+  <section class="reveal">
+    <div class="container about-split">
+      <div class="about-text">
+        <div class="eyebrow">Our story</div>
+        <h2>Started with one machine and a folding table</h2>
+        <p>Crafts & Crumbs began as a weekend cart before it had walls — one espresso machine, a borrowed folding table, and a habit of giving away more pastries than we sold.</p>
+        <p>What stuck was the pace: nothing rushed, nothing mass-produced. That's still how every cup and every bake leaves the counter today.</p>
+        <div class="about-stats">
+          <div><strong>2019</strong><span>First cup poured</span></div>
+          <div><strong>50+</strong><span>Recipes made in-house</span></div>
+          <div><strong>3</strong><span>Crafts under one roof</span></div>
+        </div>
+      </div>
+      <div class="about-img">
+        <img src="espresso-pic.jpg" alt="Interior of the Crafts & Crumbs counter">
+      </div>
+    </div>
+  </section>
+
+  <section class="reveal best-sellers">
+    <div class="container">
+      <div class="section-head">
+        <div>
+          <div class="eyebrow">Loved by regulars</div>
+          <h2>Popular this week</h2>
+          <p>Favorites our regulars keep reordering, scrolling by on their own.</p>
+        </div>
+        <button class="btn btn-outline" data-nav="menu">View full menu</button>
+      </div>
+
+      <div class="carousel" id="bestSellerCarousel">
+        <button class="carousel-arrow prev" id="bsPrev" aria-label="Previous best sellers">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M15 6l-6 6 6 6" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </button>
+        <div class="carousel-track-wrap">
+          <div class="carousel-track" id="bestSellerGrid"></div>
+        </div>
+        <button class="carousel-arrow next" id="bsNext" aria-label="Next best sellers">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M9 6l6 6-6 6" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </button>
+      </div>
+    </div>
+  </section>
+
+</div>
+
+<!-- menu page -->
+<div class="page" data-page="menu">
+  <div class="container menu-layout">
+    <aside class="menu-sidebar">
+      <h3 class="menu-sidebar-title">Menu</h3>
+      <div id="menuSidebarGroups"></div>
+    </aside>
+
+    <div class="menu-content">
+      <div class="search-box menu-content-search">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none"><circle cx="11" cy="11" r="7" stroke="currentColor" stroke-width="1.8"/><path d="m20 20-3.5-3.5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
+        <input type="text" id="menuSearch" placeholder="Looking for..." aria-label="Search the menu">
+      </div>
+      <div class="breadcrumb" id="menuBreadcrumb">Drinks / Caffeine</div>
+      <h1 id="menuHeading">Caffeine</h1>
+      <div class="menu-grid" id="menuGrid"></div>
+    </div>
+  </div>
+</div>
+
+<!-- merchandise page -->
+<div class="page" data-page="merchandise">
+  <div class="container menu-layout">
+    <aside class="menu-sidebar">
+      <h3 class="menu-sidebar-title">Merchandise</h3>
+      <div id="merchSidebarGroups"></div>
+    </aside>
+
+    <div class="menu-content">
+      <div class="search-box menu-content-search">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none"><circle cx="11" cy="11" r="7" stroke="currentColor" stroke-width="1.8"/><path d="m20 20-3.5-3.5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
+        <input type="text" id="merchSearch" placeholder="Looking for..." aria-label="Search merchandise">
+      </div>
+      <div class="breadcrumb" id="merchBreadcrumb">Wearables / Shirts</div>
+      <h1 id="merchHeading">Shirts</h1>
+      <div class="menu-grid" id="merchGrid"></div>
+    </div>
+  </div>
+</div>
+
+<!-- product detail page -->
+<div class="page" data-page="product">
+  <div class="container page-header">
+    <div class="breadcrumb"><a data-nav="home">Home</a> / <a data-nav="menu" id="pdSectionLink">Menu</a> / <span id="pdCrumb">Product</span></div>
+  </div>
+  <div class="container pd-grid" id="pdContent"></div>
+  <div class="container">
+    <h3 class="related-title">You might also like</h3>
+    <div class="product-grid" id="relatedGrid"></div>
+  </div>
+</div>
+
+<!-- cart page -->
+<div class="page" data-page="cart">
+  <div class="container page-header">
+    <div class="breadcrumb"><a data-nav="home">Home</a> / Cart</div>
+    <h1>Your Cart</h1>
+  </div>
+  <div class="container" id="cartContainer"></div>
+</div>
+
+<!-- checkout page -->
+<div class="page" data-page="checkout">
+  <div class="container page-header">
+    <div class="breadcrumb"><a data-nav="home">Home</a> / <a data-nav="cart">Cart</a> / Checkout</div>
+    <h1>Checkout</h1>
+  </div>
+  <div class="container checkout-layout">
+    <div>
+      <div class="form-card">
+        <h3>Customer information</h3>
+        <div class="form-row">
+          <div class="form-group"><label for="coName">Full name</label><input id="coName" type="text" placeholder="Juan Dela Cruz"></div>
+          <div class="form-group"><label for="coPhone">Phone number</label><input id="coPhone" type="tel" placeholder="09XX XXX XXXX"></div>
+        </div>
+        <div class="form-group"><label for="coEmail">Email address</label><input id="coEmail" type="email" placeholder="you@email.com"></div>
+        <div class="form-group" id="addressGroup"><label for="coAddress">Delivery address</label><input id="coAddress" type="text" placeholder="Street, Barangay, City"></div>
+      </div>
+
+      <div class="form-card">
+        <h3>Delivery or pickup</h3>
+        <div class="toggle-row">
+          <div class="toggle-opt active" data-fulfillment="delivery">
+            <svg class="opt-icon" width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M3 6.5h10v9H3z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/><path d="M13 10h4l3 3v2.5h-7z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/><circle cx="7" cy="17.5" r="1.6" stroke="currentColor" stroke-width="1.5"/><circle cx="17" cy="17.5" r="1.6" stroke="currentColor" stroke-width="1.5"/></svg>
+            <span>Delivery</span>
+          </div>
+          <div class="toggle-opt" data-fulfillment="pickup">
+            <svg class="opt-icon" width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M4 9.5V19a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1V9.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/><path d="M3 9.5l1.3-4.6A1 1 0 0 1 5.26 4h13.48a1 1 0 0 1 .96.9L21 9.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/><path d="M3 9.5a2.2 2.2 0 0 0 4.4 0 2.2 2.2 0 0 0 4.4 0 2.2 2.2 0 0 0 4.4 0 2.2 2.2 0 0 0 4.4 0" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/><path d="M9.5 20v-5a1 1 0 0 1 1-1h3a1 1 0 0 1 1 1v5" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/></svg>
+            <span>Store Pickup</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="form-card">
+        <h3>Payment method</h3>
+        <label class="pay-opt active"><input type="radio" name="pay" checked> <svg class="opt-icon" width="16" height="16" viewBox="0 0 24 24" fill="none"><rect x="2.5" y="6.5" width="19" height="11" rx="1.6" stroke="currentColor" stroke-width="1.5"/><circle cx="12" cy="12" r="2.6" stroke="currentColor" stroke-width="1.5"/><path d="M5.5 9v0M18.5 15v0" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg> Cash on Delivery / Pickup</label>
+        <label class="pay-opt"><input type="radio" name="pay"> <svg class="opt-icon" width="16" height="16" viewBox="0 0 24 24" fill="none"><rect x="2.5" y="5.5" width="19" height="13" rx="2" stroke="currentColor" stroke-width="1.5"/><path d="M2.5 9.8h19" stroke="currentColor" stroke-width="1.5"/><path d="M5.5 14.5h4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg> Credit / Debit Card</label>
+        <label class="pay-opt"><input type="radio" name="pay"> <svg class="opt-icon" width="16" height="16" viewBox="0 0 24 24" fill="none"><rect x="7" y="2.5" width="10" height="19" rx="2" stroke="currentColor" stroke-width="1.5"/><path d="M10.5 18.3h3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg> GCash</label>
+      </div>
+    </div>
+
+    <div class="order-summary" id="checkoutSummary"></div>
+  </div>
+</div>
+<!-- confirmation page -->
+<div class="page" data-page="confirmation">
+  <div class="container confirm-wrap">
+    <div class="confirm-icon">
+      <svg width="34" height="34" viewBox="0 0 24 24" fill="none"><path d="M5 13l4 4L19 7" stroke="#F7F5F1" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
+    </div>
+    <h1>Order placed, thank you!</h1>
+    <p>We've started crafting your order. You'll get a text once it's ready.</p>
+    <div class="confirm-card">
+      <div class="confirm-row"><span>Order number</span><span id="confOrderNum">—</span></div>
+      <div class="confirm-row"><span>Estimated preparation time</span><span>15–20 minutes</span></div>
+      <div class="confirm-row"><span>Fulfillment</span><span id="confFulfillment">—</span></div>
+      <div class="confirm-row"><span>Total paid</span><span id="confTotal">—</span></div>
+    </div>
+    <button class="btn btn-primary" data-nav="menu">Continue Shopping</button>
+  </div>
+</div>
+
+<!-- faqs page -->
+<div class="page" data-page="faqs">
+  <div class="container page-header">
+    <div class="breadcrumb"><a data-nav="home">Home</a> / FAQs</div>
+    <h1>Frequently Asked Questions</h1>
+    <p class="faq-intro">A few things regulars and first-timers ask us the most. Can't find your answer here? Send us a message on the Contact Us page.</p>
+  </div>
+
+  <div class="container faq-layout">
+    <div class="faq-group">
+      <div class="eyebrow">Ordering</div>
+      <div class="faq-list">
+        <div class="faq-item reveal">
+          <button class="faq-question">
+            <span>How do I place an order?</span>
+            <span class="faq-toggle-icon"></span>
+          </button>
+          <div class="faq-answer">
+            <p>Browse the Menu or Merchandise page, add whatever you like to your cart, then head to checkout. You can pay on delivery or pickup, by card, or through GCash.</p>
+          </div>
+        </div>
+        <div class="faq-item reveal">
+          <button class="faq-question">
+            <span>Can I change or cancel an order after placing it?</span>
+            <span class="faq-toggle-icon"></span>
+          </button>
+          <div class="faq-answer">
+            <p>Since we start preparing orders right away, changes or cancellations aren't guaranteed once an order is submitted. Message us as soon as possible and we'll try our best to accommodate you.</p>
+          </div>
+        </div>
+        <div class="faq-item reveal">
+          <button class="faq-question">
+            <span>Do I need an account to order?</span>
+            <span class="faq-toggle-icon"></span>
+          </button>
+          <div class="faq-answer">
+            <p>No, you can check out as a guest. Creating an account just lets you track past orders and speeds up checkout the next time around.</p>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="faq-group">
+      <div class="eyebrow">Delivery &amp; Pickup</div>
+      <div class="faq-list">
+        <div class="faq-item reveal">
+          <button class="faq-question">
+            <span>How long does delivery take?</span>
+            <span class="faq-toggle-icon"></span>
+          </button>
+          <div class="faq-answer">
+            <p>Most orders are prepared within 15 to 20 minutes, then delivered depending on your distance from the store. Store pickup is usually faster since there's no travel time involved.</p>
+          </div>
+        </div>
+        <div class="faq-item reveal">
+          <button class="faq-question">
+            <span>Which areas do you deliver to?</span>
+            <span class="faq-toggle-icon"></span>
+          </button>
+          <div class="faq-answer">
+            <p>We currently deliver within Quezon City and nearby areas. If you're just outside our usual radius, reach out and we'll let you know if we can still make it work.</p>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="faq-group">
+      <div class="eyebrow">Products</div>
+      <div class="faq-list">
+        <div class="faq-item reveal">
+          <button class="faq-question">
+            <span>Are allergens listed on your products?</span>
+            <span class="faq-toggle-icon"></span>
+          </button>
+          <div class="faq-answer">
+            <p>Yes, every product page lists known allergens and ingredients. If you have a specific allergy concern, feel free to message us before ordering.</p>
+          </div>
+        </div>
+        <div class="faq-item reveal">
+          <button class="faq-question">
+            <span>What if an item I want is out of stock?</span>
+            <span class="faq-toggle-icon"></span>
+          </button>
+          <div class="faq-answer">
+            <p>Since everything is baked and brewed in small batches, some items do run out during the day. Out-of-stock products are marked on the menu, and most restock the following morning.</p>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="faq-group">
+      <div class="eyebrow">Account &amp; Payment</div>
+      <div class="faq-list">
+        <div class="faq-item reveal">
+          <button class="faq-question">
+            <span>What payment methods do you accept?</span>
+            <span class="faq-toggle-icon"></span>
+          </button>
+          <div class="faq-answer">
+            <p>We accept cash on delivery or pickup, credit and debit cards, and GCash.</p>
+          </div>
+        </div>
+        <div class="faq-item reveal">
+          <button class="faq-question">
+            <span>I forgot my password. What do I do?</span>
+            <span class="faq-toggle-icon"></span>
+          </button>
+          <div class="faq-answer">
+            <p>Use the "Forgot password?" link on the login page and follow the steps from there. If you still run into trouble, contact us and we'll help sort it out.</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- contact page -->
+<div class="page" data-page="contact">
+  <div class="container page-header">
+    <div class="breadcrumb"><a data-nav="home">Home</a> / Contact Us</div>
+    <h1>Contact Us</h1>
+    <p class="faq-intro">Questions, feedback, or a catering request? Send it our way and we'll get back to you.</p>
+  </div>
+
+  <div class="container contact-layout">
+    <div class="form-card contact-form-card">
+      <h3>Send a message</h3>
+      <form id="contactForm">
+        <div class="form-row">
+          <div class="form-group"><label for="cName">Full name</label><input id="cName" type="text" placeholder="Juan Dela Cruz" required></div>
+          <div class="form-group"><label for="cEmail">Email address</label><input id="cEmail" type="email" placeholder="you@email.com" required></div>
+        </div>
+        <div class="form-group"><label for="cSubject">Subject</label><input id="cSubject" type="text" placeholder="What's this about?" required></div>
+        <div class="form-group"><label for="cMessage">Message</label><textarea id="cMessage" rows="5" placeholder="Tell us a bit more..." required></textarea></div>
+        <button type="submit" class="btn btn-primary btn-full">Send Message</button>
+      </form>
+    </div>
+
+    <div class="contact-info-card">
+      <h3>Other ways to reach us</h3>
+      <div class="contact-info-row">
+        <span class="contact-info-label">Email</span>
+        <span>craftsandcrumbs@gmail.com</span>
+      </div>
+      <div class="contact-info-row">
+        <span class="contact-info-label">Phone</span>
+        <span>+63 912 345 6789</span>
+      </div>
+      <div class="contact-info-row">
+        <span class="contact-info-label">Address</span>
+        <span>123, Project 4, Quezon City</span>
+      </div>
+      <div class="contact-info-row">
+        <span class="contact-info-label">Hours</span>
+        <span>Monday to Sunday, 7AM to 9PM</span>
+      </div>
+      <div class="contact-info-socials">
+        <a href="#" class="ftr-social">Facebook</a>
+        <a href="#" class="ftr-social">Instagram</a>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- login page -->
+<div class="page" data-page="login">
+  <div class="container auth-wrap">
+    <div class="auth-card">
+      <h1>Welcome back</h1>
+      <p>Log in to track orders and save your favorites.</p>
+      <form id="loginForm">
+        <div class="form-group"><label for="loginEmail">Email address</label><input id="loginEmail" type="email" placeholder="you@email.com" required></div>
+        <div class="form-group"><label for="loginPassword">Password</label><input id="loginPassword" type="password" placeholder="••••••••" required></div>
+        <div class="auth-meta">
+          <label class="check-row"><input type="checkbox"> Remember me</label>
+          <span class="auth-link">Forgot password?</span>
+        </div>
+        <button type="submit" class="btn btn-primary btn-full">Login</button>
+      </form>
+      <p class="auth-switch">New here? <span class="auth-link" data-nav="register">Create an account</span></p>
+    </div>
+  </div>
+</div>
+
+<!-- register page -->
+<div class="page" data-page="register">
+  <div class="container auth-wrap">
+    <div class="auth-card">
+      <h1>Join Crafts & Crumbs</h1>
+      <p>Create an account for faster checkout and member perks.</p>
+      <form id="registerForm">
+        <div class="form-group"><label for="regName">Full name</label><input id="regName" type="text" placeholder="Juan Dela Cruz" required></div>
+        <div class="form-group"><label for="regEmail">Email address</label><input id="regEmail" type="email" placeholder="you@email.com" required></div>
+        <div class="form-group"><label for="regPhone">Phone number</label><input id="regPhone" type="tel" placeholder="09XX XXX XXXX" required></div>
+        <div class="form-row">
+          <div class="form-group"><label for="regPassword">Password</label><input id="regPassword" type="password" placeholder="••••••••" required></div>
+          <div class="form-group"><label for="regPasswordConfirm">Confirm password</label><input id="regPasswordConfirm" type="password" placeholder="••••••••" required></div>
+        </div>
+        <button type="submit" class="btn btn-primary btn-full">Create Account</button>
+      </form>
+      <p class="auth-switch">Already have an account? <span class="auth-link" data-nav="login">Log in</span></p>
+    </div>
+  </div>
+</div>
+
+<!-- admin page -->
+<div class="page" data-page="admin">
+  <div class="container page-header">
+    <div class="breadcrumb"><a data-nav="home">Home</a> / Admin</div>
+    <h1>Admin Dashboard</h1>
+  </div>
+
+  <div class="container admin-shell">
+    <aside class="admin-sidebar">
+      <button class="admin-tab active" data-admin-tab="overview">Overview</button>
+      <button class="admin-tab" data-admin-tab="products">Products</button>
+      <button class="admin-tab" data-admin-tab="orders">Orders</button>
+      <button class="admin-tab" data-admin-tab="add-product">Add Product</button>
+    </aside>
+
+    <div class="admin-main">
+
+      <!-- overview -->
+      <div class="admin-panel active" data-admin-panel="overview">
+        <div class="admin-stats">
+          <div class="admin-stat-card">
+            <span class="admin-stat-label">Total Products</span>
+            <span class="admin-stat-value" id="statTotalProducts">—</span>
+          </div>
+          <div class="admin-stat-card">
+            <span class="admin-stat-label">Total Orders</span>
+            <span class="admin-stat-value" id="statTotalOrders">—</span>
+          </div>
+          <div class="admin-stat-card">
+            <span class="admin-stat-label">Pending Orders</span>
+            <span class="admin-stat-value" id="statPendingOrders">—</span>
+          </div>
+          <div class="admin-stat-card">
+            <span class="admin-stat-label">Total Revenue</span>
+            <span class="admin-stat-value" id="statTotalRevenue">—</span>
+          </div>
+        </div>
+
+        <div class="form-card">
+          <h3>Starter Catalog</h3>
+          <p>If the live menu looks empty, the Firestore <code>products</code> collection hasn't been seeded yet. This pushes the built-in starter catalog (57 items) into Firestore — safe to click more than once.</p>
+          <button class="btn btn-outline" id="adminSeedBtn">Seed Starter Catalog</button>
+          <p id="adminSeedStatus" style="margin-top:10px;"></p>
+        </div>
+      </div>
+
+      <!-- products -->
+      <div class="admin-panel" data-admin-panel="products">
+        <div class="admin-panel-head">
+          <h3>Manage Products</h3>
+          <input type="text" id="adminProductSearch" class="admin-search-input" placeholder="Search products">
+        </div>
+        <div class="admin-table-wrap">
+          <table class="admin-table">
+            <thead>
+              <tr><th>Product</th><th>Category</th><th>Price</th><th></th></tr>
+            </thead>
+            <tbody id="adminProductsBody"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- orders -->
+      <div class="admin-panel" data-admin-panel="orders">
+        <div class="admin-panel-head">
+          <h3>Orders</h3>
+          <button class="btn btn-outline btn-sm" id="adminRefreshOrders">Refresh</button>
+        </div>
+        <div class="admin-table-wrap">
+          <table class="admin-table">
+            <thead>
+              <tr><th>Order</th><th>Customer</th><th>Fulfillment</th><th>Total</th><th>Status</th></tr>
+            </thead>
+            <tbody id="adminOrdersBody"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- add / edit product -->
+      <div class="admin-panel" data-admin-panel="add-product">
+        <div class="form-card">
+          <h3 id="adminFormTitle">Add Product to Inventory</h3>
+          <form id="adminAddProductForm">
+            <input type="hidden" id="apEditId" value="">
+            <div class="form-row">
+              <div class="form-group"><label for="apName">Product name</label><input type="text" id="apName" placeholder="Iced Spanish Latte" required></div>
+              <div class="form-group"><label for="apPrice">Price (₱)</label><input type="number" id="apPrice" min="0" step="1" placeholder="150" required></div>
+            </div>
+            <div class="form-group">
+              <label for="apCategory">Category</label>
+              <select id="apCategory" class="form-select" required>
+                <option value="Coffee">Coffee</option>
+                <option value="Non-Coffee">Non-Coffee</option>
+                <option value="Tea">Tea</option>
+                <option value="Pastries">Pastries</option>
+                <option value="Sandwiches">Sandwiches</option>
+                <option value="Cakes">Cakes</option>
+                <option value="Shirts">Shirts</option>
+                <option value="Caps">Caps</option>
+                <option value="Shorts">Shorts</option>
+                <option value="Socks">Socks</option>
+                <option value="ToteBags">Tote Bags</option>
+                <option value="Bracelets">Bracelets</option>
+                <option value="Keychains">Keychains</option>
+              </select>
+            </div>
+            <div class="form-group"><label for="apDesc">Short description</label><input type="text" id="apDesc" placeholder="One or two sentences describing the item" required></div>
+            <div class="form-group"><label for="apImg">Image URL</label><input type="text" id="apImg" placeholder="https://... (leave blank for a placeholder image)"></div>
+            <div class="form-group"><label for="apIngredients">Ingredients</label><input type="text" id="apIngredients" placeholder="Comma-separated ingredients"></div>
+            <div class="form-group"><label for="apAllergens">Allergens</label><input type="text" id="apAllergens" placeholder="e.g. Gluten (wheat), Milk"></div>
+            <button type="submit" class="btn btn-primary btn-full" id="adminFormSubmitBtn">Add Product</button>
+            <button type="button" class="btn btn-outline btn-full admin-cancel-edit" id="adminCancelEditBtn" style="display:none;">Cancel Edit</button>
+          </form>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+</main>
+
+<footer class="footer-new">
+  <div class="container ftr-top">
+    <div class="ftr-brand">
+      <img class="ftr-logo" src="crumblogo.png" alt="Crafts and Crumbs — Coffee & Merchandise">
+    </div>
+
+    <div class="ftr-col">
+      <h4>Information</h4>
+      <ul>
+        <li><a href="#" data-legal="terms">Terms And Conditions</a></li>
+        <li><a href="#" data-legal="privacy">Privacy Policy</a></li>
+      </ul>
+    </div>
+
+    <div class="ftr-col">
+      <h4>Get In Touch</h4>
+      <ul>
+        <li>craftsandcrumbs@gmail.com</li>
+        <li>1234-5678</li>
+        <li>
+          <a href="#" class="ftr-social">
+            <span class="ftr-social-icon"><svg width="13" height="13" viewBox="0 0 24 24" fill="none"><path d="M14 8.5h2V5.3S14.7 5 13.3 5c-2.3 0-3.6 1.4-3.6 3.9V11H7.5v3H9.7v6h2.9v-6h2.2l.4-3h-2.6V9.1c0-.7.2-1.1 1.4-1.1Z" fill="currentColor"/></svg></span>
+            Facebook
+          </a>
+        </li>
+      </ul>
+    </div>
+
+    <div class="ftr-col">
+      <h4 class="ftr-col-spacer" aria-hidden="true">&nbsp;</h4>
+      <ul>
+        <li>123, Project 4, Quezon City</li>
+        <li>+63 912 345 6789</li>
+        <li>
+          <a href="#" class="ftr-social">
+            <span class="ftr-social-icon"><svg width="13" height="13" viewBox="0 0 24 24" fill="none"><rect x="3" y="3" width="18" height="18" rx="5" stroke="currentColor" stroke-width="1.6"/><circle cx="12" cy="12" r="4" stroke="currentColor" stroke-width="1.6"/><circle cx="17.2" cy="6.8" r="1" fill="currentColor"/></svg></span>
+            Instagram
+          </a>
+        </li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="container ftr-bottom">
+    <p>All Rights Reserved&nbsp; © 2026</p>
+    <p>CRAFTS&amp;CRUMBS, INC. Products And Menus May Vary By Location; Not All Products Listed Are Available In All Locations.</p>
+  </div>
+</footer>
+
+<div class="legal-overlay" id="legalOverlay">
+  <div class="legal-modal" id="legalModal" role="dialog" aria-modal="true" aria-labelledby="legalModalTitle">
+    <button class="legal-close" id="legalClose" aria-label="Close">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M6 6l12 12M18 6L6 18" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
+    </button>
+
+    <div class="legal-header">
+      <div class="legal-icon">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none"><path d="M7 3.5h8l4 4V20a1 1 0 0 1-1 1H7a1 1 0 0 1-1-1V4.5a1 1 0 0 1 1-1Z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/><path d="M15 3.5V8h4" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/><path d="M8.5 12h7M8.5 15h7M8.5 18h4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+      </div>
+      <h2 id="legalModalTitle">Terms &amp; Privacy</h2>
+      <p>Please take a moment to review the terms below.</p>
+    </div>
+
+    <div class="legal-tabs">
+      <button class="legal-tab active" data-legal-tab="terms">Terms and Conditions</button>
+      <button class="legal-tab" data-legal-tab="privacy">Privacy Policy</button>
+    </div>
+
+    <div class="legal-body" id="legalBody">
+      <div class="legal-panel active" data-legal-panel="terms">
+        <p class="legal-updated">Last updated: August 2026</p>
+
+        <h4>1. Acceptance of terms</h4>
+        <p>By browsing this website or placing an order with Crafts &amp; Crumbs, you agree to the terms laid out here. If you don't agree with any part, please refrain from using the site.</p>
+
+        <h4>2. Orders and payment</h4>
+        <p>All orders are subject to availability. Prices shown at checkout are final for that transaction, though prices on the menu may change over time without prior notice. We accept cash on delivery or pickup, credit and debit cards, and GCash.</p>
+
+        <h4>3. Delivery and pickup</h4>
+        <p>Estimated preparation and delivery times are our best estimate and not a guarantee. Delays can happen due to weather, traffic, or high order volume. Store pickup orders should be claimed within the timeframe given at checkout.</p>
+
+        <h4>4. Product availability</h4>
+        <p>Since our coffee and pastries are made in small batches, some items may run out during the day. We'll do our best to keep the menu updated to reflect what's actually available.</p>
+
+        <h4>5. Accounts</h4>
+        <p>You're responsible for keeping your login details private and for anything that happens under your account. Let us know right away if you suspect unauthorized use.</p>
+
+        <h4>6. Prohibited conduct</h4>
+        <p>Don't use this site to submit false orders, attempt to access accounts that aren't yours, or interfere with how the site or its systems normally run.</p>
+
+        <h4>7. Limitation of liability</h4>
+        <p>Crafts &amp; Crumbs isn't liable for indirect or incidental damages arising from the use of this site, to the extent allowed by law.</p>
+
+        <h4>8. Changes to these terms</h4>
+        <p>We may update these terms from time to time. Continued use of the site after changes are posted means you accept the updated terms.</p>
+
+        <h4>9. Contact</h4>
+        <p>Questions about these terms can be sent to craftsandcrumbs@gmail.com.</p>
+      </div>
+
+      <div class="legal-panel" data-legal-panel="privacy">
+        <p class="legal-updated">Last updated: August 2026</p>
+
+        <h4>1. Information we collect</h4>
+        <p>When you create an account or place an order, we collect basic details such as your name, email address, phone number, and delivery address. Account information is stored securely through Firebase Authentication and Firestore.</p>
+
+        <h4>2. How we use your information</h4>
+        <p>We use your information to process orders, manage your account, and send order updates. We don't sell or rent your personal information to third parties.</p>
+
+        <h4>3. Cookies and local storage</h4>
+        <p>This site uses your browser's local storage to remember things like your cart contents and cached product listings, so pages load faster on return visits. Clearing your browser data will reset these.</p>
+
+        <h4>4. Third-party services</h4>
+        <p>We use Firebase, a service provided by Google, for authentication and data storage. Their own privacy practices apply to how that infrastructure handles data in transit and at rest.</p>
+
+        <h4>5. Data security</h4>
+        <p>We take reasonable steps to protect your information, though no method of storage or transmission online can be guaranteed as completely secure.</p>
+
+        <h4>6. Your rights</h4>
+        <p>You can request access to, correction of, or deletion of your personal information at any time by contacting us directly.</p>
+
+        <h4>7. Children's privacy</h4>
+        <p>This site isn't directed at children under 13, and we don't knowingly collect information from them.</p>
+
+        <h4>8. Changes to this policy</h4>
+        <p>We may revise this policy occasionally. Any changes will be reflected on this page with an updated date.</p>
+
+        <h4>9. Contact</h4>
+        <p>For any privacy-related concerns, reach us at craftsandcrumbs@gmail.com.</p>
+      </div>
+    </div>
+
+    <div class="legal-footer">
+      <button class="btn btn-primary" id="legalAccept">I Understand</button>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"><span class="dot"></span><span id="toastMsg">Added to cart</span></div>
+<script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+
+<!-- Firebase (Auth + Firestore). These are ES modules, loaded from
+     Google's CDN — no npm/build step needed. They run before
+     DOMContentLoaded, so by the time script.js's $(document).ready
+     fires, window.CCAuth / CCProducts / CCOrders are ready to use. -->
+<script type="module" src="firebase-config.js"></script>
+<script type="module" src="auth.js"></script>
+<script type="module" src="products-services.js"></script>
+<script type="module" src="orders-service.js"></script>
+
+<script src="script.js"></script>
+<script src="admin.js"></script>
+</body>
+</html>
