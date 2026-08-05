@@ -621,7 +621,7 @@
         <div class="admin-table-wrap">
           <table class="admin-table">
             <thead>
-              <tr><th>Product</th><th>Category</th><th>Price</th><th></th></tr>
+              <tr><th>Product</th><th>Category</th><th>Price</th><th>Stock</th><th></th></tr>
             </thead>
             <tbody id="adminProductsBody"></tbody>
           </table>
@@ -653,6 +653,9 @@
             <div class="form-row">
               <div class="form-group"><label for="apName">Product name</label><input type="text" id="apName" placeholder="Iced Spanish Latte" required></div>
               <div class="form-group"><label for="apPrice">Price (₱)</label><input type="number" id="apPrice" min="0" step="1" placeholder="150" required></div>
+            </div>
+            <div class="form-row">
+              <div class="form-group"><label for="apStock">Stock quantity</label><input type="number" id="apStock" min="0" step="1" placeholder="e.g. 50" required></div>
             </div>
             <div class="form-group">
               <label for="apCategory">Category</label>
