@@ -36,7 +36,7 @@
   }
 
   *{box-sizing:border-box;}
-  html{scroll-behavior:smooth;}
+  html{scroll-behavior:smooth; overflow-x:hidden;}
   ::selection{ background:var(--cta); color:#fff; }
 
   /* Consistent, visible keyboard focus on buttons, links, nav items,
@@ -57,6 +57,7 @@
     line-height:1.65;
     -webkit-font-smoothing:antialiased;
     -moz-osx-font-smoothing:grayscale;
+    overflow-x:hidden;
   }
   h1,h2,h3,h4{
     font-family:'Lora', serif;
@@ -118,7 +119,7 @@
   .container{
     max-width:1240px;
     margin:0 auto;
-    padding:0 32px;
+    padding:0 clamp(16px, 4vw, 32px);
   }
 
   /* ---------- Reveal on scroll ---------- */
@@ -144,10 +145,26 @@
   /* ---------- Nav ---------- */
   header.site-nav{
     position:sticky; top:0; z-index:200;
+    border-bottom:1px solid var(--line);
+  }
+  /* The frosted-glass blur lives on this pseudo-element instead of on
+     header.site-nav directly. backdrop-filter (like transform/filter)
+     forces the element it's on to become the containing block for any
+     position:fixed descendant — and the mobile nav drawer (.nav-links)
+     is exactly that. With the blur on the header itself, the drawer
+     was being boxed into the header's own ~70px height instead of
+     covering the screen, which is what made it look transparent/broken
+     when opened on narrow screens. Keeping the header plain (no
+     filter) and painting the blur on this absolutely-positioned layer
+     behind the nav content gives the same visual effect without the
+     drawer being trapped inside it. */
+  header.site-nav::before{
+    content:'';
+    position:absolute; inset:0;
     background:rgba(247,245,241,0.86);
     backdrop-filter:blur(18px) saturate(1.1);
     -webkit-backdrop-filter:blur(18px) saturate(1.1);
-    border-bottom:1px solid var(--line);
+    z-index:-1;
   }
   .nav-inner{
     max-width:1600px;
@@ -428,7 +445,7 @@
     cursor:pointer;
   }
   .cat-card:hover{ background:var(--card); }
-  .cat-card .cat-img{ height:340px; overflow:hidden; }
+  .cat-card .cat-img{ aspect-ratio:4/3; overflow:hidden; }
   .cat-card .cat-img img{ width:100%; height:100%; object-fit:cover; transition:transform 0.9s var(--ease-premium); }
   .cat-card:hover .cat-img img{ transform:scale(1.05); }
   .cat-body{ padding:28px 30px 36px; }
@@ -438,10 +455,10 @@
   .cat-link{ font-size:11px; font-weight:600; text-transform:uppercase; letter-spacing:0.09em; color:var(--ink); display:inline-flex; align-items:center; gap:8px; border-bottom:1px solid var(--line-strong); padding-bottom:4px; }
   .cat-link svg{ transition:transform 0.25s ease; }
   .cat-card:hover .cat-link svg{ transform:translateX(4px); }
-  @media (max-width:980px){ .cat-grid{ grid-template-columns:1fr; } .cat-card .cat-img{ height:260px; } }
+  @media (max-width:980px){ .cat-grid{ grid-template-columns:1fr; } }
 
   /* ---------- Product grid ---------- */
-  .product-grid{ display:grid; grid-template-columns:repeat(4,1fr); gap:28px; }
+  .product-grid{ display:grid; grid-template-columns:repeat(auto-fill, minmax(210px, 1fr)); gap:28px; }
   .product-card{
     background:#fff;
     border-radius:var(--radius-sm);
@@ -452,7 +469,7 @@
     display:flex; flex-direction:column;
   }
   .product-card:hover{ transform:translateY(-4px); box-shadow:var(--shadow); border-color:var(--line-strong); }
-  .product-img{ height:190px; overflow:hidden; position:relative; cursor:pointer; background:var(--card); }
+  .product-img{ aspect-ratio:5/4; overflow:hidden; position:relative; cursor:pointer; background:var(--card); }
   .product-img img{ width:100%; height:100%; object-fit:cover; transition:transform 0.7s var(--ease-premium); }
   .product-card:hover .product-img img{ transform:scale(1.06); }
   .product-info{ padding:20px 20px 22px; display:flex; flex-direction:column; gap:8px; flex:1; }
@@ -517,7 +534,7 @@
   .carousel-track .product-card:active{ transform:translateY(-4px) scale(0.995); }
 
   .best-card{ position:relative; }
-  .best-card .product-img{ height:230px; border-radius:var(--radius-lg) var(--radius-lg) 0 0; }
+  .best-card .product-img{ aspect-ratio:5/4; border-radius:var(--radius-lg) var(--radius-lg) 0 0; }
   .best-card .product-img img{ transition:transform 0.9s var(--ease-premium, ease); }
   .best-card-shade{
     position:absolute; inset:0;
@@ -746,7 +763,7 @@
     background:#fff; border:1px solid var(--line); transition:0.2s ease; cursor:pointer;
   }
   .pill.active, .pill:hover{ background:var(--sage); color:#fff; border-color:var(--sage); }
-  .menu-grid{ display:grid; grid-template-columns:repeat(4,1fr); gap:22px; padding-bottom:20px;}
+  .menu-grid{ display:grid; grid-template-columns:repeat(auto-fill, minmax(210px, 1fr)); gap:22px; padding-bottom:20px;}
   .empty-state{ text-align:center; padding:60px 20px; color:var(--text-soft); }
 
   /* qty selector */
@@ -895,7 +912,7 @@
   .admin-panel{ display:none; }
   .admin-panel.active{ display:block; animation:fadeIn 0.35s ease; }
 
-  .admin-stats{ display:grid; grid-template-columns:repeat(4,1fr); gap:16px; margin-bottom:26px; }
+  .admin-stats{ display:grid; grid-template-columns:repeat(auto-fit, minmax(150px, 1fr)); gap:16px; margin-bottom:26px; }
   .admin-stat-card{
     background:#fff; border:1px solid var(--line); border-radius:var(--radius);
     padding:20px; box-shadow:var(--shadow-sm);
@@ -1460,29 +1477,15 @@
   @keyframes fadeIn{ from{opacity:0; transform:translateY(6px);} to{opacity:1; transform:translateY(0);} }
 
   /* ============ RESPONSIVE ============ */
-  @media (max-width: 980px){
-    .hero-inner{ grid-template-columns:1fr; }
-    .hero-visual{ order:-1; max-width:340px; margin:0 auto; }
-    .brewed-split{ grid-template-columns:1fr; gap:30px; }
-    .about-split{ grid-template-columns:1fr; }
-    .about-img{ aspect-ratio:16/9; order:-1; }
-    .cat-grid{ grid-template-columns:repeat(2,1fr); }
-    .product-grid, .menu-grid{ grid-template-columns:repeat(2,1fr); }
-    .review-grid{ grid-template-columns:1fr; }
-    .footer-grid{ grid-template-columns:1fr 1fr; row-gap:30px; }
-    .ftr-top{ grid-template-columns:1fr 1fr; row-gap:30px; }
-    .ftr-brand{ grid-column:1/-1; }
-    .pd-grid{ grid-template-columns:1fr; gap:30px; }
-    .menu-layout{ grid-template-columns:1fr; gap:24px; }
-    .cart-layout, .checkout-layout{ grid-template-columns:1fr; }
-    .order-summary{ position:static; }
-    .admin-shell{ grid-template-columns:1fr; gap:20px; }
-    .admin-sidebar{ position:static; flex-direction:row; overflow-x:auto; gap:6px; }
-    .admin-tab{ white-space:nowrap; }
-    .admin-stats{ grid-template-columns:repeat(2,1fr); }
-    .contact-layout{ grid-template-columns:1fr; }
-  }
-  @media (max-width: 680px){
+  /* The full nav (logo + 4 links + search + cart/account icons) only
+     has room down to roughly ~1040px before items start crowding or
+     wrapping. The mobile hamburger drawer previously only kicked in
+     below 680px, leaving the whole 680-1040px tablet/small-laptop
+     range with a squeezed, overlapping nav — exactly the range where
+     dragging a browser window narrower felt "clunky." Moving the
+     switch-to-drawer point up to 1040px closes that gap; everything
+     below still behaves exactly like the existing mobile drawer. */
+  @media (max-width: 1040px){
     .nav-inner{ grid-template-columns:auto 1fr auto; }
     .nav-links{
       position:fixed; top:65px; left:0; right:0; bottom:0;
@@ -1494,15 +1497,54 @@
     .nav-links.open{ transform:translateY(0); opacity:1; pointer-events:auto; }
     .nav-links a{ padding:14px 0; width:100%; border-bottom:1px solid var(--line); }
     .nav-links .logo{ order:-1; padding:14px 0; justify-content:flex-start; }
-    .header-search{ max-width:150px; }
+    .header-search{ max-width:170px; }
     .hamburger{ display:flex; }
+  }
+  @media (max-width: 980px){
+    .hero-inner{ grid-template-columns:1fr; }
+    .hero-visual{ order:-1; max-width:340px; margin:0 auto; }
+    .brewed-split{ grid-template-columns:1fr; gap:30px; }
+    .about-split{ grid-template-columns:1fr; }
+    .about-img{ aspect-ratio:16/9; order:-1; }
+    .cat-grid{ grid-template-columns:repeat(2,1fr); }
+    .review-grid{ grid-template-columns:1fr; }
+    .footer-grid{ grid-template-columns:1fr 1fr; row-gap:30px; }
+    .ftr-top{ grid-template-columns:1fr 1fr; row-gap:30px; }
+    .ftr-brand{ grid-column:1/-1; }
+    .pd-grid{ grid-template-columns:1fr; gap:30px; }
+    .menu-layout{ grid-template-columns:1fr; gap:24px; }
+    .cart-layout, .checkout-layout{ grid-template-columns:1fr; }
+    .order-summary{ position:static; }
+    .admin-shell{ grid-template-columns:1fr; gap:20px; }
+    .admin-sidebar{ position:static; flex-direction:row; overflow-x:auto; gap:6px; }
+    .admin-tab{ white-space:nowrap; }
+    .contact-layout{ grid-template-columns:1fr; }
+  }
+  @media (max-width: 680px){
     .hero{ padding:80px 0 90px; }
+    /* Below this, a single auto-fill column would stretch each product
+       to nearly the full screen width — a big image and a lot of empty
+       side padding, which reads as clunky on an actual phone. Forcing
+       2 narrower columns instead keeps images genuinely compact, like
+       a real mobile shopping grid, and tightens the card's own padding/
+       text so it doesn't feel cramped at that smaller size. */
+    .product-grid, .menu-grid{ grid-template-columns:repeat(2, 1fr); gap:14px; }
+    .product-info{ padding:12px 12px 14px; gap:5px; }
+    .product-name{ font-size:13.5px; }
+    .product-desc{ font-size:11px; min-height:0; -webkit-line-clamp:2; display:-webkit-box; -webkit-box-orient:vertical; overflow:hidden; }
+    .price{ font-size:13px; }
+    .add-btn{ width:28px; height:28px; }
+    /* iOS Safari auto-zooms the whole page when a focused input/select's
+       font-size is under 16px — these were 13.5px, which is exactly what
+       was making form fields (checkout, login, contact) feel jumpy on
+       phones. Bumping to 16px only on this breakpoint stops the zoom
+       without changing how compact the fields look on desktop. */
+    .form-group input, .form-group select, .form-group textarea, .search-box input{ font-size:16px; }
     .hero h1{ font-size:32px; }
-    .cat-grid, .product-grid, .menu-grid{ grid-template-columns:1fr; }
+    .cat-grid{ grid-template-columns:1fr; }
     .footer-grid{ grid-template-columns:1fr; }
     .form-row{ grid-template-columns:1fr; }
     .section-head{ flex-direction:column; align-items:flex-start; }
-    .admin-stats{ grid-template-columns:1fr; }
     .admin-panel-head{ flex-direction:column; align-items:stretch; }
     .admin-panel-head-controls{ flex-direction:column; width:100%; }
     .admin-search-input{ min-width:0; width:100%; }
