@@ -6,7 +6,7 @@
 ========================================================= */
 import { db } from "./firebase-config.js";
 import {
-  collection, getDocs, doc, setDoc, addDoc, updateDoc, deleteDoc
+  collection, getDocs, getDoc, doc, setDoc, addDoc, updateDoc, deleteDoc
 } from "https://www.gstatic.com/firebasejs/12.17.0/firebase-firestore-lite.js";
 
 const PRODUCTS_COL = "products";
@@ -84,12 +84,29 @@ export async function addProduct(product){
 /* One-time seeder: pushes an array of {id, ...fields} products
    into Firestore, using the given id as the doc id so it matches
    the ids already baked into script.js (best-seller list, etc).
-   Safe to re-run — setDoc overwrites rather than duplicating. */
+
+   Safe to re-run in the sense that it only ever *fills gaps* — for
+   each product it checks whether that id's doc already exists and,
+   if so, leaves it completely untouched. Previously this used
+   setDoc() unconditionally, which fully overwrites a Firestore doc
+   (not a merge/patch); re-clicking "Seed Starter Catalog" after an
+   admin had already edited a product's image, price, or stock would
+   blow those edits away and replace them with the hardcoded starter
+   values. Skipping existing docs means the button only ever adds
+   products that are missing — e.g. after a fresh Firestore project,
+   or a product that was deleted — and never resets one that's
+   already there. */
 export async function seedProducts(productsArray){
+  let added = 0;
   for(const p of productsArray){
     const { id, ...fields } = p;
-    await setDoc(doc(db, PRODUCTS_COL, id), fields);
+    const ref = doc(db, PRODUCTS_COL, id);
+    const existing = await getDoc(ref);
+    if(existing.exists()) continue; // already in Firestore — don't clobber admin edits
+    await setDoc(ref, fields);
+    added++;
   }
+  return added;
 }
 
 /* Used by the Admin dashboard's "Edit" action on a product row. */
