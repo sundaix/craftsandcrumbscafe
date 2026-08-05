@@ -10,7 +10,7 @@ import {
 } from "https://www.gstatic.com/firebasejs/12.17.0/firebase-firestore-lite.js";
 
 const PRODUCTS_COL = "products";
-const CACHE_KEY = "cc_products_cache_v1";
+const CACHE_KEY = "cc_products_cache_v2";
 
 /* Synchronous read of whatever product list was cached from the
    last successful Firestore fetch. Lets the UI paint immediately
@@ -34,6 +34,34 @@ function setCachedProducts(products){
   }
 }
 
+/* Keeps the localStorage cache in sync with individual admin writes
+   (add/update/delete), so the "paint instantly from cache" fast-path
+   on the next page load never shows a price/product that's already
+   been changed in Firestore. Without this, an admin edit was only
+   reflected in the cache after the NEXT full fetchAllProducts() call,
+   which meant an old price could still flash briefly on page reload. */
+function patchCachedProduct(id, fields){
+  const cached = getCachedProducts();
+  if(!cached) return;
+  const idx = cached.findIndex(p => p.id === id);
+  if(idx > -1){
+    cached[idx] = { ...cached[idx], ...fields };
+    setCachedProducts(cached);
+  }
+}
+
+function addCachedProduct(product){
+  const cached = getCachedProducts();
+  if(!cached) return; // nothing cached yet — next fetchAllProducts() will populate it
+  setCachedProducts([...cached, product]);
+}
+
+function removeCachedProduct(id){
+  const cached = getCachedProducts();
+  if(!cached) return;
+  setCachedProducts(cached.filter(p => p.id !== id));
+}
+
 /* Reads every product from Firestore. Returns [] if the
    collection is empty (e.g. before seeding has been run).
    Also refreshes the local cache on success so the next page
@@ -49,6 +77,7 @@ export async function fetchAllProducts(){
    the doc id so admins never have to think about unique ids. */
 export async function addProduct(product){
   const ref = await addDoc(collection(db, PRODUCTS_COL), product);
+  addCachedProduct({ id: ref.id, ...product });
   return ref.id;
 }
 
@@ -66,11 +95,13 @@ export async function seedProducts(productsArray){
 /* Used by the Admin dashboard's "Edit" action on a product row. */
 export async function updateProduct(id, fields){
   await updateDoc(doc(db, PRODUCTS_COL, id), fields);
+  patchCachedProduct(id, fields);
 }
 
 /* Used by the Admin dashboard's "Delete" action on a product row. */
 export async function deleteProduct(id){
   await deleteDoc(doc(db, PRODUCTS_COL, id));
+  removeCachedProduct(id);
 }
 
 window.CCProducts = { fetchAllProducts, addProduct, updateProduct, deleteProduct, seedProducts, getCachedProducts };
