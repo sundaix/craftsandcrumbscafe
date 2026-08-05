@@ -552,10 +552,12 @@ function navigate(pageName){
   $('#navLinks').removeClass('open');
   window.scrollTo({top:0, behavior:'instant' in window ? 'instant':'auto'});
 
-  /* The header search box duplicates the "Looking for..." search
-     already built into the Menu and Merchandise pages, so hide it
-     there and only show it everywhere else. */
-  $('.header-search').toggleClass('is-hidden', pageName === 'menu' || pageName === 'merchandise');
+  /* The header search box is only meant for Home — Menu and
+     Merchandise already have their own inline "Looking for..."
+     search, and it has no real job on FAQs, Contact, the account
+     pages, or the Admin dashboard, so hide it everywhere except
+     Home. */
+  $('.header-search').toggleClass('is-hidden', pageName !== 'home');
 
   if(pageName === 'admin' && window.currentRole !== 'admin'){
     showToast('Admin access only. Please log in as an admin.');
