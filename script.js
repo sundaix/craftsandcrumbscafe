@@ -369,7 +369,7 @@ const SIZE_CHARTS = {
 const CATEGORIES = [
   { key:'Coffee', emoji:'☕', title:'Coffee', desc:'Slow-pulled espresso and small-batch roasts, brewed to order.', img:'https://images.unsplash.com/photo-1509042239860-f550ce710b93?w=500&q=80' },
   { key:'Pastries', emoji:'🥐', title:'Pastries', desc:'Laminated, folded, and baked fresh every single morning.', img:'https://images.unsplash.com/photo-1555507036-ab1f4038808a?w=500&q=80' },
-  { key:'Wearables', emoji:'🎁', title:'Merchandise', desc:'Shirts, caps, bracelets, and keychains made for regulars.', img:blankPlaceholder('catMerch','Wearables') },
+  { key:'Wearables', emoji:'🎁', title:'Merchandise', desc:'Shirts, caps, bracelets, and keychains made for regulars.', img:'merchcac.png' },
 ];
 
 const REVIEWS = [
@@ -465,8 +465,18 @@ function renderCartDropdown(){
   const $footer = $('#cartDropdownFooter');
 
   if(cart.length === 0){
-    $items.html(`<div class="cart-dropdown-empty">Your cart is empty.</div>`);
-    $footer.html('');
+    $items.html(`
+      <div class="cart-dropdown-empty">
+        <div class="cart-dd-empty-icon">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none"><path d="M3 4h2l2.4 12.2a2 2 0 0 0 2 1.6h7.7a2 2 0 0 0 2-1.6L21 8H6" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/><circle cx="10" cy="21" r="1.4" fill="currentColor"/><circle cx="18" cy="21" r="1.4" fill="currentColor"/></svg>
+        </div>
+        <p>Your cart is empty</p>
+        <span>Discover something delicious or handmade.</span>
+      </div>`);
+    $footer.html(`
+      <button class="btn btn-primary" data-nav="menu">Browse Menu</button>
+      <button class="btn btn-outline" data-nav="merchandise">Browse Merchandise</button>
+    `);
     return;
   }
 
@@ -542,6 +552,11 @@ function navigate(pageName){
   $('#navLinks').removeClass('open');
   window.scrollTo({top:0, behavior:'instant' in window ? 'instant':'auto'});
 
+  /* The header search box duplicates the "Looking for..." search
+     already built into the Menu and Merchandise pages, so hide it
+     there and only show it everywhere else. */
+  $('.header-search').toggleClass('is-hidden', pageName === 'menu' || pageName === 'merchandise');
+
   if(pageName === 'admin' && window.currentRole !== 'admin'){
     showToast('Admin access only. Please log in as an admin.');
     $('.page').removeClass('active');
@@ -565,8 +580,25 @@ function navigate(pageName){
     setTimeout(()=> $('.about-split')[0]?.scrollIntoView({behavior:'smooth'}), 50);
   }
 
+  /* Cart and Checkout are the two places a stale price actually costs
+     someone money, so refetch the live catalog every time either page
+     is opened — this tab may have been sitting open since before an
+     admin changed a price, and there's no realtime listener to tell it
+     otherwise. renderCart()/renderCheckoutSummary() already painted
+     above with whatever PRODUCTS we had, so this just quietly corrects
+     it once the fresh fetch resolves (usually well under a second). */
+  if(pageName === 'cart' || pageName === 'checkout'){
+    refreshProductsThenRerender(pageName);
+  }
 
   initReveal();
+}
+
+async function refreshProductsThenRerender(pageName){
+  await loadProductsFromFirestore();
+  if(!$(`.page[data-page="${pageName}"]`).hasClass('active')) return; // user already navigated away
+  if(pageName === 'cart') renderCart();
+  if(pageName === 'checkout') renderCheckoutSummary();
 }
 
 // Delegated nav click — covers elements rendered now or later
@@ -641,7 +673,7 @@ function placeholderImg(p){
 
 function bestSellerCard(p, i){
   return `
-    <div class="product-card best-card">
+    <div class="product-card best-card" style="--i:${i}">
       <div class="product-img" data-open-product="${p.id}">
         <span class="bestseller-tag">${String(i+1).padStart(2,'0')}</span>
         <img src="${p.img}" alt="${p.name}">
@@ -681,6 +713,8 @@ function initBestSellerCarousel(items){
   if(!wrapEl || !trackEl || !items.length) return;
 
   // Two back-to-back copies of the set create a seamless infinite loop
+  // for the arrows/swipe to scroll through (no auto-play — purely
+  // manual browsing now).
   trackEl.innerHTML = items.map(bestSellerCard).join('') + items.map(bestSellerCard).join('');
 
   // On-brand fallback for any image that fails to load
@@ -712,8 +746,13 @@ function initBestSellerCarousel(items){
   measure();
   window.addEventListener('resize', debounce(measure, 200));
 
-  const SPEED = 36; // px/sec — a confident but still unhurried drift
-  let paused = false;
+  const SPEED = 26; // px/sec, moving left — an unhurried, boutique-window drift
+  // Respect the OS-level "reduce motion" setting: the passive drift is
+  // pure decoration, so people who've asked for less motion get a
+  // perfectly still carousel they can still browse with the arrows,
+  // wheel, or a swipe — nothing here is required to use the site.
+  const reduceMotion = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  let paused = reduceMotion;
   let interacting = false;
   let resumeTimer = null;
   let lastTime = null;
@@ -723,6 +762,7 @@ function initBestSellerCarousel(items){
   function pauseTemporarily(ms){
     paused = true;
     clearTimeout(resumeTimer);
+    if(reduceMotion) return; // stays paused — no auto-resume when motion is reduced
     resumeTimer = setTimeout(()=>{ paused = false; ramp = 0; }, ms);
   }
 
@@ -742,12 +782,14 @@ function initBestSellerCarousel(items){
     }
   });
 
+  // Drift the scroll position steadily to the right, which visually
+  // carries the cards to the left — same direction reading flows.
   function frame(t){
     if(lastTime === null) lastTime = t;
     const dt = (t - lastTime) / 1000;
     lastTime = t;
     if(!paused && !interacting && setWidth > 0){
-      if(ramp < 1) ramp = Math.min(1, ramp + dt * 0.8);
+      if(ramp < 1) ramp = Math.min(1, ramp + dt * 0.5);
       correcting = true;
       wrapEl.scrollLeft += SPEED * dt * ramp;
       correcting = false;
@@ -772,10 +814,11 @@ function initBestSellerCarousel(items){
     pauseTemporarily(3400);
   });
 
-  // Pause the passive drift while the user's mouse/finger is anywhere
-  // near the carousel — resumes automatically a moment after they leave.
+  // Pause the drift while the user's mouse/finger is anywhere near the
+  // carousel (this is also when the arrows fade in via CSS) — resumes
+  // automatically a moment after they leave.
   wrapEl.addEventListener('mouseenter', ()=>{ clearTimeout(resumeTimer); paused = true; });
-  wrapEl.addEventListener('mouseleave', ()=>{ paused = false; ramp = 0; });
+  wrapEl.addEventListener('mouseleave', ()=>{ if(!reduceMotion){ paused = false; ramp = 0; } });
   wrapEl.addEventListener('touchstart', ()=>{ interacting = true; clearTimeout(resumeTimer); }, { passive:true });
   wrapEl.addEventListener('touchend', ()=>{ interacting = false; pauseTemporarily(1500); }, { passive:true });
 
@@ -1067,10 +1110,15 @@ function renderCart(){
   if(cart.length === 0){
     $wrap.html(`
       <div class="empty-cart">
-        <svg width="64" height="64" viewBox="0 0 24 24" fill="none"><path d="M3 4h2l2.4 12.2a2 2 0 0 0 2 1.6h7.7a2 2 0 0 0 2-1.6L21 8H6" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/><circle cx="10" cy="21" r="1.4" fill="currentColor"/><circle cx="18" cy="21" r="1.4" fill="currentColor"/></svg>
+        <div class="empty-cart-icon">
+          <svg width="34" height="34" viewBox="0 0 24 24" fill="none"><path d="M3 4h2l2.4 12.2a2 2 0 0 0 2 1.6h7.7a2 2 0 0 0 2-1.6L21 8H6" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/><circle cx="10" cy="21" r="1.4" fill="currentColor"/><circle cx="18" cy="21" r="1.4" fill="currentColor"/></svg>
+        </div>
         <h3>Your cart feels a little light</h3>
         <p>Add a coffee, a pastry, or a handcrafted keepsake to get started.</p>
-        <button class="btn btn-primary" data-nav="menu">Browse Menu</button>
+        <div class="empty-cart-actions">
+          <button class="btn btn-primary" data-nav="menu">Browse Menu</button>
+          <button class="btn btn-outline" data-nav="merchandise">Browse Merchandise</button>
+        </div>
       </div>`);
     return;
   }
@@ -1100,19 +1148,30 @@ function renderCart(){
     `;
   }).join('');
 
+  const totalQty = cart.reduce((s,c)=>s+c.qty,0);
   const subtotal = cartTotal();
   const delivery = subtotal > 0 ? 60 : 0;
   const total = subtotal + delivery;
 
   $wrap.html(`
     <div class="cart-layout">
-      <div>${itemsHtml}</div>
+      <div>
+        <div class="cart-page-toolbar">
+          <span class="cart-item-count">${totalQty} item${totalQty !== 1 ? 's' : ''} in your cart</span>
+          <button class="cart-clear-btn" id="cartClearBtn">Clear cart</button>
+        </div>
+        ${itemsHtml}
+      </div>
       <div class="order-summary">
         <h3>Order Summary</h3>
         <div class="sum-row"><span>Subtotal</span><span>${peso(subtotal)}</span></div>
         <div class="sum-row"><span>Delivery fee</span><span>${peso(delivery)}</span></div>
         <div class="sum-row total"><span>Total</span><span>${peso(total)}</span></div>
         <button class="btn btn-primary btn-full" style="margin-top:18px;" data-nav="checkout">Proceed to Checkout</button>
+        <div class="order-summary-trust">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M6 10V8a6 6 0 0 1 12 0v2M5 10h14a1 1 0 0 1 1 1v9a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1v-9a1 1 0 0 1 1-1Z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/></svg>
+          <span>Secure checkout · Pay on delivery/pickup, by card, or via GCash, GoTyme Bank, or Maribank.</span>
+        </div>
       </div>
     </div>
   `);
@@ -1140,6 +1199,14 @@ $(document).on('click', '[data-cart-remove]', function(){
   renderCart();
 });
 
+$(document).on('click', '#cartClearBtn', function(){
+  if(!cart.length) return;
+  if(!window.confirm('Remove all items from your cart?')) return;
+  cart = [];
+  updateCartCount();
+  renderCart();
+});
+
 /* ================= CHECKOUT ================= */
 $(document).on('click', '[data-fulfillment]', function(){
   $('[data-fulfillment]').removeClass('active');
@@ -1149,10 +1216,49 @@ $(document).on('click', '[data-fulfillment]', function(){
   renderCheckoutSummary();
 });
 
+/* Placeholder QR images per e-wallet/bank — swap these three files
+   (qr-gcash.png, qr-gotyme.png, qr-maribank.png) for the real bank
+   QR codes whenever they're ready; nothing else needs to change. */
+const PAYMENT_QR = {
+  gcash: { src: 'qr-gcash.png', label: 'GCash' },
+  gotyme: { src: 'qr-gotyme.png', label: 'GoTyme Bank' },
+  maribank: { src: 'qr-maribank.png', label: 'Maribank' }
+};
+
 $(document).on('click', '.pay-opt', function(){
   $('.pay-opt').removeClass('active');
   $(this).addClass('active');
   $(this).find('input').prop('checked', true);
+
+  const qrKey = $(this).data('qr');
+  const info = qrKey && PAYMENT_QR[qrKey];
+  if(info){
+    $('#qrDisplayImg').attr('src', info.src).attr('alt', `${info.label} QR code`);
+    $('#qrDisplayLabel').text(`Scan this QR using your ${info.label} app to pay.`);
+    $('#qrDisplay').addClass('active');
+  } else {
+    $('#qrDisplay').removeClass('active');
+  }
+});
+
+/* Tapping the small checkout QR opens it centered and enlarged —
+   big enough for a phone camera to scan comfortably, capped so it
+   never takes over the whole screen. */
+function openQrModal(){
+  $('#qrModalImg').attr('src', $('#qrDisplayImg').attr('src')).attr('alt', $('#qrDisplayImg').attr('alt'));
+  $('#qrModalLabel').text($('#qrDisplayLabel').text());
+  $('#qrOverlay').addClass('open');
+}
+function closeQrModal(){
+  $('#qrOverlay').removeClass('open');
+}
+$(document).on('click', '#qrDisplayImg', openQrModal);
+$(document).on('click', '#qrModalClose', closeQrModal);
+$(document).on('click', '#qrOverlay', function(e){
+  if(e.target.id === 'qrOverlay') closeQrModal();
+});
+$(document).on('keydown', function(e){
+  if(e.key === 'Escape' && $('#qrOverlay').hasClass('open')) closeQrModal();
 });
 
 function renderCheckoutSummary(){
@@ -1204,34 +1310,73 @@ async function placeOrder(){
   $btn.prop('disabled', true).text('Placing order...');
 
   try{
-    const orderId = await window.CCOrders.createOrder({
+    await window.CCAuth.ensureSignedIn();
+    const orderPayload = {
       items, totals: { subtotal, deliveryFee, total },
       fulfillment, customer, paymentMethod
-    });
+    };
+    const orderId = await window.CCOrders.createOrder(orderPayload);
     $('#confOrderNum').text('#CC-' + orderId.slice(0,6).toUpperCase());
     $('#confFulfillment').text(fulfillment === 'delivery' ? 'Delivery' : 'Store Pickup');
     $('#confTotal').text(peso(total));
     cart = [];
     updateCartCount();
     navigate('confirmation');
+    // Best-effort — the order is already placed at this point, so an
+    // email hiccup shouldn't show as a checkout failure to the customer.
+    if(customer.email){
+      sendOrderConfirmationEmail(orderPayload, orderId);
+    }
   } catch(err){
     console.error(err);
-    showToast('Could not place order. Please try again.');
+    if(String(err.code).includes('admin-restricted-operation') || String(err.code).includes('operation-not-allowed')){
+      showToast('Guest checkout isn\'t enabled yet — turn on "Anonymous" sign-in in the Firebase Console.');
+    } else {
+      showToast('Could not place order. Please try again.');
+    }
     $btn.prop('disabled', false).text('Place Order');
   }
 }
+
+/* ================= PASSWORD SHOW/HIDE TOGGLE ================= */
+/* Swaps type="password" <-> type="text" and keeps focus + cursor
+   position intact across the swap — losing those is what usually
+   makes a show/hide toggle feel glitchy (cursor jumping to the start,
+   or the field losing focus entirely after the type changes). */
+$(document).on('click', '[data-password-toggle]', function(){
+  const $btn = $(this);
+  const input = document.getElementById($btn.data('password-toggle'));
+  if(!input) return;
+
+  const wasPassword = input.type === 'password';
+  const selStart = input.selectionStart;
+  const selEnd = input.selectionEnd;
+
+  input.type = wasPassword ? 'text' : 'password';
+  input.focus();
+  try { input.setSelectionRange(selStart, selEnd); } catch(err) { /* ignore if unsupported */ }
+
+  $btn.find('.eye-open').toggle(!wasPassword);
+  $btn.find('.eye-closed').toggle(wasPassword);
+  $btn.attr('aria-pressed', String(wasPassword)).attr('aria-label', wasPassword ? 'Hide password' : 'Show password');
+});
 
 /* ================= AUTH FORMS (real Firebase Auth) ================= */
 $('#loginForm').on('submit', async function(e){
   e.preventDefault();
   const $btn = $(this).find('button[type="submit"]');
   const email = $(this).find('input[type="email"]').val().trim();
-  const password = $(this).find('input[type="password"]').val();
+  const password = $('#loginPassword').val();
   $btn.prop('disabled', true).text('Logging in...');
   try{
-    await window.CCAuth.loginUser(email, password);
+    const user = await window.CCAuth.loginUser(email, password);
     showToast('Welcome back! Logged in successfully.');
-    navigate('home');
+    const verified = await window.CCAuth.isOtpVerified();
+    if(!verified){
+      goToVerifyEmail(user.email);
+    } else {
+      navigate('home');
+    }
   } catch(err){
     showToast(friendlyAuthError(err));
   } finally {
@@ -1246,9 +1391,8 @@ $('#registerForm').on('submit', async function(e){
   const fullName = $form.find('input[type="text"]').val().trim();
   const email = $form.find('input[type="email"]').val().trim();
   const phone = $form.find('input[type="tel"]').val().trim();
-  const passwords = $form.find('input[type="password"]');
-  const password = $(passwords[0]).val();
-  const confirm = $(passwords[1]).val();
+  const password = $('#regPassword').val();
+  const confirm = $('#regPasswordConfirm').val();
 
   if(password !== confirm){
     showToast("Passwords don't match.");
@@ -1256,9 +1400,11 @@ $('#registerForm').on('submit', async function(e){
   }
   $btn.prop('disabled', true).text('Creating account...');
   try{
-    await window.CCAuth.registerUser(fullName, email, phone, password);
-    showToast('Account created! Welcome to Crafts & Crumbs.');
-    navigate('home');
+    const user = await window.CCAuth.registerUser(fullName, email, phone, password);
+    showToast(user.otpEmailSent
+      ? 'Account created! Check your email for a verification code.'
+      : "Account created — but we couldn't send the verification email just now. Tap \"Resend code\" on the next screen to try again.");
+    goToVerifyEmail(email, user.otpEmailSent);
   } catch(err){
     showToast(friendlyAuthError(err));
   } finally {
@@ -1273,25 +1419,171 @@ function friendlyAuthError(err){
   if(code.includes('invalid-email')) return 'Please enter a valid email address.';
   if(code.includes('weak-password')) return 'Password should be at least 6 characters.';
   if(code.includes('user-not-found') || code.includes('wrong-password') || code.includes('invalid-credential')) return 'Incorrect email or password.';
+  if(code.includes('too-many-requests')) return 'Too many attempts — please wait a moment and try again.';
   return 'Something went wrong. Please try again.';
 }
+
+/* ================= OTP VERIFICATION ================= */
+let verifyResendCooldown = null;
+
+function goToVerifyEmail(email, justSent){
+  $('#verifyEmailAddress').text(email);
+  $('#otpError').hide();
+  $('.otp-digit').val('').removeClass('otp-error-state');
+  navigate('verify-email');
+  $('.otp-digit').first().trigger('focus');
+  // Only impose the brief "just sent it" cooldown when a code actually
+  // went out. If the send failed, let them tap Resend immediately
+  // instead of forcing a wait for an email that never arrived.
+  startVerifyResendCooldown(justSent === false ? 0 : 30);
+}
+
+function startVerifyResendCooldown(seconds){
+  const $btn = $('#verifyResendBtn');
+  clearInterval(verifyResendCooldown);
+  if(seconds <= 0){
+    $btn.prop('disabled', false).text('Resend code');
+    return;
+  }
+  let remaining = seconds;
+  $btn.prop('disabled', true).text(`Resend code (${remaining}s)`);
+  verifyResendCooldown = setInterval(() => {
+    remaining--;
+    if(remaining <= 0){
+      clearInterval(verifyResendCooldown);
+      $btn.prop('disabled', false).text('Resend code');
+    } else {
+      $btn.text(`Resend code (${remaining}s)`);
+    }
+  }, 1000);
+}
+
+/* 6-box code entry: type advances to the next box, backspace on an
+   empty box jumps back, and pasting a full code fills every box. */
+$(document).on('input', '.otp-digit', function(){
+  this.value = this.value.replace(/[^0-9]/g, '').slice(0, 1);
+  $('#otpError').hide();
+  $('.otp-digit').removeClass('otp-error-state');
+  if(this.value) $(this).next('.otp-digit').trigger('focus');
+});
+$(document).on('keydown', '.otp-digit', function(e){
+  if(e.key === 'Backspace' && !this.value) $(this).prev('.otp-digit').trigger('focus');
+});
+$(document).on('paste', '.otp-digit', function(e){
+  const pasted = (e.originalEvent.clipboardData || window.clipboardData).getData('text').replace(/[^0-9]/g, '');
+  if(!pasted) return;
+  e.preventDefault();
+  const $digits = $('.otp-digit');
+  pasted.slice(0, $digits.length).split('').forEach((digit, i) => $digits.eq(i).val(digit));
+  $digits.eq(Math.min(pasted.length, $digits.length) - 1).trigger('focus');
+});
+
+function otpErrorMessage(reason, attemptsLeft){
+  switch(reason){
+    case 'expired': return 'That code expired. Tap "Resend code" for a new one.';
+    case 'too-many-attempts': return 'Too many incorrect attempts. Tap "Resend code" for a new one.';
+    case 'incorrect': return `Incorrect code — ${attemptsLeft} attempt${attemptsLeft === 1 ? '' : 's'} left.`;
+    case 'no-code': return 'No code on file yet. Tap "Resend code".';
+    case 'not-signed-in': return 'Your session needs a moment to reconnect — please try again in a few seconds.';
+    default: return 'Something went wrong. Please try again.';
+  }
+}
+
+$(document).on('click', '#verifyResendBtn', async function(){
+  const $btn = $(this);
+  $btn.prop('disabled', true).text('Sending...');
+  try{
+    const { emailSent } = await window.CCAuth.resendOtp();
+    $('#otpError').hide();
+    $('.otp-digit').val('').removeClass('otp-error-state').first().trigger('focus');
+    if(emailSent){
+      showToast('New code sent — check your inbox.');
+      startVerifyResendCooldown(45);
+    } else {
+      // Be honest: the code was regenerated in Firestore, but the email
+      // itself didn't go out, so don't tell them to go check their inbox.
+      showToast("New code generated, but the email didn't go out. Check your connection and tap Resend again in a moment.");
+      startVerifyResendCooldown(10); // short cooldown, not the usual 45s, since nothing was actually sent
+    }
+  } catch(err){
+    console.error(err);
+    const message = (err && err.message === 'not-signed-in')
+      ? 'Your session needs a moment to reconnect — please try again in a few seconds.'
+      : 'Could not resend right now. Please try again shortly.';
+    showToast(message);
+    $btn.prop('disabled', false).text('Resend code');
+  }
+});
+
+$(document).on('click', '#verifyContinueBtn', async function(){
+  const code = $('.otp-digit').map(function(){ return this.value; }).get().join('');
+  if(code.length < 6){
+    $('#otpError').text('Enter all 6 digits.').show();
+    $('.otp-digit').addClass('otp-error-state');
+    return;
+  }
+  const $btn = $(this);
+  $btn.prop('disabled', true).text('Verifying...');
+  try{
+    const result = await window.CCAuth.verifyOtp(code);
+    if(result.ok){
+      showToast("Email verified — you're all set!");
+      // verifyOtp() only updates Firestore — it doesn't touch the nav
+      // dot/dropdown, which only refresh on the auth.js onAuthStateChanged
+      // listener (login/logout/page load). Re-firing authRoleReady here
+      // updates them immediately instead of waiting for the next reload.
+      document.dispatchEvent(new CustomEvent("authRoleReady", {
+        detail: { user: window.currentUser, role: window.currentRole, otpVerified: true }
+      }));
+      navigate('home');
+    } else {
+      $('#otpError').text(otpErrorMessage(result.reason, result.attemptsLeft)).show();
+      $('.otp-digit').addClass('otp-error-state');
+    }
+  } catch(err){
+    console.error(err);
+    showToast('Could not verify right now. Please try again.');
+  } finally {
+    $btn.prop('disabled', false).text('Verify & Continue');
+  }
+});
+
+$(document).on('click', '#verifySkipBtn', function(){
+  navigate('home');
+});
+
+$(document).on('click', '#accountDdVerifyBtn', function(){
+  $('#accountDropdownWrap').removeClass('open');
+  goToVerifyEmail(window.currentUser ? window.currentUser.email : '');
+});
 
 /* Reflect sign-in state in the nav: show an Admin link for admins,
    and swap the account icon's behavior once we know who's signed in. */
 document.addEventListener('authStateReady', function(e){
   const { user } = e.detail;
-  $('#accountStatusDot').toggle(!!user);
-  $('#accountBtn').attr('title', user ? `Signed in as ${user.displayName || user.email}` : 'Not signed in — click to log in')
-    .toggleClass('signed-in', !!user);
-  renderAccountDropdown(user);
+  const realUser = user && !user.isAnonymous ? user : null;
+  $('#accountStatusDot').toggle(!!realUser);
+  $('#accountBtn').attr('title', realUser ? `Signed in as ${realUser.displayName || realUser.email}` : 'Not signed in — click to log in')
+    .toggleClass('signed-in', !!realUser);
 });
 
-function renderAccountDropdown(user){
+/* Verification status arrives slightly later than the base auth state
+   (it needs a Firestore read), so the dot/dropdown update here once
+   authRoleReady fires rather than in authStateReady above. */
+document.addEventListener('authRoleReady', function(e){
+  const { user, otpVerified } = e.detail;
+  const realUser = user && !user.isAnonymous ? user : null;
+  $('#accountStatusDot').toggleClass('unverified', !!(realUser && !otpVerified));
+  renderAccountDropdown(realUser, otpVerified);
+});
+
+function renderAccountDropdown(user, otpVerified){
   const $content = $('#accountDropdownContent');
   if(!user){ $content.html(''); return; }
   $content.html(`
     <div class="account-dd-name">${user.displayName || 'My Account'}</div>
     <div class="account-dd-email">${user.email}</div>
+    ${!otpVerified ? `<button type="button" class="account-dd-unverified" id="accountDdVerifyBtn">Email not verified — tap to verify</button>` : ''}
     <div class="account-dd-divider"></div>
     <button class="btn btn-outline account-dd-logout" id="accountLogoutBtn">Log Out</button>
   `);
@@ -1299,7 +1591,7 @@ function renderAccountDropdown(user){
 
 $(document).on('click', '#accountBtn', function(e){
   e.stopPropagation();
-  if(window.currentUser){
+  if(window.currentUser && !window.currentUser.isAnonymous){
     $('#accountDropdownWrap').toggleClass('open');
   } else {
     navigate('login');
@@ -1318,6 +1610,76 @@ $(document).on('click', function(e){
   const $wrap = $('#accountDropdownWrap');
   if($wrap.hasClass('open') && !$(e.target).closest('#accountDropdownWrap').length){
     $wrap.removeClass('open');
+  }
+});
+
+/* ================= CONFIRM DIALOG (replaces window.confirm) ================= */
+let confirmResolve = null;
+
+/* Usage: const ok = await showConfirm({ title, message, confirmText, danger });
+   Resolves true/false depending on which button was pressed (or false if
+   dismissed via backdrop click / Escape). */
+function showConfirm({ title = 'Are you sure?', message = "This action can't be undone.", confirmText = 'Confirm', cancelText = 'Cancel', danger = false } = {}){
+  $('#confirmDialogTitle').text(title);
+  $('#confirmDialogMsg').text(message);
+  $('#confirmDialogOk').text(confirmText).toggleClass('btn-danger', danger).toggleClass('btn-primary', !danger);
+  $('#confirmDialogCancel').text(cancelText);
+  $('#confirmDialogIcon').toggleClass('danger', danger);
+  $('#confirmOverlay').addClass('open');
+  return new Promise((resolve) => { confirmResolve = resolve; });
+}
+
+function closeConfirm(result){
+  $('#confirmOverlay').removeClass('open');
+  if(confirmResolve){
+    confirmResolve(result);
+    confirmResolve = null;
+  }
+}
+
+$(document).on('click', '#confirmDialogOk', () => closeConfirm(true));
+$(document).on('click', '#confirmDialogCancel', () => closeConfirm(false));
+$(document).on('click', '#confirmOverlay', function(e){
+  if(e.target.id === 'confirmOverlay') closeConfirm(false);
+});
+$(document).on('keydown', function(e){
+  if(e.key === 'Escape' && $('#confirmOverlay').hasClass('open')) closeConfirm(false);
+});
+
+/* ================= RESET PASSWORD MODAL ================= */
+$(document).on('click', '#forgotPasswordLink', function(){
+  $('#resetPasswordEmail').val($('#loginEmail').val().trim());
+  $('#resetPasswordOverlay').addClass('open');
+  $('#resetPasswordEmail').trigger('focus');
+});
+
+function closeResetPasswordModal(){
+  $('#resetPasswordOverlay').removeClass('open');
+  $('#resetPasswordForm')[0].reset();
+}
+
+$(document).on('click', '#resetPasswordCancel', closeResetPasswordModal);
+$(document).on('click', '#resetPasswordOverlay', function(e){
+  if(e.target.id === 'resetPasswordOverlay') closeResetPasswordModal();
+});
+$(document).on('keydown', function(e){
+  if(e.key === 'Escape' && $('#resetPasswordOverlay').hasClass('open')) closeResetPasswordModal();
+});
+
+$(document).on('submit', '#resetPasswordForm', async function(e){
+  e.preventDefault();
+  const email = $('#resetPasswordEmail').val().trim();
+  const $btn = $('#resetPasswordSubmit');
+  $btn.prop('disabled', true).text('Sending...');
+  try{
+    await window.CCAuth.sendResetPasswordEmail(email);
+    showToast("If that email has an account, we've sent a reset link.");
+    closeResetPasswordModal();
+  } catch(err){
+    console.error(err);
+    showToast('Could not send the reset link right now. Please try again.');
+  } finally {
+    $btn.prop('disabled', false).text('Send Link');
   }
 });
 
@@ -1494,9 +1856,18 @@ $(document).on('click', '.faq-question', function(){
 });
 
 /* ================= CONTACT FORM ================= */
-$(document).on('submit', '#contactForm', function(e){
+$(document).on('submit', '#contactForm', async function(e){
   e.preventDefault();
-  showToast("Message sent, we'll get back to you soon.");
+  const $form = $(this);
+  const $btn = $form.find('button[type="submit"]');
+  const payload = {
+    name: $('#cName').val().trim(),
+    email: $('#cEmail').val().trim(),
+    subject: $('#cSubject').val().trim(),
+    message: $('#cMessage').val().trim()
+  };
+  console.log('Contact form submitted:', payload);
+  showToast('Message received — we\'ll get back to you soon.');
   this.reset();
 });
 
