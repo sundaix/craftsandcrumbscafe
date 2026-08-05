@@ -10,19 +10,43 @@
    these handlers actually run: PRODUCTS, SEED_PRODUCTS, peso(),
    showToast(), blankPlaceholder(), renderMenuPage(),
    renderMerchPage(), renderCategories(), renderBestSellers(),
-   loadProductsFromFirestore(). Load this file after script.js.
+   loadProductsFromFirestore(), CAT_LABELS. Load this file after script.js.
 ========================================================= */
 
 let ADMIN_ORDERS = [];
 let adminEditingId = null; // set while editing an existing product, null when adding a new one
+let adminProductSearch = '';    // current text in the Products search box
+let adminCategoryFilter = 'All'; // current selection in the category filter dropdown
 
-/* Shows the 🛠️ nav icon only once we know the signed-in
-   account's role is 'admin' (fired from auth.js). */
+/* Maps each category's broader group (from CAT_LABELS, the same
+   taxonomy the storefront's menu/merch sidebars use) to one of four
+   badge colors, so the admin Products table reads at a glance
+   instead of everyone's category being the same plain text. */
+const ADMIN_CATEGORY_BADGE_CLASS = {
+  'Drinks': 'drinks',
+  'Food': 'food',
+  'Wearables': 'wearables',
+  'Merchandise': 'accessories' // Bracelets / Keychains
+};
+
+function categoryBadge(cat){
+  const meta = (typeof CAT_LABELS !== 'undefined') ? CAT_LABELS[cat] : null;
+  const groupClass = ADMIN_CATEGORY_BADGE_CLASS[meta && meta.group] || 'other';
+  const label = (meta && meta.sub) || cat;
+  return `<span class="admin-cat-badge admin-cat-badge-${groupClass}">${label}</span>`;
+}
+
+/* Shows the admin nav icon only once we know the signed-in
+   account's role is 'admin' (fired from auth.js). Uses the same
+   stroke-icon language as the cart/account buttons instead of an
+   emoji so it sits flush with the rest of the header. */
+const ADMIN_NAV_ICON = `<svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M12 15.2a3.2 3.2 0 1 0 0-6.4 3.2 3.2 0 0 0 0 6.4Z" stroke="currentColor" stroke-width="1.5"/><path d="M19.4 13.9c.05-.6.05-1.2 0-1.8l1.9-1.4a.8.8 0 0 0 .2-1L19.7 6.9a.8.8 0 0 0-.95-.35l-2.2.85a7.4 7.4 0 0 0-1.55-.9l-.35-2.3a.8.8 0 0 0-.8-.7h-3.7a.8.8 0 0 0-.8.7l-.35 2.3c-.56.23-1.08.53-1.55.9l-2.2-.85a.8.8 0 0 0-.95.35L2.5 9.7a.8.8 0 0 0 .2 1l1.9 1.4a8.3 8.3 0 0 0 0 1.8l-1.9 1.4a.8.8 0 0 0-.2 1l1.85 2.8c.2.32.6.44.95.35l2.2-.85c.47.37.99.67 1.55.9l.35 2.3c.06.4.42.7.8.7h3.7c.38 0 .74-.3.8-.7l.35-2.3c.56-.23 1.08-.53 1.55-.9l2.2.85c.35.09.75-.03.95-.35l1.85-2.8a.8.8 0 0 0-.2-1l-1.9-1.4Z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/></svg>`;
+
 document.addEventListener('authRoleReady', function(e){
   const { role } = e.detail;
   $('[data-nav="admin"]').remove();
   if(role === 'admin'){
-    $('.nav-actions').prepend('<a href="#" class="icon-btn admin-link" data-nav="admin" title="Admin" aria-label="Admin">🛠️</a>');
+    $('.nav-actions').prepend(`<a href="#" class="icon-btn admin-link" data-nav="admin" title="Admin" aria-label="Admin">${ADMIN_NAV_ICON}</a>`);
   }
 });
 
@@ -55,17 +79,24 @@ function renderAdminOverviewStats(){
 }
 
 /* ================= PRODUCTS TABLE ================= */
-function renderAdminProductsTable(filter){
-  const q = (filter || '').trim().toLowerCase();
+/* Reads its filters from adminProductSearch/adminCategoryFilter
+   (rather than taking params) so every caller — after an add, edit,
+   delete, or seed — can just call renderAdminProductsTable() and
+   trust the currently-active search + category filter stays applied. */
+function renderAdminProductsTable(){
+  const q = adminProductSearch.trim().toLowerCase();
   const rows = PRODUCTS
+    .filter(p => adminCategoryFilter === 'All' || p.cat === adminCategoryFilter)
     .filter(p => !q || p.name.toLowerCase().includes(q) || p.cat.toLowerCase().includes(q))
     .map(p => `
       <tr data-product-row="${p.id}">
         <td class="admin-td-product">
-          <img src="${p.img}" alt="${p.name}">
-          <span>${p.name}</span>
+          <div class="admin-td-product-inner">
+            <img src="${p.img}" alt="${p.name}">
+            <span>${p.name}</span>
+          </div>
         </td>
-        <td>${p.cat}</td>
+        <td>${categoryBadge(p.cat)}</td>
         <td>${peso(p.price)}</td>
         <td class="admin-td-actions">
           <button class="admin-icon-btn" data-admin-edit="${p.id}" title="Edit" aria-label="Edit ${p.name}">
@@ -77,11 +108,22 @@ function renderAdminProductsTable(filter){
         </td>
       </tr>
     `).join('');
-  $('#adminProductsBody').html(rows || `<tr><td colspan="4" class="admin-empty-row">No products match that search.</td></tr>`);
+  const emptyMsg = q && adminCategoryFilter !== 'All'
+    ? 'No products match that search in this category.'
+    : adminCategoryFilter !== 'All'
+      ? 'No products in this category yet.'
+      : 'No products match that search.';
+  $('#adminProductsBody').html(rows || `<tr><td colspan="4" class="admin-empty-row">${emptyMsg}</td></tr>`);
 }
 
 $(document).on('input', '#adminProductSearch', function(){
-  renderAdminProductsTable($(this).val());
+  adminProductSearch = $(this).val();
+  renderAdminProductsTable();
+});
+
+$(document).on('change', '#adminCategoryFilter', function(){
+  adminCategoryFilter = $(this).val();
+  renderAdminProductsTable();
 });
 
 /* Edit: pull the product into the Add/Edit form and switch to that tab */
@@ -133,7 +175,7 @@ $(document).on('click', '[data-admin-delete]', async function(){
   try{
     await window.CCProducts.deleteProduct(id);
     PRODUCTS = PRODUCTS.filter(x => x.id !== id);
-    renderAdminProductsTable($('#adminProductSearch').val());
+    renderAdminProductsTable();
     renderAdminOverviewStats();
     renderMenuPage();
     renderMerchPage();
@@ -231,7 +273,7 @@ function renderAdminOrdersTable(){
     return `
       <tr>
         <td>#${o.id.slice(0,6).toUpperCase()}</td>
-        <td>${o.customer?.name || 'Guest'}</td>
+        <td><button class="admin-customer-link" data-order-view="${o.id}">${o.customer?.name || 'Guest'}</button></td>
         <td>${o.fulfillment === 'delivery' ? 'Delivery' : 'Pickup'}</td>
         <td>${peso(o.totals?.total || 0)}</td>
         <td>
@@ -246,6 +288,92 @@ function renderAdminOrdersTable(){
 }
 
 $(document).on('click', '#adminRefreshOrders', loadAndRenderAdminOrders);
+
+/* ================= ORDER DETAIL MODAL ================= */
+/* Clicking a customer's name opens the full order — every field
+   already captured at checkout (createOrder in orders-service.js):
+   items, totals, fulfillment, customer contact/address, payment
+   method, current status, and when it was placed. */
+function formatOrderTimestamp(val){
+  if(!val) return 'Unknown date';
+  let ms;
+  if(typeof val.seconds === 'number'){
+    ms = val.seconds * 1000;
+  } else {
+    const parsed = new Date(val).getTime();
+    ms = isNaN(parsed) ? null : parsed;
+  }
+  if(ms === null) return 'Unknown date';
+  return new Date(ms).toLocaleString('en-PH', { dateStyle:'medium', timeStyle:'short' });
+}
+
+function openOrderDetailModal(orderId){
+  const order = ADMIN_ORDERS.find(o => o.id === orderId);
+  if(!order) return;
+
+  const status = order.status || 'pending';
+  const c = order.customer || {};
+  const totals = order.totals || {};
+  const isDelivery = order.fulfillment === 'delivery';
+  const itemCount = (order.items || []).reduce((s, it) => s + (it.qty || 0), 0);
+
+  const itemsHtml = (order.items || []).map(it => `
+    <div class="order-detail-item">
+      <div>
+        <div class="order-detail-item-name">${it.name}${it.size ? ` <span class="cart-dd-size">(${it.size})</span>` : ''}</div>
+        <div class="order-detail-item-meta">${it.qty} × ${peso(it.price)}</div>
+      </div>
+      <div class="order-detail-item-total">${peso(it.price * it.qty)}</div>
+    </div>
+  `).join('') || `<p class="order-detail-empty">No items recorded on this order.</p>`;
+
+  $('#orderDetailTitle').text(`Order #${order.id.slice(0,6).toUpperCase()}`);
+  $('#orderDetailSubtitle').html(`
+    <span class="order-status-badge admin-status-${status}">${status}</span>
+    <span class="order-detail-meta">Placed ${formatOrderTimestamp(order.createdAt)}</span>
+  `);
+
+  $('#orderDetailBody').html(`
+    <div class="order-detail-section">
+      <h4>Customer</h4>
+      <div class="order-detail-grid">
+        <div class="order-detail-field"><label>Name</label><span>${c.name || 'Guest'}</span></div>
+        <div class="order-detail-field"><label>Phone</label><span>${c.phone || '—'}</span></div>
+        <div class="order-detail-field"><label>Email</label><span>${c.email || '—'}</span></div>
+        <div class="order-detail-field"><label>Fulfillment</label><span>${isDelivery ? 'Delivery' : 'Store Pickup'}</span></div>
+        ${isDelivery ? `<div class="order-detail-field order-detail-field-full"><label>Delivery Address</label><span>${c.address || '—'}</span></div>` : ''}
+        <div class="order-detail-field"><label>Payment Method</label><span>${order.paymentMethod || '—'}</span></div>
+      </div>
+    </div>
+
+    <div class="order-detail-section">
+      <h4>Items (${itemCount})</h4>
+      <div class="order-detail-items">${itemsHtml}</div>
+      <div class="order-detail-totals">
+        <div class="sum-row"><span>Subtotal</span><span>${peso(totals.subtotal || 0)}</span></div>
+        <div class="sum-row"><span>${isDelivery ? 'Delivery fee' : 'Pickup fee'}</span><span>${peso(totals.deliveryFee || 0)}</span></div>
+        <div class="sum-row total"><span>Total</span><span>${peso(totals.total || 0)}</span></div>
+      </div>
+    </div>
+  `);
+
+  $('#orderDetailOverlay').addClass('open');
+}
+
+function closeOrderDetailModal(){
+  $('#orderDetailOverlay').removeClass('open');
+}
+
+$(document).on('click', '[data-order-view]', function(){
+  openOrderDetailModal($(this).data('order-view'));
+});
+$(document).on('click', '#orderDetailClose', closeOrderDetailModal);
+$(document).on('click', '#orderDetailOverlay', function(e){
+  if(e.target === this) closeOrderDetailModal();
+});
+$(document).on('keydown', function(e){
+  if(e.key === 'Escape' && $('#orderDetailOverlay').hasClass('open')) closeOrderDetailModal();
+});
 
 $(document).on('change', '[data-order-status]', async function(){
   const orderId = $(this).data('order-status');
