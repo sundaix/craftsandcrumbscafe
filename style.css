@@ -925,6 +925,16 @@
   .admin-cat-badge-accessories{ background:rgba(138,90,120,0.14); color:#8a5a78; }
   .admin-cat-badge-other{ background:var(--card); color:var(--text-soft); }
 
+  /* Stock level badges in the admin products table */
+  .admin-stock-badge{
+    display:inline-block; padding:2px 8px; border-radius:10px;
+    font-size:.75rem; font-weight:600; letter-spacing:.02em;
+  }
+  .admin-stock-ok{ background:rgba(82,160,100,0.15); color:#2e7d45; }
+  .admin-stock-low{ background:rgba(220,140,30,0.15); color:#b36d00; }
+  .admin-stock-out{ background:rgba(210,60,50,0.12); color:#c0392b; }
+  .admin-stock-unknown{ background:var(--card); color:var(--text-soft); }
+
 
   .admin-table-wrap{
     background:#fff; border:1px solid var(--line); border-radius:var(--radius);

@@ -98,6 +98,17 @@ function renderAdminProductsTable(){
         </td>
         <td>${categoryBadge(p.cat)}</td>
         <td>${peso(p.price)}</td>
+        <td>
+          ${
+            p.stock === undefined || p.stock === null
+              ? '<span class="admin-stock-badge admin-stock-unknown">—</span>'
+              : p.stock === 0
+                ? '<span class="admin-stock-badge admin-stock-out">Out of stock</span>'
+                : p.stock <= 5
+                  ? `<span class="admin-stock-badge admin-stock-low">${p.stock} left</span>`
+                  : `<span class="admin-stock-badge admin-stock-ok">${p.stock}</span>`
+          }
+        </td>
         <td class="admin-td-actions">
           <button class="admin-icon-btn" data-admin-edit="${p.id}" title="Edit" aria-label="Edit ${p.name}">
             <svg width="15" height="15" viewBox="0 0 24 24" fill="none"><path d="M4 20l1-4L16.5 4.5a1.5 1.5 0 0 1 2 0l1 1a1.5 1.5 0 0 1 0 2L8 19l-4 1Z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/></svg>
@@ -141,6 +152,7 @@ $(document).on('click', '[data-admin-edit]', function(){
   $('#apImg').val(p.img || '');
   $('#apIngredients').val(p.ingredients || '');
   $('#apAllergens').val(p.allergens || '');
+  $('#apStock').val(p.stock !== undefined && p.stock !== null ? p.stock : '');
 
   $('#adminFormTitle').text(`Edit "${p.name}"`);
   $('#adminFormSubmitBtn').text('Update Product');
@@ -197,9 +209,11 @@ $(document).on('submit', '#adminAddProductForm', async function(e){
   const imgInput = $('#apImg').val().trim();
   const img = imgInput || blankPlaceholder((adminEditingId || 'admin-' + Date.now()), cat);
 
+  const stock = parseInt($('#apStock').val(), 10);
   const fields = {
     name, cat, price, desc,
     img, imgs: [img],
+    stock: isNaN(stock) ? 0 : stock,
     ingredients: $('#apIngredients').val().trim() || 'Details coming soon.',
     allergens: $('#apAllergens').val().trim() || 'Please ask our staff for full allergen details.'
   };
