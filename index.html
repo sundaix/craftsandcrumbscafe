@@ -112,17 +112,17 @@
     <div class="container about-split">
       <div class="about-text">
         <div class="eyebrow">Our story</div>
-        <h2>Started with one machine and a folding table</h2>
-        <p>Crafts & Crumbs began as a weekend cart before it had walls — one espresso machine, a borrowed folding table, and a habit of giving away more pastries than we sold.</p>
-        <p>What stuck was the pace: nothing rushed, nothing mass-produced. That's still how every cup and every bake leaves the counter today.</p>
+        <h2>From a class requirement to our first real café</h2>
+        <p>Crafts & Crumbs started out as a group project in one of our college classes, just an assignment to design an online ordering system for a small coffee shop. We built it, presented it, and then kept working on it anyway because we liked where it was going.</p>
+        <p>That extra time turned the class project into a working online café, and the orders from friends and classmates convinced us to keep pushing. We're now putting that same plan into motion for our first physical café, so people can walk in and get the same coffee and pastries they've been ordering online.</p>
         <div class="about-stats">
-          <div><strong>2019</strong><span>First cup poured</span></div>
+          <div><strong>2023</strong><span>Started as a class project</span></div>
           <div><strong>50+</strong><span>Recipes made in-house</span></div>
-          <div><strong>3</strong><span>Crafts under one roof</span></div>
+          <div><strong>1st</strong><span>Physical café on the way</span></div>
         </div>
       </div>
       <div class="about-img">
-        <img src="espresso-pic.jpg" alt="Interior of the Crafts & Crumbs counter">
+        <img src="ourstory.png" alt="Laptop, coffee cup, and an open notebook on a desk, planning the Crafts and Crumbs project">
       </div>
     </div>
   </section>
@@ -133,7 +133,7 @@
         <div>
           <div class="eyebrow">Loved by regulars</div>
           <h2>Popular this week</h2>
-          <p>Favorites our regulars keep reordering, scrolling by on their own.</p>
+          <p>Favorites our regulars keep reordering.</p>
         </div>
         <button class="btn btn-outline" data-nav="menu">View full menu</button>
       </div>
@@ -251,7 +251,14 @@
         <h3>Payment method</h3>
         <label class="pay-opt active"><input type="radio" name="pay" checked> <svg class="opt-icon" width="16" height="16" viewBox="0 0 24 24" fill="none"><rect x="2.5" y="6.5" width="19" height="11" rx="1.6" stroke="currentColor" stroke-width="1.5"/><circle cx="12" cy="12" r="2.6" stroke="currentColor" stroke-width="1.5"/><path d="M5.5 9v0M18.5 15v0" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg> Cash on Delivery / Pickup</label>
         <label class="pay-opt"><input type="radio" name="pay"> <svg class="opt-icon" width="16" height="16" viewBox="0 0 24 24" fill="none"><rect x="2.5" y="5.5" width="19" height="13" rx="2" stroke="currentColor" stroke-width="1.5"/><path d="M2.5 9.8h19" stroke="currentColor" stroke-width="1.5"/><path d="M5.5 14.5h4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg> Credit / Debit Card</label>
-        <label class="pay-opt"><input type="radio" name="pay"> <svg class="opt-icon" width="16" height="16" viewBox="0 0 24 24" fill="none"><rect x="7" y="2.5" width="10" height="19" rx="2" stroke="currentColor" stroke-width="1.5"/><path d="M10.5 18.3h3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg> GCash</label>
+        <label class="pay-opt" data-qr="gcash"><input type="radio" name="pay"> <svg class="opt-icon" width="16" height="16" viewBox="0 0 24 24" fill="none"><rect x="7" y="2.5" width="10" height="19" rx="2" stroke="currentColor" stroke-width="1.5"/><path d="M10.5 18.3h3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg> GCash <span class="pay-qr-hint">Tap to show QR</span></label>
+        <label class="pay-opt" data-qr="gotyme"><input type="radio" name="pay"> <svg class="opt-icon" width="16" height="16" viewBox="0 0 24 24" fill="none"><rect x="2.5" y="5.5" width="19" height="13" rx="2" stroke="currentColor" stroke-width="1.5"/><path d="M2.5 9.8h19" stroke="currentColor" stroke-width="1.5"/><path d="M5.5 14.5h4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg> GoTyme Bank <span class="pay-qr-hint">Tap to show QR</span></label>
+        <label class="pay-opt" data-qr="maribank"><input type="radio" name="pay"> <svg class="opt-icon" width="16" height="16" viewBox="0 0 24 24" fill="none"><rect x="2.5" y="5.5" width="19" height="13" rx="2" stroke="currentColor" stroke-width="1.5"/><path d="M2.5 9.8h19" stroke="currentColor" stroke-width="1.5"/><path d="M5.5 14.5h4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg> Maribank <span class="pay-qr-hint">Tap to show QR</span></label>
+
+        <div class="qr-display" id="qrDisplay">
+          <img id="qrDisplayImg" src="" alt="Payment QR code" title="Click to enlarge">
+          <p id="qrDisplayLabel">Scan this QR using your banking or e-wallet app to pay.</p>
+        </div>
       </div>
     </div>
 
@@ -294,7 +301,7 @@
             <span class="faq-toggle-icon"></span>
           </button>
           <div class="faq-answer">
-            <p>Browse the Menu or Merchandise page, add whatever you like to your cart, then head to checkout. You can pay on delivery or pickup, by card, or through GCash.</p>
+            <p>Browse the Menu or Merchandise page, add whatever you like to your cart, then head to checkout. You can pay on delivery or pickup, by card, or through GCash, GoTyme Bank, or Maribank.</p>
           </div>
         </div>
         <div class="faq-item reveal">
@@ -303,7 +310,7 @@
             <span class="faq-toggle-icon"></span>
           </button>
           <div class="faq-answer">
-            <p>Since we start preparing orders right away, changes or cancellations aren't guaranteed once an order is submitted. Message us as soon as possible and we'll try our best to accommodate you.</p>
+            <p>Since we start preparing orders right away, changes or cancellations aren't guaranteed once an order is submitted. Call us or email cac.admin.info@gmail.com as soon as possible and we'll try our best to accommodate you.</p>
           </div>
         </div>
         <div class="faq-item reveal">
@@ -336,7 +343,7 @@
             <span class="faq-toggle-icon"></span>
           </button>
           <div class="faq-answer">
-            <p>We currently deliver within Quezon City and nearby areas. If you're just outside our usual radius, reach out and we'll let you know if we can still make it work.</p>
+            <p>We currently deliver within Quezon City and nearby areas. If you're just outside our usual radius, call or email us and we'll let you know if we can still make it work.</p>
           </div>
         </div>
       </div>
@@ -351,7 +358,7 @@
             <span class="faq-toggle-icon"></span>
           </button>
           <div class="faq-answer">
-            <p>Yes, every product page lists known allergens and ingredients. If you have a specific allergy concern, feel free to message us before ordering.</p>
+            <p>Yes, every product page lists known allergens and ingredients. If you have a specific allergy concern, feel free to call or email us before ordering.</p>
           </div>
         </div>
         <div class="faq-item reveal">
@@ -360,7 +367,7 @@
             <span class="faq-toggle-icon"></span>
           </button>
           <div class="faq-answer">
-            <p>Since everything is baked and brewed in small batches, some items do run out during the day. Out-of-stock products are marked on the menu, and most restock the following morning.</p>
+            <p>Since everything is baked and brewed in small batches, some items may run out during the day. We do our best to keep the menu updated to reflect what's currently available — if something you want isn't showing up, it likely sold out and will be back the next batch or the following morning.</p>
           </div>
         </div>
       </div>
@@ -375,7 +382,7 @@
             <span class="faq-toggle-icon"></span>
           </button>
           <div class="faq-answer">
-            <p>We accept cash on delivery or pickup, credit and debit cards, and GCash.</p>
+            <p>We accept cash on delivery or pickup, credit and debit cards, and e-wallet/bank transfers via GCash, GoTyme Bank, and Maribank.</p>
           </div>
         </div>
         <div class="faq-item reveal">
@@ -384,7 +391,7 @@
             <span class="faq-toggle-icon"></span>
           </button>
           <div class="faq-answer">
-            <p>Use the "Forgot password?" link on the login page and follow the steps from there. If you still run into trouble, contact us and we'll help sort it out.</p>
+            <p>Click "Forgot password?" on the login page, enter your email, and we'll send you a link to set a new one. If it doesn't arrive within a few minutes, check your spam folder or reach out through our Contact page.</p>
           </div>
         </div>
       </div>
@@ -418,7 +425,7 @@
       <h3>Other ways to reach us</h3>
       <div class="contact-info-row">
         <span class="contact-info-label">Email</span>
-        <span>craftsandcrumbs@gmail.com</span>
+        <span>cac.admin.info@gmail.com</span>
       </div>
       <div class="contact-info-row">
         <span class="contact-info-label">Phone</span>
@@ -444,14 +451,23 @@
 <div class="page" data-page="login">
   <div class="container auth-wrap">
     <div class="auth-card">
-      <h1>Welcome back</h1>
+      <h1>Welcome back!</h1>
       <p>Log in to track orders and save your favorites.</p>
       <form id="loginForm">
         <div class="form-group"><label for="loginEmail">Email address</label><input id="loginEmail" type="email" placeholder="you@email.com" required></div>
-        <div class="form-group"><label for="loginPassword">Password</label><input id="loginPassword" type="password" placeholder="••••••••" required></div>
+        <div class="form-group">
+          <label for="loginPassword">Password</label>
+          <div class="password-field">
+            <input id="loginPassword" type="password" placeholder="••••••••" required>
+            <button type="button" class="password-toggle-btn" data-password-toggle="loginPassword" aria-label="Show password" aria-pressed="false">
+              <svg class="eye-open" width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M1.5 12S5 5 12 5s10.5 7 10.5 7-3.5 7-10.5 7S1.5 12 1.5 12Z" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/><circle cx="12" cy="12" r="3.2" stroke="currentColor" stroke-width="1.6"/></svg>
+              <svg class="eye-closed" width="18" height="18" viewBox="0 0 24 24" fill="none" style="display:none;"><path d="M3 3l18 18" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/><path d="M10.6 5.2A10.7 10.7 0 0 1 12 5c7 0 10.5 7 10.5 7a13.4 13.4 0 0 1-3.2 4.1M6.6 6.6C3.4 8.7 1.5 12 1.5 12s3.5 7 10.5 7c1.4 0 2.7-.28 3.85-.75" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/><path d="M9.9 10c-.25.4-.4.87-.4 1.4a2.5 2.5 0 0 0 3.7 2.2" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
+            </button>
+          </div>
+        </div>
         <div class="auth-meta">
           <label class="check-row"><input type="checkbox"> Remember me</label>
-          <span class="auth-link">Forgot password?</span>
+          <span class="auth-link" id="forgotPasswordLink">Forgot password?</span>
         </div>
         <button type="submit" class="btn btn-primary btn-full">Login</button>
       </form>
@@ -471,13 +487,56 @@
         <div class="form-group"><label for="regEmail">Email address</label><input id="regEmail" type="email" placeholder="you@email.com" required></div>
         <div class="form-group"><label for="regPhone">Phone number</label><input id="regPhone" type="tel" placeholder="09XX XXX XXXX" required></div>
         <div class="form-row">
-          <div class="form-group"><label for="regPassword">Password</label><input id="regPassword" type="password" placeholder="••••••••" required></div>
-          <div class="form-group"><label for="regPasswordConfirm">Confirm password</label><input id="regPasswordConfirm" type="password" placeholder="••••••••" required></div>
+          <div class="form-group">
+            <label for="regPassword">Password</label>
+            <div class="password-field">
+              <input id="regPassword" type="password" placeholder="••••••••" required>
+              <button type="button" class="password-toggle-btn" data-password-toggle="regPassword" aria-label="Show password" aria-pressed="false">
+                <svg class="eye-open" width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M1.5 12S5 5 12 5s10.5 7 10.5 7-3.5 7-10.5 7S1.5 12 1.5 12Z" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/><circle cx="12" cy="12" r="3.2" stroke="currentColor" stroke-width="1.6"/></svg>
+                <svg class="eye-closed" width="18" height="18" viewBox="0 0 24 24" fill="none" style="display:none;"><path d="M3 3l18 18" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/><path d="M10.6 5.2A10.7 10.7 0 0 1 12 5c7 0 10.5 7 10.5 7a13.4 13.4 0 0 1-3.2 4.1M6.6 6.6C3.4 8.7 1.5 12 1.5 12s3.5 7 10.5 7c1.4 0 2.7-.28 3.85-.75" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/><path d="M9.9 10c-.25.4-.4.87-.4 1.4a2.5 2.5 0 0 0 3.7 2.2" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
+              </button>
+            </div>
+          </div>
+          <div class="form-group">
+            <label for="regPasswordConfirm">Confirm password</label>
+            <div class="password-field">
+              <input id="regPasswordConfirm" type="password" placeholder="••••••••" required>
+              <button type="button" class="password-toggle-btn" data-password-toggle="regPasswordConfirm" aria-label="Show password" aria-pressed="false">
+                <svg class="eye-open" width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M1.5 12S5 5 12 5s10.5 7 10.5 7-3.5 7-10.5 7S1.5 12 1.5 12Z" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/><circle cx="12" cy="12" r="3.2" stroke="currentColor" stroke-width="1.6"/></svg>
+                <svg class="eye-closed" width="18" height="18" viewBox="0 0 24 24" fill="none" style="display:none;"><path d="M3 3l18 18" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/><path d="M10.6 5.2A10.7 10.7 0 0 1 12 5c7 0 10.5 7 10.5 7a13.4 13.4 0 0 1-3.2 4.1M6.6 6.6C3.4 8.7 1.5 12 1.5 12s3.5 7 10.5 7c1.4 0 2.7-.28 3.85-.75" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/><path d="M9.9 10c-.25.4-.4.87-.4 1.4a2.5 2.5 0 0 0 3.7 2.2" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
+              </button>
+            </div>
+          </div>
         </div>
         <button type="submit" class="btn btn-primary btn-full">Create Account</button>
       </form>
       <p class="auth-switch">Already have an account? <span class="auth-link" data-nav="login">Log in</span></p>
     </div>
+  </div>
+</div>
+
+<!-- verify email page -->
+<div class="page" data-page="verify-email">
+  <div class="container confirm-wrap">
+    <div class="confirm-icon" id="verifyEmailIcon">
+      <svg width="30" height="30" viewBox="0 0 24 24" fill="none"><path d="M3.5 6.5h17v11a1 1 0 0 1-1 1h-15a1 1 0 0 1-1-1v-11Z" stroke="#F7F5F1" stroke-width="1.8" stroke-linejoin="round"/><path d="M4 7l8 6.5L20 7" stroke="#F7F5F1" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+    </div>
+    <h1>Verify your email</h1>
+    <p>Enter the 6-digit code we sent to <strong id="verifyEmailAddress">your email</strong>.</p>
+    <div class="otp-input-row" id="otpInputRow">
+      <input type="text" inputmode="numeric" maxlength="1" class="otp-digit" data-otp-index="0">
+      <input type="text" inputmode="numeric" maxlength="1" class="otp-digit" data-otp-index="1">
+      <input type="text" inputmode="numeric" maxlength="1" class="otp-digit" data-otp-index="2">
+      <input type="text" inputmode="numeric" maxlength="1" class="otp-digit" data-otp-index="3">
+      <input type="text" inputmode="numeric" maxlength="1" class="otp-digit" data-otp-index="4">
+      <input type="text" inputmode="numeric" maxlength="1" class="otp-digit" data-otp-index="5">
+    </div>
+    <p class="otp-error" id="otpError" style="display:none;"></p>
+    <button class="btn btn-primary btn-full" id="verifyContinueBtn">Verify & Continue</button>
+    <div class="confirm-card">
+      <div class="confirm-row"><span>Didn't get it?</span><span><button type="button" class="auth-link verify-resend-btn" id="verifyResendBtn">Resend code</button></span></div>
+    </div>
+    <p class="auth-switch"><span class="auth-link" id="verifySkipBtn">Skip for now</span></p>
   </div>
 </div>
 
@@ -531,7 +590,33 @@
       <div class="admin-panel" data-admin-panel="products">
         <div class="admin-panel-head">
           <h3>Manage Products</h3>
-          <input type="text" id="adminProductSearch" class="admin-search-input" placeholder="Search products">
+          <div class="admin-panel-head-controls">
+            <select id="adminCategoryFilter" class="admin-search-input admin-category-filter">
+              <option value="All">All Categories</option>
+              <optgroup label="Drinks">
+                <option value="Coffee">Coffee</option>
+                <option value="Non-Coffee">Non-Coffee</option>
+                <option value="Tea">Tea</option>
+              </optgroup>
+              <optgroup label="Food">
+                <option value="Pastries">Pastries</option>
+                <option value="Sandwiches">Sandwiches</option>
+                <option value="Cakes">Cakes</option>
+              </optgroup>
+              <optgroup label="Wearables">
+                <option value="Shirts">Shirts</option>
+                <option value="Caps">Caps</option>
+                <option value="Shorts">Shorts</option>
+                <option value="Socks">Socks</option>
+                <option value="ToteBags">Tote Bags</option>
+              </optgroup>
+              <optgroup label="Accessories">
+                <option value="Bracelets">Bracelets</option>
+                <option value="Keychains">Keychains</option>
+              </optgroup>
+            </select>
+            <input type="text" id="adminProductSearch" class="admin-search-input" placeholder="Search products">
+          </div>
         </div>
         <div class="admin-table-wrap">
           <table class="admin-table">
@@ -620,7 +705,7 @@
     <div class="ftr-col">
       <h4>Get In Touch</h4>
       <ul>
-        <li>craftsandcrumbs@gmail.com</li>
+        <li>cac.admin.info@gmail.com</li>
         <li>1234-5678</li>
         <li>
           <a href="#" class="ftr-social">
@@ -652,6 +737,29 @@
   </div>
 </footer>
 
+<div class="qr-overlay" id="qrOverlay">
+  <div class="qr-modal" id="qrModal" role="dialog" aria-modal="true" aria-labelledby="qrModalLabel">
+    <button class="qr-modal-close" id="qrModalClose" aria-label="Close">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M6 6l12 12M18 6L6 18" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
+    </button>
+    <img id="qrModalImg" src="" alt="Payment QR code">
+    <p id="qrModalLabel">Scan this QR to pay.</p>
+  </div>
+</div>
+
+<div class="legal-overlay" id="orderDetailOverlay">
+  <div class="legal-modal order-detail-modal" id="orderDetailModal" role="dialog" aria-modal="true" aria-labelledby="orderDetailTitle">
+    <button class="legal-close" id="orderDetailClose" aria-label="Close">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M6 6l12 12M18 6L6 18" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
+    </button>
+    <div class="legal-header order-detail-header">
+      <h2 id="orderDetailTitle">Order Details</h2>
+      <div class="order-detail-subtitle" id="orderDetailSubtitle"></div>
+    </div>
+    <div class="legal-body order-detail-body" id="orderDetailBody"></div>
+  </div>
+</div>
+
 <div class="legal-overlay" id="legalOverlay">
   <div class="legal-modal" id="legalModal" role="dialog" aria-modal="true" aria-labelledby="legalModalTitle">
     <button class="legal-close" id="legalClose" aria-label="Close">
@@ -679,7 +787,7 @@
         <p>By browsing this website or placing an order with Crafts &amp; Crumbs, you agree to the terms laid out here. If you don't agree with any part, please refrain from using the site.</p>
 
         <h4>2. Orders and payment</h4>
-        <p>All orders are subject to availability. Prices shown at checkout are final for that transaction, though prices on the menu may change over time without prior notice. We accept cash on delivery or pickup, credit and debit cards, and GCash.</p>
+        <p>All orders are subject to availability. Prices shown at checkout are final for that transaction, though prices on the menu may change over time without prior notice. We accept cash on delivery or pickup, credit and debit cards, and e-wallet/bank transfers via GCash, GoTyme Bank, and Maribank.</p>
 
         <h4>3. Delivery and pickup</h4>
         <p>Estimated preparation and delivery times are our best estimate and not a guarantee. Delays can happen due to weather, traffic, or high order volume. Store pickup orders should be claimed within the timeframe given at checkout.</p>
@@ -700,7 +808,7 @@
         <p>We may update these terms from time to time. Continued use of the site after changes are posted means you accept the updated terms.</p>
 
         <h4>9. Contact</h4>
-        <p>Questions about these terms can be sent to craftsandcrumbs@gmail.com.</p>
+        <p>Questions about these terms can be sent to cac.admin.info@gmail.com.</p>
       </div>
 
       <div class="legal-panel" data-legal-panel="privacy">
@@ -731,7 +839,7 @@
         <p>We may revise this policy occasionally. Any changes will be reflected on this page with an updated date.</p>
 
         <h4>9. Contact</h4>
-        <p>For any privacy-related concerns, reach us at craftsandcrumbs@gmail.com.</p>
+        <p>For any privacy-related concerns, reach us at cac.admin.info@gmail.com.</p>
       </div>
     </div>
 
@@ -741,9 +849,45 @@
   </div>
 </div>
 
+<div class="confirm-overlay" id="confirmOverlay">
+  <div class="confirm-dialog" id="confirmDialogBox" role="alertdialog" aria-modal="true" aria-labelledby="confirmDialogTitle" aria-describedby="confirmDialogMsg">
+    <div class="confirm-dialog-icon" id="confirmDialogIcon">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none"><path d="M12 9v4.5M12 16.3v.1" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><path d="M10.6 3.7a1.6 1.6 0 0 1 2.8 0l8.6 15A1.6 1.6 0 0 1 20.6 21H3.4a1.6 1.6 0 0 1-1.4-2.3l8.6-15Z" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/></svg>
+    </div>
+    <h3 id="confirmDialogTitle">Are you sure?</h3>
+    <p id="confirmDialogMsg">This action can't be undone.</p>
+    <div class="confirm-dialog-actions">
+      <button type="button" class="btn btn-outline" id="confirmDialogCancel">Cancel</button>
+      <button type="button" class="btn btn-primary" id="confirmDialogOk">Confirm</button>
+    </div>
+  </div>
+</div>
+
+<div class="confirm-overlay" id="resetPasswordOverlay">
+  <div class="confirm-dialog" id="resetPasswordBox" role="alertdialog" aria-modal="true" aria-labelledby="resetPasswordTitle">
+    <div class="confirm-dialog-icon" id="resetPasswordIcon">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none"><rect x="4" y="10.5" width="16" height="10" rx="2" stroke="currentColor" stroke-width="1.6"/><path d="M7.5 10.5V7.2a4.5 4.5 0 0 1 9 0v3.3" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
+    </div>
+    <h3 id="resetPasswordTitle">Reset your password</h3>
+    <p>Enter the email on your account and we'll send a link to set a new password.</p>
+    <form id="resetPasswordForm">
+      <div class="form-group"><label for="resetPasswordEmail">Email address</label><input id="resetPasswordEmail" type="email" placeholder="you@email.com" required></div>
+      <div class="confirm-dialog-actions">
+        <button type="button" class="btn btn-outline" id="resetPasswordCancel">Cancel</button>
+        <button type="submit" class="btn btn-primary" id="resetPasswordSubmit">Send Link</button>
+      </div>
+    </form>
+  </div>
+</div>
+
 <div class="toast" id="toast"><span class="dot"></span><span id="toastMsg">Added to cart</span></div>
 <script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+
+<!-- EmailJS: sends real emails (OTP codes, order confirmations, contact
+     form messages) straight from the browser — no backend server needed.
+     Fill in your own IDs at the top of email-notifications.js. -->
+<script src="https://cdn.jsdelivr.net/npm/@emailjs/browser@4/dist/email.min.js"></script>
 
 <!-- Firebase (Auth + Firestore). These are ES modules, loaded from
      Google's CDN — no npm/build step needed. They run before
@@ -754,6 +898,7 @@
 <script type="module" src="products-services.js"></script>
 <script type="module" src="orders-service.js"></script>
 
+<script src="email-notifications.js"></script>
 <script src="script.js"></script>
 <script src="admin.js"></script>
 </body>
