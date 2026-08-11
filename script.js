@@ -1,14 +1,3 @@
-/* =========================================================
-   Crafts & Crumbs — script.js
-   Built with jQuery. Bootstrap 5 is loaded on the page for
-   its base utility classes/reset; the layout itself uses a
-   custom design system defined in css/style.css.
-========================================================= */
-
-/* ================= PLACEHOLDER IMAGE HELPER =================
-   Generates a simple on-brand "photo coming soon" placeholder for
-   any product that doesn't have a real photo yet. Swap p.img /
-   p.imgs to a real file path whenever a photo is ready. */
 function blankPlaceholder(id, cat){
   const MERCH = ['Accessories','Wearables','Shirts','Caps','Shorts','Socks','ToteBags','Bracelets','Keychains'];
   const accent = cat === 'Tea' ? '#7C9885'
@@ -318,11 +307,6 @@ const SEED_PRODUCTS = [
     img:'lasagnaresin.png', imgs:['lasagnaresin.png'], },
 ];
 
-/* ================= SIZE CHARTS (Uniqlo-style measurement guides) =================
-   Keyed by category. Each entry lists the sizes offered and the body/garment
-   measurements shown in the "Size Guide" table on the product page. Products
-   without an entry here (ToteBags, Bracelets, Keychains) don't show a size
-   selector at all — they're one-size accessories, not fitted garments. */
 const SIZE_CHARTS = {
   Shirts: {
     unit: 'cm',
@@ -380,6 +364,64 @@ const REVIEWS = [
 
 /* ================= STATE ================= */
 let cart = []; // {id, qty, size}
+const CART_STORAGE_PREFIX = 'cc_cart_';
+let cartOwnerUid = null; // uid whose cart is currently loaded into `cart` — null while signed out
+
+function loadCartFor(uid){
+  try{
+    const raw = localStorage.getItem(CART_STORAGE_PREFIX + uid);
+    return raw ? JSON.parse(raw) : [];
+  } catch(err){
+    return [];
+  }
+}
+
+function persistCart(){
+  if(!cartOwnerUid) return;
+  try{
+    localStorage.setItem(CART_STORAGE_PREFIX + cartOwnerUid, JSON.stringify(cart));
+  } catch(err){
+
+  }
+}
+
+function mergeCarts(base, incoming){
+  const merged = base.map(c => ({ ...c }));
+  incoming.forEach(line => {
+    const match = merged.find(c => c.id === line.id && c.size === line.size);
+    if(match){ match.qty += line.qty; } else { merged.push({ ...line }); }
+  });
+  return merged;
+}
+
+function rerenderActiveCartPage(){
+  const activePage = $('.page.active').data('page');
+  if(activePage === 'cart') renderCart();
+  if(activePage === 'checkout') renderCheckoutSummary();
+}
+
+/* Called from authStateReady on every login/logout/page load. */
+function syncCartToAccount(realUser){
+  if(realUser){
+    if(cartOwnerUid === realUser.uid) return; // already this account's cart, nothing to do
+    const saved = loadCartFor(realUser.uid);
+    cart = mergeCarts(saved, cart); // keep anything just added as a guest, add back what was saved
+    cartOwnerUid = realUser.uid;
+    persistCart();
+    updateCartCount();
+    rerenderActiveCartPage();
+    return;
+  }
+  // No real (non-anonymous) user right now. Only clear the cart if an
+  // account was actually just signed OUT of — guest checkout also
+  // triggers this listener via ensureSignedIn()'s anonymous sign-in,
+  // and that must NOT wipe items a guest already added.
+  if(cartOwnerUid === null) return;
+  cartOwnerUid = null;
+  cart = [];
+  updateCartCount();
+  rerenderActiveCartPage();
+}
 let currentProductId = SEED_PRODUCTS[0].id;
 let pdQty = 1;
 let pdSize = null;
@@ -454,6 +496,7 @@ function addToCart(id, qty=1, size=null){
 }
 
 function updateCartCount(){
+  persistCart();
   const count = cart.reduce((s,c)=>s+c.qty,0);
   $('#cartCount').text(count).toggle(count > 0);
   renderCartDropdown();
@@ -1564,6 +1607,7 @@ $(document).on('click', '#accountDdVerifyBtn', function(){
 document.addEventListener('authStateReady', function(e){
   const { user } = e.detail;
   const realUser = user && !user.isAnonymous ? user : null;
+  syncCartToAccount(realUser);
   $('#accountStatusDot').toggle(!!realUser);
   $('#accountBtn').attr('title', realUser ? `Signed in as ${realUser.displayName || realUser.email}` : 'Not signed in — click to log in')
     .toggleClass('signed-in', !!realUser);
@@ -1888,9 +1932,7 @@ function initReveal(){
 }
 
 /* ================= INIT ================= */
-/* Renders every PRODUCTS-dependent section. Called once with cached/seed
-   data (instant paint) and again once the live Firestore fetch resolves
-   (so prices/stock/new items stay accurate) — cheap enough to re-run. */
+
 function renderAll(){
   renderBestSellers();
   renderMenuPage();
@@ -1915,19 +1957,14 @@ async function loadProductsFromFirestore(){
 }
 
 $(async function(){
-  // Categories, reviews, cart count, and scroll effects don't depend on
-  // Firestore data at all — render them immediately instead of waiting
-  // on a network round trip. This is what previously made the whole
-  // page look blank for a few seconds.
+
   renderCategories();
   renderReviews();
   updateCartCount();
   initReveal();
   initScrollProgress();
 
-  // If we have a cached product list from a previous visit, paint with
-  // it right away so the product grids aren't blank while we wait on
-  // the network — then quietly refresh once live data arrives.
+
   const cached = window.CCProducts.getCachedProducts();
   if(cached && cached.length){
     PRODUCTS = cached;
