@@ -6,7 +6,7 @@
 ========================================================= */
 import { db } from "./firebase-config.js";
 import {
-  collection, getDocs, getDoc, doc, setDoc, addDoc, updateDoc, deleteDoc
+  collection, getDocs, getDoc, doc, setDoc, addDoc, updateDoc, deleteDoc, increment
 } from "https://www.gstatic.com/firebasejs/12.17.0/firebase-firestore-lite.js";
 
 const PRODUCTS_COL = "products";
@@ -121,4 +121,10 @@ export async function deleteProduct(id){
   removeCachedProduct(id);
 }
 
-window.CCProducts = { fetchAllProducts, addProduct, updateProduct, deleteProduct, seedProducts, getCachedProducts };
+export async function decrementStock(items){
+  for(const item of items){
+    await updateDoc(doc(db, PRODUCTS_COL, item.id), { stock: increment(-item.qty) });
+  }
+}
+
+window.CCProducts = { fetchAllProducts, addProduct, updateProduct, deleteProduct, seedProducts, getCachedProducts, decrementStock };
