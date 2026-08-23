@@ -1233,6 +1233,7 @@ $(document).on('click', '[data-cart-action]', function(){
   if(!item) return;
   if($(this).data('cart-action') === 'plus') item.qty++;
   else item.qty = Math.max(1, item.qty - 1);
+  persistCart();
   updateCartCount();
   renderCart();
 });
@@ -1240,6 +1241,7 @@ $(document).on('click', '[data-cart-action]', function(){
 $(document).on('click', '[data-cart-remove]', function(){
   const { id, size } = parseLineKey($(this).data('cart-remove'));
   cart = cart.filter(c => !(c.id === id && c.size === size));
+  persistCart();
   updateCartCount();
   renderCart();
 });
@@ -1248,6 +1250,7 @@ $(document).on('click', '#cartClearBtn', function(){
   if(!cart.length) return;
   if(!window.confirm('Remove all items from your cart?')) return;
   cart = [];
+  persistCart();
   updateCartCount();
   renderCart();
 });
@@ -1269,6 +1272,13 @@ const PAYMENT_QR = {
   gotyme: { src: 'qr-gotyme.png', label: 'GoTyme Bank' },
   maribank: { src: 'qr-maribank.png', label: 'Maribank' }
 };
+
+// clean label text for a pay-opt, ignoring the "Tap to show QR" hint
+function payOptLabel($opt){
+  const $clone = $opt.clone();
+  $clone.find('.pay-qr-hint').remove();
+  return $clone.text().trim().replace(/\s+/g, ' ');
+}
 
 $(document).on('click', '.pay-opt', function(){
   $('.pay-opt').removeClass('active');
@@ -1349,7 +1359,7 @@ async function placeOrder(){
     const p = findProduct(c.id);
     return { id: p.id, name: p.name, price: p.price, qty: c.qty, size: c.size || null };
   });
-  const paymentMethod = $('.pay-opt.active').text().trim();
+  const paymentMethod = payOptLabel($('.pay-opt.active'));
 
   const $btn = $('#placeOrderBtn');
   $btn.prop('disabled', true).text('Placing order...');
@@ -1365,6 +1375,7 @@ async function placeOrder(){
     $('#confFulfillment').text(fulfillment === 'delivery' ? 'Delivery' : 'Store Pickup');
     $('#confTotal').text(peso(total));
     cart = [];
+    persistCart();
     updateCartCount();
     navigate('confirmation');
     // Best-effort — the order is already placed at this point, so an
