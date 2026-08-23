@@ -364,25 +364,11 @@ const REVIEWS = [
 
 /* ================= STATE ================= */
 let cart = []; // {id, qty, size}
-const CART_STORAGE_PREFIX = 'cc_cart_';
 let cartOwnerUid = null; // uid whose cart is currently loaded into `cart` — null while signed out
-
-function loadCartFor(uid){
-  try{
-    const raw = localStorage.getItem(CART_STORAGE_PREFIX + uid);
-    return raw ? JSON.parse(raw) : [];
-  } catch(err){
-    return [];
-  }
-}
 
 function persistCart(){
   if(!cartOwnerUid) return;
-  try{
-    localStorage.setItem(CART_STORAGE_PREFIX + cartOwnerUid, JSON.stringify(cart));
-  } catch(err){
-
-  }
+  window.CCCart.saveCart(cartOwnerUid, cart);
 }
 
 function mergeCarts(base, incoming){
@@ -400,11 +386,13 @@ function rerenderActiveCartPage(){
   if(activePage === 'checkout') renderCheckoutSummary();
 }
 
-/* Called from authStateReady on every login/logout/page load. */
-function syncCartToAccount(realUser){
+/* Called from authStateReady on every login/logout/page load. Cart
+   now lives in Firestore (cart-service.js) instead of localStorage,
+   so the same cart shows up on web and mobile. */
+async function syncCartToAccount(realUser){
   if(realUser){
     if(cartOwnerUid === realUser.uid) return; // already this account's cart, nothing to do
-    const saved = loadCartFor(realUser.uid);
+    const saved = await window.CCCart.fetchCart(realUser.uid);
     cart = mergeCarts(saved, cart); // keep anything just added as a guest, add back what was saved
     cartOwnerUid = realUser.uid;
     persistCart();
@@ -617,9 +605,16 @@ function navigate(pageName){
     $('.page[data-page="login"]').addClass('active');
     return;
   }
+  if(pageName === 'order-history' && (!window.currentUser || window.currentUser.isAnonymous)){
+    showToast('Please log in to view your orders.');
+    $('.page').removeClass('active');
+    $('.page[data-page="login"]').addClass('active');
+    return;
+  }
   if(pageName === 'product') renderProductDetail();
   if(pageName === 'cart') renderCart();
   if(pageName === 'checkout') renderCheckoutSummary();
+  if(pageName === 'order-history') renderOrderHistory();
   if(pageName === 'about'){
     navigate('home');
     setTimeout(()=> $('.about-split')[0]?.scrollIntoView({behavior:'smooth'}), 50);
@@ -644,6 +639,51 @@ async function refreshProductsThenRerender(pageName){
   if(!$(`.page[data-page="${pageName}"]`).hasClass('active')) return; // user already navigated away
   if(pageName === 'cart') renderCart();
   if(pageName === 'checkout') renderCheckoutSummary();
+}
+
+async function renderOrderHistory(){
+  const $list = $('#orderHistoryList');
+  $list.html('<p class="order-history-empty">Loading your orders...</p>');
+  if(!window.currentUser) return;
+
+  let orders;
+  try{
+    orders = await window.CCOrders.fetchMyOrders(window.currentUser.uid);
+  } catch(err){
+    console.error(err);
+    $list.html('<p class="order-history-empty">Could not load your orders. Please try again.</p>');
+    return;
+  }
+
+  if(!orders.length){
+    $list.html('<p class="order-history-empty">No orders yet — once you place one, it\'ll show up here.</p>');
+    return;
+  }
+
+  const toDate = (val) => {
+    if(!val) return '';
+    const ms = typeof val.seconds === 'number' ? val.seconds * 1000 : new Date(val).getTime();
+    return isNaN(ms) ? '' : new Date(ms).toLocaleDateString('en-PH', { month:'short', day:'numeric', year:'numeric' });
+  };
+
+  const rows = orders.map(o => {
+    const status = o.status || 'pending';
+    const itemsText = (o.items || []).map(it => `${it.name}${it.size ? ` (${it.size})` : ''} × ${it.qty}`).join(', ');
+    return `
+      <div class="order-card">
+        <div class="order-card-head">
+          <span class="order-card-num">#${o.id.slice(0,6).toUpperCase()}</span>
+          <span class="order-status-badge order-status-${status}">${status.charAt(0).toUpperCase() + status.slice(1)}</span>
+        </div>
+        <p class="order-card-items">${itemsText}</p>
+        <div class="order-card-foot">
+          <span>${toDate(o.createdAt)} · ${o.fulfillment === 'delivery' ? 'Delivery' : 'Pickup'}</span>
+          <span class="order-card-total">${peso(o.totals?.total || 0)}</span>
+        </div>
+      </div>
+    `;
+  }).join('');
+  $list.html(rows);
 }
 
 // Delegated nav click — covers elements rendered now or later
@@ -1383,6 +1423,14 @@ async function placeOrder(){
     if(customer.email){
       sendOrderConfirmationEmail(orderPayload, orderId);
     }
+    // Only decrement products that actually track stock (merch items
+    // without a stock field are skipped by decrementStock's caller here).
+    const stockUpdates = items
+      .filter(it => typeof findProduct(it.id)?.stock === 'number')
+      .map(it => ({ id: it.id, qty: it.qty }));
+    if(stockUpdates.length){
+      window.CCProducts.decrementStock(stockUpdates).catch(err => console.error('Stock decrement failed:', err));
+    }
   } catch(err){
     console.error(err);
     if(String(err.code).includes('admin-restricted-operation') || String(err.code).includes('operation-not-allowed')){
@@ -1642,9 +1690,15 @@ function renderAccountDropdown(user, otpVerified){
     <div class="account-dd-email">${user.email}</div>
     ${!otpVerified ? `<button type="button" class="account-dd-unverified" id="accountDdVerifyBtn">Email not verified — tap to verify</button>` : ''}
     <div class="account-dd-divider"></div>
+    <button type="button" class="account-dd-link" id="accountDdOrdersBtn">Order History</button>
     <button class="btn btn-outline account-dd-logout" id="accountLogoutBtn">Log Out</button>
   `);
 }
+
+$(document).on('click', '#accountDdOrdersBtn', function(){
+  $('#accountDropdownWrap').removeClass('open');
+  navigate('order-history');
+});
 
 $(document).on('click', '#accountBtn', function(e){
   e.stopPropagation();
