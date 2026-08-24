@@ -6,7 +6,7 @@
 ========================================================= */
 import { db } from "./firebase-config.js";
 import {
-  collection, getDocs, getDoc, doc, setDoc, addDoc, updateDoc, deleteDoc, increment
+  collection, getDocs, getDoc, doc, setDoc, addDoc, updateDoc, deleteDoc, deleteField, increment
 } from "https://www.gstatic.com/firebasejs/12.17.0/firebase-firestore-lite.js";
 
 const PRODUCTS_COL = "products";
@@ -40,12 +40,14 @@ function setCachedProducts(products){
    been changed in Firestore. Without this, an admin edit was only
    reflected in the cache after the NEXT full fetchAllProducts() call,
    which meant an old price could still flash briefly on page reload. */
-function patchCachedProduct(id, fields){
+function patchCachedProduct(id, fields, fieldsToDelete){
   const cached = getCachedProducts();
   if(!cached) return;
   const idx = cached.findIndex(p => p.id === id);
   if(idx > -1){
-    cached[idx] = { ...cached[idx], ...fields };
+    const merged = { ...cached[idx], ...fields };
+    if(fieldsToDelete) fieldsToDelete.forEach(f => delete merged[f]);
+    cached[idx] = merged;
     setCachedProducts(cached);
   }
 }
@@ -109,10 +111,20 @@ export async function seedProducts(productsArray){
   return added;
 }
 
-/* Used by the Admin dashboard's "Edit" action on a product row. */
-export async function updateProduct(id, fields){
-  await updateDoc(doc(db, PRODUCTS_COL, id), fields);
-  patchCachedProduct(id, fields);
+/* Used by the Admin dashboard's "Edit" action on a product row.
+   fieldsToDelete (optional) removes keys from the doc entirely — e.g.
+   clearing `ingredients`/`allergens` off a product that's being changed
+   to a merch category, or `sizes` off one moving to a flat-price
+   category. updateDoc() only ever touches the keys it's given, so
+   simply leaving a field out of `fields` would NOT remove it; it has
+   to be set to Firestore's deleteField() sentinel explicitly. */
+export async function updateProduct(id, fields, fieldsToDelete){
+  const payload = { ...fields };
+  if(fieldsToDelete && fieldsToDelete.length){
+    fieldsToDelete.forEach(f => { payload[f] = deleteField(); });
+  }
+  await updateDoc(doc(db, PRODUCTS_COL, id), payload);
+  patchCachedProduct(id, fields, fieldsToDelete);
 }
 
 /* Used by the Admin dashboard's "Delete" action on a product row. */
