@@ -517,24 +517,38 @@ function getPriceForSize(p, sizeLabel){
 }
 
 /* The price to show before a size is picked — the lowest of the
-   available sizes, e.g. a shirt that runs ₱449–₱599 shows "From ₱449". */
+   available sizes, e.g. a shirt that runs ₱449–₱599 just shows ₱449. */
 function getDisplayPrice(p){
   const opts = getSizeOptions(p);
   if(!opts.length) return p.price;
   return Math.min(...opts.map(o => o.price));
 }
 
-/* True when at least two sizes are actually priced differently — lets
-   the UI say "From ₱449" only when that "From" is meaningful, instead
-   of on every sized item (socks are all one price, for instance). */
+/* True when at least two sizes are actually priced differently — used
+   to decide whether each size chip on the product page needs its own
+   price shown (socks are all one price, for instance, so there's
+   nothing extra to show there). */
 function hasVariablePricing(p){
   const opts = getSizeOptions(p);
   if(opts.length < 2) return false;
   return new Set(opts.map(o => o.price)).size > 1;
 }
 
+/* Was always peso(getDisplayPrice(p)) — the LOWEST size's price only.
+   That made the admin table and storefront cards look "stuck": raising
+   the price on any size other than the cheapest one changed nothing
+   visible, since the lowest price shown never moved. Sized products
+   with genuinely different prices per size now show a range instead
+   (e.g. "₱449–₱599"); everything else (single price, or same price
+   across all sizes) still shows one number exactly as before. */
 function priceLabel(p){
-  return hasVariablePricing(p) ? `From ${peso(getDisplayPrice(p))}` : peso(getDisplayPrice(p));
+  if(hasVariablePricing(p)){
+    const opts = getSizeOptions(p);
+    const min = Math.min(...opts.map(o => o.price));
+    const max = Math.max(...opts.map(o => o.price));
+    return `${peso(min)}–${peso(max)}`;
+  }
+  return peso(getDisplayPrice(p));
 }
 
 /* Shared by the Menu and Merchandise grids. "Featured" keeps the
@@ -586,15 +600,20 @@ function toggleWishlist(id){
     navigate('login');
     return;
   }
-  if(wishlist.includes(id)){
-    wishlist = wishlist.filter(x => x !== id);
-  } else {
+  const adding = !wishlist.includes(id);
+  if(adding){
     wishlist.push(id);
+  } else {
+    wishlist = wishlist.filter(x => x !== id);
   }
   persistWishlist();
   $(`[data-wishlist-toggle="${id}"]`).toggleClass('active', wishlist.includes(id))
     .find('svg').attr('fill', wishlist.includes(id) ? 'currentColor' : 'none');
   if($('.page[data-page="wishlist"]').hasClass('active')) renderWishlistPage();
+  // Confirms the tap actually did something — the heart icon fills in,
+  // but that's easy to miss on a quick tap, especially on mobile.
+  const label = findProduct(id) ? findProduct(id).name : 'Item';
+  showToast(adding ? `Added to favorites · ${label}` : `Removed from favorites · ${label}`);
 }
 
 /* Called from authStateReady alongside syncCartToAccount. */
@@ -1368,7 +1387,6 @@ function renderProductDetail(){
     .attr('data-nav', isMerch ? 'merchandise' : 'menu')
     .data('nav', isMerch ? 'merchandise' : 'menu');
   const startPrice = pdSize ? getPriceForSize(p, pdSize) : getDisplayPrice(p);
-  const priceIsFrom = !pdSize && hasVariablePricing(p);
   $('#pdContent').html(`
     <div>
       <div class="pd-main-img"><img id="pdMainImg" src="${p.imgs[0]}" alt="${p.name}"></div>
@@ -1379,7 +1397,7 @@ function renderProductDetail(){
     <div>
       <div class="eyebrow">${p.cat}</div>
       <h1 style="margin:10px 0 4px;">${p.name}</h1>
-      <div class="pd-price" id="pdPriceDisplay">${priceIsFrom ? 'From ' : ''}${peso(startPrice)}</div>
+      <div class="pd-price" id="pdPriceDisplay">${peso(startPrice)}</div>
       <p class="pd-desc">${p.desc}${p.ingredients ? ' Made in small batches at our counter, using seasonal ingredients whenever we can.' : ''}</p>
       ${renderPdSecondary(p)}
       <div class="pd-actions">
@@ -1409,12 +1427,32 @@ function starString(rating){
   return '★★★★★'.slice(0, r) + '☆☆☆☆☆'.slice(0, 5 - r);
 }
 
+/* "Purchased" = at least one of the account's own orders (any status
+   except cancelled — a cancelled order was never actually fulfilled)
+   contains this product id. Run alongside the reviews fetch so both
+   are ready before the section paints — no extra loading flicker. */
+async function hasPurchasedProduct(uid, productId){
+  try{
+    const orders = await window.CCOrders.fetchMyOrders(uid);
+    return orders.some(o => o.status !== 'cancelled' && (o.items || []).some(it => it.id === productId));
+  } catch(err){
+    console.error(err);
+    return false; // can't confirm the purchase — default to not allowing the form
+  }
+}
+
 async function loadAndRenderReviews(productId){
   const $wrap = $('#productReviews');
   $wrap.html('<p class="reviews-loading">Loading reviews...</p>');
-  let reviews;
+  const realUser = window.currentUser && !window.currentUser.isAnonymous ? window.currentUser : null;
+  let reviews, purchased = false;
   try{
-    reviews = await window.CCReviews.fetchReviewsForProduct(productId);
+    const results = await Promise.all([
+      window.CCReviews.fetchReviewsForProduct(productId),
+      realUser ? hasPurchasedProduct(realUser.uid, productId) : Promise.resolve(false)
+    ]);
+    reviews = results[0];
+    purchased = results[1];
   } catch(err){
     console.error(err);
     $wrap.html('<p class="reviews-loading">Could not load reviews right now.</p>');
@@ -1423,10 +1461,10 @@ async function loadAndRenderReviews(productId){
   // Bail if the person has already navigated to a different product by
   // the time this resolves — don't paint stale reviews over a new page.
   if(currentProductId !== productId) return;
-  renderReviewsSection(reviews, productId);
+  renderReviewsSection(reviews, productId, purchased);
 }
 
-function renderReviewsSection(reviews, productId){
+function renderReviewsSection(reviews, productId, purchased){
   const avg = reviews.length ? reviews.reduce((s,r) => s + r.rating, 0) / reviews.length : 0;
   const summaryHtml = `
     <div class="review-summary">
@@ -1455,7 +1493,14 @@ function renderReviewsSection(reviews, productId){
   const realUser = window.currentUser && !window.currentUser.isAnonymous ? window.currentUser : null;
   const myReview = realUser ? reviews.find(r => r.uid === realUser.uid) : null;
 
-  const formHtml = realUser ? `
+  // Gate the form on having actually bought the item — but an existing
+  // reviewer can still edit/delete their own review even if that order
+  // later got cancelled, rather than getting locked out of it.
+  const canReview = realUser && (purchased || myReview);
+
+  const formHtml = !realUser
+    ? `<p class="reviews-login-hint"><a data-nav="login">Log in</a> to leave a review.</p>`
+    : canReview ? `
     <div class="review-form">
       <h4>${myReview ? 'Edit your review' : 'Write a review'}</h4>
       <div class="review-star-input" id="reviewStarInput" data-value="${myReview ? myReview.rating : 0}">
@@ -1464,7 +1509,7 @@ function renderReviewsSection(reviews, productId){
       <textarea id="reviewTextInput" placeholder="Optional — what did you think?">${myReview ? escapeHtml(myReview.text || '') : ''}</textarea>
       <button class="btn btn-primary" id="submitReviewBtn" data-product-id="${productId}">${myReview ? 'Update Review' : 'Submit Review'}</button>
     </div>
-  ` : `<p class="reviews-login-hint"><a data-nav="login">Log in</a> to leave a review.</p>`;
+  ` : `<p class="reviews-login-hint">Only customers who've purchased this item can leave a review.</p>`;
 
   $('#productReviews').html(summaryHtml + `<div class="review-list">${listHtml}</div>` + formHtml);
 }
