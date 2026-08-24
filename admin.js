@@ -18,6 +18,23 @@ let adminEditingId = null; // set while editing an existing product, null when a
 let adminProductSearch = '';    // current text in the Products search box
 let adminCategoryFilter = 'All'; // current selection in the category filter dropdown
 
+/* Food categories get the Ingredients/Allergens fields; everything else
+   (Shirts, Caps, totes, keychains, etc.) doesn't — those fields simply
+   don't mean anything for merchandise. SIZED_CATEGORIES comes from
+   script.js (loaded first) and drives the per-size price rows below. */
+const FOOD_CATEGORIES = ['Coffee', 'Non-Coffee', 'Tea', 'Pastries', 'Sandwiches', 'Cakes'];
+
+/* Default size list offered for each sized category when adding a new
+   product, or when switching an existing product to one of these
+   categories. Editing a product that already has its own size list
+   keeps that list instead (see renderSizePriceRows). */
+const DEFAULT_SIZES_BY_CATEGORY = {
+  Shirts: ['XS','S','M','L','XL','XXL'],
+  Shorts: ['XS','S','M','L','XL','XXL'],
+  Socks: ['S','M','L'],
+  Caps: ['One Size'],
+};
+
 /* Maps each category's broader group (from CAT_LABELS, the same
    taxonomy the storefront's menu/merch sidebars use) to one of four
    badge colors, so the admin Products table reads at a glance
@@ -97,7 +114,7 @@ function renderAdminProductsTable(){
           </div>
         </td>
         <td>${categoryBadge(p.cat)}</td>
-        <td>${peso(p.price)}</td>
+        <td>${priceLabel(p)}</td>
         <td>
           ${
             p.stock === undefined || p.stock === null
@@ -153,6 +170,8 @@ $(document).on('click', '[data-admin-edit]', function(){
   $('#apIngredients').val(p.ingredients || '');
   $('#apAllergens').val(p.allergens || '');
   $('#apStock').val(p.stock !== undefined && p.stock !== null ? p.stock : '');
+  toggleFoodFields(p.cat);
+  renderSizePriceRows(p.cat, p);
 
   $('#adminFormTitle').text(`Edit "${p.name}"`);
   $('#adminFormSubmitBtn').text('Update Product');
@@ -175,7 +194,58 @@ function resetAdminProductForm(){
   $('#adminFormTitle').text('Add Product to Inventory');
   $('#adminFormSubmitBtn').text('Add Product');
   $('#adminCancelEditBtn').hide();
+  const cat = $('#apCategory').val();
+  toggleFoodFields(cat);
+  renderSizePriceRows(cat, null);
 }
+
+/* Shows Ingredients/Allergens only for food categories — those fields
+   have no meaning on a shirt or a keychain. */
+function toggleFoodFields(cat){
+  $('#apFoodFields').toggle(FOOD_CATEGORIES.includes(cat));
+}
+
+/* Shows a price input per size instead of the single Price field
+   whenever the selected category is one that prices per-size. When
+   editing a product that already has its own sizes (possibly a
+   different list than the category default, e.g. a tee that only
+   comes in XS–L), those exact sizes and prices are preserved instead
+   of being replaced by the category's default list. */
+function renderSizePriceRows(cat, existingProduct){
+  const isSized = Object.prototype.hasOwnProperty.call(DEFAULT_SIZES_BY_CATEGORY, cat);
+  $('#apSizesField').toggle(isSized);
+  $('#apPriceGroup').toggle(!isSized);
+  if(!isSized){
+    $('#apSizeRows').empty();
+    return;
+  }
+
+  let sizeList = DEFAULT_SIZES_BY_CATEGORY[cat];
+  const priceMap = {};
+  if(existingProduct && existingProduct.cat === cat && existingProduct.sizes && existingProduct.sizes.length){
+    const opts = getSizeOptions(existingProduct);
+    sizeList = opts.map(o => o.size);
+    opts.forEach(o => { priceMap[o.size] = o.price; });
+  }
+
+  $('#apSizeRows').html(sizeList.map(sz => `
+    <div class="size-price-row">
+      <span class="size-price-label">${sz}</span>
+      <div class="size-price-input-wrap">
+        <span class="size-price-currency">₱</span>
+        <input type="number" min="0" step="1" class="size-price-input" data-size="${sz}"
+          value="${priceMap[sz] !== undefined ? priceMap[sz] : ''}" placeholder="0" required>
+      </div>
+    </div>
+  `).join(''));
+}
+
+$(document).on('change', '#apCategory', function(){
+  const cat = $(this).val();
+  const existing = adminEditingId ? PRODUCTS.find(x => x.id === adminEditingId) : null;
+  toggleFoodFields(cat);
+  renderSizePriceRows(cat, existing);
+});
 
 /* Delete: confirm, then remove from Firestore and the in-memory list */
 $(document).on('click', '[data-admin-delete]', async function(){
@@ -204,26 +274,62 @@ $(document).on('submit', '#adminAddProductForm', async function(e){
   const $btn = $('#adminFormSubmitBtn');
   const cat = $('#apCategory').val();
   const name = $('#apName').val().trim();
-  const price = Number($('#apPrice').val());
   const desc = $('#apDesc').val().trim();
   const imgInput = $('#apImg').val().trim();
   const img = imgInput || blankPlaceholder((adminEditingId || 'admin-' + Date.now()), cat);
-
   const stock = parseInt($('#apStock').val(), 10);
+
+  const isSized = Object.prototype.hasOwnProperty.call(DEFAULT_SIZES_BY_CATEGORY, cat);
+  let price, sizes;
+  if(isSized){
+    sizes = $('#apSizeRows .size-price-input').map(function(){
+      return { size: $(this).data('size'), price: Number($(this).val()) || 0 };
+    }).get();
+    if(!sizes.length){
+      showToast('Add a price for at least one size.');
+      return;
+    }
+    price = Math.min(...sizes.map(s => s.price));
+  } else {
+    price = Number($('#apPrice').val());
+  }
+
+  const isFood = FOOD_CATEGORIES.includes(cat);
   const fields = {
     name, cat, price, desc,
     img, imgs: [img],
     stock: isNaN(stock) ? 0 : stock,
-    ingredients: $('#apIngredients').val().trim() || 'Details coming soon.',
-    allergens: $('#apAllergens').val().trim() || 'Please ask our staff for full allergen details.'
   };
+  if(isSized) fields.sizes = sizes;
+  if(isFood){
+    fields.ingredients = $('#apIngredients').val().trim() || 'Details coming soon.';
+    fields.allergens = $('#apAllergens').val().trim() || 'Please ask our staff for full allergen details.';
+  }
 
   if(adminEditingId){
     $btn.prop('disabled', true).text('Updating...');
+    // updateDoc only ever touches the keys you pass it — leaving
+    // ingredients/allergens/sizes out of `fields` above does NOT clear
+    // them from Firestore if the product had them before (e.g. it's a
+    // merch item that got food fields written to it before category-
+    // aware saving existed, or it's moving from a sized category to a
+    // non-sized one). Any such leftover fields get explicitly deleted
+    // here instead.
+    const prevProduct = PRODUCTS.find(x => x.id === adminEditingId);
+    const fieldsToDelete = [];
+    if(prevProduct){
+      if(!isFood && prevProduct.ingredients !== undefined) fieldsToDelete.push('ingredients');
+      if(!isFood && prevProduct.allergens !== undefined) fieldsToDelete.push('allergens');
+      if(!isSized && prevProduct.sizes !== undefined) fieldsToDelete.push('sizes');
+    }
     try{
-      await window.CCProducts.updateProduct(adminEditingId, fields);
+      await window.CCProducts.updateProduct(adminEditingId, fields, fieldsToDelete);
       const idx = PRODUCTS.findIndex(x => x.id === adminEditingId);
-      if(idx > -1) PRODUCTS[idx] = { id: adminEditingId, ...fields };
+      if(idx > -1){
+        const merged = { id: adminEditingId, ...prevProduct, ...fields };
+        fieldsToDelete.forEach(f => delete merged[f]);
+        PRODUCTS[idx] = merged;
+      }
       showToast(`Updated "${name}".`);
       resetAdminProductForm();
       renderAdminProductsTable();
@@ -413,6 +519,14 @@ $(document).on('change', '[data-order-status]', async function(){
   } finally {
     $select.prop('disabled', false);
   }
+});
+
+/* Sync the Ingredients/Allergens vs Sizes-and-Prices fields to whatever
+   category is selected by default (the form's first <option>) on first
+   load, before anyone has touched the Category dropdown. */
+$(function(){
+  toggleFoodFields($('#apCategory').val());
+  renderSizePriceRows($('#apCategory').val(), null);
 });
 
 /* ================= SEED STARTER CATALOG ================= */
