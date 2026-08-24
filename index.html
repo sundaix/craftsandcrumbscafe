@@ -199,7 +199,16 @@
         <input type="text" id="menuSearch" placeholder="Looking for..." aria-label="Search the menu">
       </div>
       <div class="breadcrumb" id="menuBreadcrumb">Drinks / Caffeine</div>
-      <h1 id="menuHeading">Caffeine</h1>
+      <div class="menu-heading-row">
+        <h1 id="menuHeading">Caffeine</h1>
+        <select id="menuSort" class="sort-select" aria-label="Sort products">
+          <option value="featured">Featured</option>
+          <option value="price-asc">Price: Low to High</option>
+          <option value="price-desc">Price: High to Low</option>
+          <option value="name-asc">Name: A–Z</option>
+          <option value="newest">Newest</option>
+        </select>
+      </div>
       <div class="menu-grid" id="menuGrid"></div>
     </div>
   </div>
@@ -219,7 +228,16 @@
         <input type="text" id="merchSearch" placeholder="Looking for..." aria-label="Search merchandise">
       </div>
       <div class="breadcrumb" id="merchBreadcrumb">Wearables / Shirts</div>
-      <h1 id="merchHeading">Shirts</h1>
+      <div class="menu-heading-row">
+        <h1 id="merchHeading">Shirts</h1>
+        <select id="merchSort" class="sort-select" aria-label="Sort products">
+          <option value="featured">Featured</option>
+          <option value="price-asc">Price: Low to High</option>
+          <option value="price-desc">Price: High to Low</option>
+          <option value="name-asc">Name: A–Z</option>
+          <option value="newest">Newest</option>
+        </select>
+      </div>
       <div class="menu-grid" id="merchGrid"></div>
     </div>
   </div>
@@ -234,6 +252,10 @@
   <div class="container">
     <h3 class="related-title">You might also like</h3>
     <div class="product-grid" id="relatedGrid"></div>
+  </div>
+  <div class="container">
+    <h3 class="related-title">Ratings &amp; Reviews</h3>
+    <div class="product-reviews" id="productReviews"></div>
   </div>
 </div>
 
@@ -326,6 +348,19 @@
     <div id="orderHistoryList" class="order-history-list">
       <p class="order-history-empty">Loading your orders...</p>
     </div>
+  </div>
+</div>
+
+<!-- wishlist page -->
+<div class="page" data-page="wishlist">
+  <div class="container order-history-wrap">
+    <div class="section-head">
+      <div>
+        <div class="eyebrow">Your Account</div>
+        <h1>Your Favorites</h1>
+      </div>
+    </div>
+    <div id="wishlistGrid" class="product-grid"></div>
   </div>
 </div>
 
@@ -947,6 +982,8 @@
 <script type="module" src="products-services.js"></script>
 <script type="module" src="orders-service.js"></script>
 <script type="module" src="cart-service.js"></script>
+<script type="module" src="wishlist-service.js"></script>
+<script type="module" src="review-service.js"></script>
 
 <script src="email-notifications.js"></script>
 <script src="script.js"></script>
