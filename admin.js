@@ -552,3 +552,32 @@ $(document).on('click', '#adminSeedBtn', async function(){
     $btn.prop('disabled', false).text('Seed Starter Catalog');
   }
 });
+
+/* ================= CLEAN UP LEGACY FOOD FIELDS ================= */
+/* Strips Ingredients/Allergens off any non-food (merch) product that
+   still has them — leftover from before the admin form limited those
+   fields to food categories. See the comment on
+   CCProducts.cleanupLegacyFoodFields for why this has to walk every
+   product instead of only fixing the ones re-saved through the form. */
+$(document).on('click', '#adminCleanupFieldsBtn', async function(){
+  const $btn = $(this);
+  const $status = $('#adminCleanupStatus');
+  $btn.prop('disabled', true).text('Cleaning...');
+  $status.text('Scanning products for stray Ingredients/Allergens fields...');
+  try{
+    const cleanedIds = await window.CCProducts.cleanupLegacyFoodFields(FOOD_CATEGORIES);
+    await loadProductsFromFirestore();
+    renderMenuPage();
+    renderMerchPage();
+    renderAdminProductsTable();
+    renderAdminOverviewStats();
+    $status.text(cleanedIds.length
+      ? `Done — removed Ingredients/Allergens from ${cleanedIds.length} product${cleanedIds.length === 1 ? '' : 's'}: ${cleanedIds.join(', ')}.`
+      : 'Done — no merch products had leftover Ingredients/Allergens fields.');
+  } catch(err){
+    console.error(err);
+    $status.text('Something went wrong while cleaning up. Check the console for details.');
+  } finally {
+    $btn.prop('disabled', false).text('Clean Up Legacy Fields');
+  }
+});
