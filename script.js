@@ -200,66 +200,84 @@ const SEED_PRODUCTS = [
     allergens:'None known.' },
 
   /* ---- Merchandise: Wearables ---- */
-  { id:'w-shirt-1', name:'Classic Logo Shirt', cat:'Shirts', price:0,
+  { id:'w-shirt-1', name:'Classic Logo Shirt', cat:'Shirts', price:449,
     desc:'Soft cotton shirt with the Crafts and Crumbs logo, made for everyday wear.',
     img:blankPlaceholder('w-shirt-1','Shirts'), imgs:[blankPlaceholder('w-shirt-1','Shirts')],
-    sizes:['XS','S','M','L','XL','XXL'],
+    sizes:[
+      { size:'XS', price:449 }, { size:'S', price:449 }, { size:'M', price:449 },
+      { size:'L', price:499 }, { size:'XL', price:549 }, { size:'XXL', price:599 },
+    ],
     fit:'Regular Fit', },
-  { id:'w-shirt-2', name:'Cropped Tee', cat:'Shirts', price:0,
+  { id:'w-shirt-2', name:'Cropped Tee', cat:'Shirts', price:399,
     desc:'Relaxed cropped tee with a small embroidered Crafts and Crumbs mark.',
     img:blankPlaceholder('w-shirt-2','Shirts'), imgs:[blankPlaceholder('w-shirt-2','Shirts')],
-    sizes:['XS','S','M','L'],
+    sizes:[
+      { size:'XS', price:399 }, { size:'S', price:399 },
+      { size:'M', price:429 }, { size:'L', price:429 },
+    ],
     fit:'Cropped Fit', },
-  { id:'w-shirt-3', name:'Oversized Shirt', cat:'Shirts', price:0,
+  { id:'w-shirt-3', name:'Oversized Shirt', cat:'Shirts', price:549,
     desc:'Boxy, oversized fit shirt in heavyweight cotton with back print.',
     img:blankPlaceholder('w-shirt-3','Shirts'), imgs:[blankPlaceholder('w-shirt-3','Shirts')],
-    sizes:['S','M','L','XL','XXL'],
+    sizes:[
+      { size:'S', price:549 }, { size:'M', price:549 }, { size:'L', price:599 },
+      { size:'XL', price:649 }, { size:'XXL', price:699 },
+    ],
     fit:'Oversized Fit', },
 
-  { id:'w-cap-1', name:'Classic Cap', cat:'Caps', price:0,
+  { id:'w-cap-1', name:'Classic Cap', cat:'Caps', price:349,
     desc:'Adjustable cap embroidered with the Crafts and Crumbs mark.',
     img:blankPlaceholder('w-cap-1','Caps'), imgs:[blankPlaceholder('w-cap-1','Caps')],
-    sizes:['One Size'],
+    sizes:[ { size:'One Size', price:349 } ],
     fit:'Adjustable', },
-  { id:'w-cap-2', name:'Trucker Cap', cat:'Caps', price:0,
+  { id:'w-cap-2', name:'Trucker Cap', cat:'Caps', price:379,
     desc:'Mesh-back trucker cap with a snapback closure and woven patch.',
     img:blankPlaceholder('w-cap-2','Caps'), imgs:[blankPlaceholder('w-cap-2','Caps')],
-    sizes:['One Size'],
+    sizes:[ { size:'One Size', price:379 } ],
     fit:'Adjustable', },
-  { id:'w-cap-3', name:'Bucket Hat', cat:'Caps', price:0,
+  { id:'w-cap-3', name:'Bucket Hat', cat:'Caps', price:399,
     desc:'Cotton twill bucket hat with a subtle embroidered logo.',
     img:blankPlaceholder('w-cap-3','Caps'), imgs:[blankPlaceholder('w-cap-3','Caps')],
-    sizes:['One Size'],
+    sizes:[ { size:'One Size', price:399 } ],
     fit:'Adjustable', },
 
-  { id:'w-short-1', name:'Classic Shorts', cat:'Shorts', price:0,
+  { id:'w-short-1', name:'Classic Shorts', cat:'Shorts', price:399,
     desc:'Comfortable everyday shorts featuring the Crafts and Crumbs branding.',
     img:blankPlaceholder('w-short-1','Shorts'), imgs:[blankPlaceholder('w-short-1','Shorts')],
-    sizes:['XS','S','M','L','XL','XXL'],
+    sizes:[
+      { size:'XS', price:399 }, { size:'S', price:399 }, { size:'M', price:429 },
+      { size:'L', price:429 }, { size:'XL', price:459 }, { size:'XXL', price:489 },
+    ],
     fit:'Regular Fit', },
-  { id:'w-short-2', name:'Jogger Shorts', cat:'Shorts', price:0,
+  { id:'w-short-2', name:'Jogger Shorts', cat:'Shorts', price:499,
     desc:'Fleece jogger shorts with an elastic waistband and side pockets.',
     img:blankPlaceholder('w-short-2','Shorts'), imgs:[blankPlaceholder('w-short-2','Shorts')],
-    sizes:['XS','S','M','L','XL'],
+    sizes:[
+      { size:'XS', price:499 }, { size:'S', price:499 },
+      { size:'M', price:529 }, { size:'L', price:529 }, { size:'XL', price:559 },
+    ],
     fit:'Relaxed Fit', },
-  { id:'w-short-3', name:'Cargo Shorts', cat:'Shorts', price:0,
+  { id:'w-short-3', name:'Cargo Shorts', cat:'Shorts', price:549,
     desc:'Utility cargo shorts with side pockets and an embroidered tag.',
     img:blankPlaceholder('w-short-3','Shorts'), imgs:[blankPlaceholder('w-short-3','Shorts')],
-    sizes:['S','M','L','XL','XXL'],
+    sizes:[
+      { size:'S', price:549 }, { size:'M', price:549 }, { size:'L', price:579 },
+      { size:'XL', price:609 }, { size:'XXL', price:639 },
+    ],
     fit:'Relaxed Fit', },
 
-  { id:'w-socks-1', name:'Crew Socks', cat:'Socks', price:0,
+  { id:'w-socks-1', name:'Crew Socks', cat:'Socks', price:159,
     desc:'Cozy crew socks with a cafe-inspired print.',
     img:blankPlaceholder('w-socks-1','Socks'), imgs:[blankPlaceholder('w-socks-1','Socks')],
-    sizes:['S','M','L'], },
-  { id:'w-socks-2', name:'Ankle Socks', cat:'Socks', price:0,
+    sizes:[ { size:'S', price:159 }, { size:'M', price:159 }, { size:'L', price:179 } ], },
+  { id:'w-socks-2', name:'Ankle Socks', cat:'Socks', price:149,
     desc:'Low-cut ankle socks with a woven logo band.',
     img:blankPlaceholder('w-socks-2','Socks'), imgs:[blankPlaceholder('w-socks-2','Socks')],
-    sizes:['S','M','L'], },
-  { id:'w-socks-3', name:'Knit Socks', cat:'Socks', price:0,
+    sizes:[ { size:'S', price:149 }, { size:'M', price:149 }, { size:'L', price:169 } ], },
+  { id:'w-socks-3', name:'Knit Socks', cat:'Socks', price:179,
     desc:'Ribbed knit socks in warm, cafe-inspired tones.',
     img:blankPlaceholder('w-socks-3','Socks'), imgs:[blankPlaceholder('w-socks-3','Socks')],
-    sizes:['S','M','L'], },
+    sizes:[ { size:'S', price:179 }, { size:'M', price:179 }, { size:'L', price:199 } ], },
 
   { id:'w-tote-1', name:'Canvas Tote', cat:'ToteBags', price:0,
     desc:'Sturdy canvas tote for carrying home your coffee and pastry haul.',
@@ -452,6 +470,13 @@ const MERCH_SIDEBAR = [
       { label:'Tote Bags', cat:'ToteBags' },
   ]},
 ];
+
+/* Categories that price per-size (see the seed data above, where each
+   of these has a `sizes: [{size, price}, ...]` array instead of a flat
+   price) vs everything else, which is priced as a single item. Shared
+   by the admin Add/Edit Product form (to know when to show size-price
+   rows instead of one Price field) and by getSizeOptions() below. */
+const SIZED_CATEGORIES = ['Shirts', 'Caps', 'Shorts', 'Socks'];
 const CAT_LABELS = {
   'Coffee': { group:'Drinks', sub:'Caffeine' },
   'Non-Coffee': { group:'Drinks', sub:'Non-Caffeine' },
@@ -472,6 +497,45 @@ const CAT_LABELS = {
 const peso = n => '₱' + n.toLocaleString('en-PH');
 const findProduct = id => PRODUCTS.find(p => p.id === id);
 const escapeHtml = str => $('<div>').text(str == null ? '' : str).html();
+
+/* Normalizes a product's `sizes` field to `[{size, price}, ...]` no
+   matter which shape it's actually in — new admin-saved products use
+   objects with their own price, but anything seeded/edited before this
+   feature existed still has plain strings (['S','M','L']) and one flat
+   top-level price. Everything else in the app reads sizes through this
+   instead of touching p.sizes directly, so both shapes keep working. */
+function getSizeOptions(p){
+  if(!p.sizes) return [];
+  return p.sizes.map(s => typeof s === 'string' ? { size: s, price: p.price } : s);
+}
+
+function getPriceForSize(p, sizeLabel){
+  const opts = getSizeOptions(p);
+  if(!opts.length) return p.price;
+  const match = opts.find(o => o.size === sizeLabel);
+  return match ? match.price : opts[0].price;
+}
+
+/* The price to show before a size is picked — the lowest of the
+   available sizes, e.g. a shirt that runs ₱449–₱599 shows "From ₱449". */
+function getDisplayPrice(p){
+  const opts = getSizeOptions(p);
+  if(!opts.length) return p.price;
+  return Math.min(...opts.map(o => o.price));
+}
+
+/* True when at least two sizes are actually priced differently — lets
+   the UI say "From ₱449" only when that "From" is meaningful, instead
+   of on every sized item (socks are all one price, for instance). */
+function hasVariablePricing(p){
+  const opts = getSizeOptions(p);
+  if(opts.length < 2) return false;
+  return new Set(opts.map(o => o.price)).size > 1;
+}
+
+function priceLabel(p){
+  return hasVariablePricing(p) ? `From ${peso(getDisplayPrice(p))}` : peso(getDisplayPrice(p));
+}
 
 /* Shared by the Menu and Merchandise grids. "Featured" keeps the
    catalog's natural order but pulls best sellers to the front — it's
@@ -551,12 +615,35 @@ function renderWishlistPage(){
   const $grid = $('#wishlistGrid');
   const items = PRODUCTS.filter(p => wishlist.includes(p.id));
   if(!items.length){
-    $grid.html(`<div class="empty-state" style="grid-column:1/-1;">No favorites yet — tap the heart on anything you love.</div>`);
+    $('#wishlistCount').text('');
+    $('#wishlistClearBtn').hide();
+    $grid.html(`
+      <div class="empty-favorites">
+        <div class="empty-favorites-icon">
+          <svg width="26" height="26" viewBox="0 0 24 24" fill="none"><path d="M12 21s-7.5-4.6-10-9.3C.6 8.1 2.4 4.5 6 4c2-.3 3.7.7 6 3 2.3-2.3 4-3.3 6-3 3.6.5 5.4 4.1 4 7.7C19.5 16.4 12 21 12 21z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/></svg>
+        </div>
+        <h3>No favorites yet</h3>
+        <p>Tap the heart on anything you love and it'll be saved here for next time.</p>
+        <div class="empty-favorites-actions">
+          <button class="btn btn-primary" data-nav="menu">Browse Menu</button>
+          <button class="btn btn-outline" data-nav="merchandise">Browse Merchandise</button>
+        </div>
+      </div>
+    `);
     return;
   }
+  $('#wishlistCount').text(`${items.length} item${items.length === 1 ? '' : 's'} saved`);
+  $('#wishlistClearBtn').show();
   $grid.html(items.map(productCard).join(''));
   initReveal();
 }
+
+$(document).on('click', '#wishlistClearBtn', function(){
+  if(!window.confirm('Remove all favorites?')) return;
+  wishlist = [];
+  persistWishlist();
+  renderWishlistPage();
+});
 
 $(document).on('click', '[data-wishlist-toggle]', function(e){
   e.stopPropagation();
@@ -616,9 +703,9 @@ function renderCartDropdown(){
         <div>
           <div class="cart-dd-name">${p.name}${c.size ? ` <span class="cart-dd-size">(${c.size})</span>` : ''}</div>
           <div class="cart-dd-meta">
-            <span>${c.qty} × ${peso(p.price)}</span>
+            <span>${c.qty} × ${peso(getPriceForSize(p, c.size))}</span>
             <span style="display:flex; align-items:center; gap:8px;">
-              ${peso(p.price*c.qty)}
+              ${peso(getPriceForSize(p, c.size)*c.qty)}
               <button class="cart-dd-remove" data-cart-remove="${lineKey}" aria-label="Remove item">
                 <svg width="13" height="13" viewBox="0 0 24 24" fill="none"><path d="M6 6l12 12M18 6L6 18" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
               </button>
@@ -664,7 +751,7 @@ $(document).on('keydown', function(e){
 });
 
 function cartTotal(){
-  return cart.reduce((s,c)=> s + findProduct(c.id).price * c.qty, 0);
+  return cart.reduce((s,c)=> s + getPriceForSize(findProduct(c.id), c.size) * c.qty, 0);
 }
 
 /* ================= NAVIGATION ================= */
@@ -875,7 +962,7 @@ function productCard(p, i=0){
         <div class="product-name" data-open-product="${p.id}">${p.name}</div>
         <div class="product-desc">${p.desc}</div>
         <div class="product-footer">
-          <span class="price">${peso(p.price)}</span>
+          <span class="price">${priceLabel(p)}</span>
           <button class="add-btn" data-quick-add="${p.id}" aria-label="Add to cart">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M12 5v14M5 12h14" stroke="#fff" stroke-width="2.2" stroke-linecap="round"/></svg>
           </button>
@@ -907,7 +994,7 @@ function bestSellerCard(p, i){
         <div class="product-name" data-open-product="${p.id}">${p.name}</div>
         <div class="product-desc">${p.desc}</div>
         <div class="product-footer">
-          <span class="price">${peso(p.price)}</span>
+          <span class="price">${priceLabel(p)}</span>
           <button class="add-btn" data-quick-add="${p.id}" aria-label="Add to cart">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M12 5v14M5 12h14" stroke="#fff" stroke-width="2.2" stroke-linecap="round"/></svg>
           </button>
@@ -1086,13 +1173,14 @@ $(document).on('click', '[data-quick-add]', function(e){
   e.stopPropagation();
   const id = $(this).data('quick-add');
   const p = findProduct(id);
-  if(SIZE_CHARTS[p.cat] && p.sizes && p.sizes.length > 1){
+  const opts = getSizeOptions(p);
+  if(SIZE_CHARTS[p.cat] && opts.length > 1){
     currentProductId = id;
     navigate('product');
     showToast('Please select a size');
     return;
   }
-  addToCart(id, 1, (p.sizes && p.sizes.length === 1) ? p.sizes[0] : null);
+  addToCart(id, 1, opts.length === 1 ? opts[0].size : null);
   const $img = $(this).closest('.product-card').find('.product-img img').first();
   if($img.length) flyToCart($img[0]);
   $(this).addClass('added');
@@ -1222,7 +1310,9 @@ $(document).on('change', '#merchSort', function(){
 function renderPdSecondary(p){
   const chart = SIZE_CHARTS[p.cat];
   if(chart){
-    const singleSize = p.sizes && p.sizes.length === 1;
+    const opts = getSizeOptions(p);
+    const singleSize = opts.length === 1;
+    const variable = hasVariablePricing(p);
     return `
       <div class="pd-sizing">
         <div class="pd-sizing-head">
@@ -1230,10 +1320,10 @@ function renderPdSecondary(p){
           ${p.fit ? `<span class="pd-fit-tag">${p.fit}</span>` : ''}
         </div>
         ${singleSize ? `
-          <div class="size-chip active" data-pd-size="${p.sizes[0]}">${p.sizes[0]}</div>
+          <div class="size-chip active" data-pd-size="${opts[0].size}">${opts[0].size}</div>
         ` : `
           <div class="size-chip-row" id="pdSizeRow">
-            ${p.sizes.map(s => `<button type="button" class="size-chip" data-pd-size="${s}">${s}</button>`).join('')}
+            ${opts.map(o => `<button type="button" class="size-chip" data-pd-size="${o.size}">${o.size}${variable ? `<span class="size-chip-price">${peso(o.price)}</span>` : ''}</button>`).join('')}
           </div>
         `}
         <button type="button" class="size-guide-toggle" id="pdSizeGuideToggle">Size Guide</button>
@@ -1270,12 +1360,15 @@ function renderPdSecondary(p){
 function renderProductDetail(){
   const p = findProduct(currentProductId);
   pdQty = 1;
-  pdSize = (SIZE_CHARTS[p.cat] && p.sizes && p.sizes.length === 1) ? p.sizes[0] : null;
+  const pdOpts = getSizeOptions(p);
+  pdSize = (SIZE_CHARTS[p.cat] && pdOpts.length === 1) ? pdOpts[0].size : null;
   $('#pdCrumb').text(p.name);
   const isMerch = ['Shirts','Caps','Shorts','Socks','ToteBags','Bracelets','Keychains'].includes(p.cat);
   $('#pdSectionLink').text(isMerch ? 'Merchandise' : 'Menu')
     .attr('data-nav', isMerch ? 'merchandise' : 'menu')
     .data('nav', isMerch ? 'merchandise' : 'menu');
+  const startPrice = pdSize ? getPriceForSize(p, pdSize) : getDisplayPrice(p);
+  const priceIsFrom = !pdSize && hasVariablePricing(p);
   $('#pdContent').html(`
     <div>
       <div class="pd-main-img"><img id="pdMainImg" src="${p.imgs[0]}" alt="${p.name}"></div>
@@ -1286,7 +1379,7 @@ function renderProductDetail(){
     <div>
       <div class="eyebrow">${p.cat}</div>
       <h1 style="margin:10px 0 4px;">${p.name}</h1>
-      <div class="pd-price">${peso(p.price)}</div>
+      <div class="pd-price" id="pdPriceDisplay">${priceIsFrom ? 'From ' : ''}${peso(startPrice)}</div>
       <p class="pd-desc">${p.desc}${p.ingredients ? ' Made in small batches at our counter, using seasonal ingredients whenever we can.' : ''}</p>
       ${renderPdSecondary(p)}
       <div class="pd-actions">
@@ -1295,7 +1388,7 @@ function renderProductDetail(){
           <span id="pdQtyVal">1</span>
           <button data-qty-action="plus">+</button>
         </div>
-        <button class="btn btn-primary" id="pdAddBtn" data-pd-add="${p.id}">Add to Cart · ${peso(p.price)}</button>
+        <button class="btn btn-primary" id="pdAddBtn" data-pd-add="${p.id}">Add to Cart · ${peso(startPrice)}</button>
         <button type="button" class="wishlist-btn pd-wishlist-btn ${isWishlisted(p.id) ? 'active' : ''}" data-wishlist-toggle="${p.id}" aria-label="Save to favorites">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="${isWishlisted(p.id) ? 'currentColor' : 'none'}"><path d="M12 21s-7.5-4.6-10-9.3C.6 8.1 2.4 4.5 6 4c2-.3 3.7.7 6 3 2.3-2.3 4-3.3 6-3 3.6.5 5.4 4.1 4 7.7C19.5 16.4 12 21 12 21z" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/></svg>
         </button>
@@ -1408,6 +1501,10 @@ $(document).on('click', '[data-pd-size]', function(){
   pdSize = $(this).data('pd-size');
   $('#pdSizeRow .size-chip').removeClass('active');
   $(this).addClass('active');
+  const p = findProduct(currentProductId);
+  const unitPrice = getPriceForSize(p, pdSize);
+  $('#pdPriceDisplay').text(peso(unitPrice));
+  $('#pdAddBtn').text(`Add to Cart · ${peso(unitPrice * pdQty)}`);
 });
 
 $(document).on('click', '#pdSizeGuideToggle', function(){
@@ -1425,7 +1522,8 @@ $(document).on('click', '[data-qty-action]', function(){
   if($(this).data('qty-action') === 'plus') pdQty++;
   else pdQty = Math.max(1, pdQty - 1);
   $('#pdQtyVal').text(pdQty);
-  $('#pdAddBtn').text(`Add to Cart · ${peso(p.price * pdQty)}`);
+  const unitPrice = pdSize ? getPriceForSize(p, pdSize) : getDisplayPrice(p);
+  $('#pdAddBtn').text(`Add to Cart · ${peso(unitPrice * pdQty)}`);
 });
 
 $(document).on('click', '[data-pd-add]', function(){
@@ -1466,7 +1564,7 @@ function renderCart(){
         <img src="${p.img}" alt="${p.name}">
         <div>
           <div class="cart-item-name">${p.name}</div>
-          <div class="cart-item-meta">${p.cat}${c.size ? ` · Size: ${c.size}` : ''} · ${peso(p.price)} each</div>
+          <div class="cart-item-meta">${p.cat}${c.size ? ` · Size: ${c.size}` : ''} · ${peso(getPriceForSize(p, c.size))} each</div>
         </div>
         <div class="qty-select" data-cart-qty="${lineKey}">
           <button data-cart-action="minus">−</button>
@@ -1474,7 +1572,7 @@ function renderCart(){
           <button data-cart-action="plus">+</button>
         </div>
         <div style="display:flex; align-items:center; gap:14px;">
-          <span class="price cart-item-price">${peso(p.price*c.qty)}</span>
+          <span class="price cart-item-price">${peso(getPriceForSize(p, c.size)*c.qty)}</span>
           <button class="remove-btn" data-cart-remove="${lineKey}" aria-label="Remove item">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M6 6l12 12M18 6L6 18" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
           </button>
@@ -1613,7 +1711,7 @@ function renderCheckoutSummary(){
   const lines = cart.map(c=>{
     const p = findProduct(c.id);
     const label = p.name + (c.size ? ` (${c.size})` : '') + ` × ${c.qty}`;
-    return `<div class="sum-row"><span>${label}</span><span>${peso(p.price*c.qty)}</span></div>`;
+    return `<div class="sum-row"><span>${label}</span><span>${peso(getPriceForSize(p, c.size)*c.qty)}</span></div>`;
   }).join('') || '<div class="sum-row"><span>Your cart is empty</span><span></span></div>';
 
   $('#checkoutSummary').html(`
@@ -1647,7 +1745,7 @@ async function placeOrder(){
   const total = subtotal + deliveryFee;
   const items = cart.map(c => {
     const p = findProduct(c.id);
-    return { id: p.id, name: p.name, price: p.price, qty: c.qty, size: c.size || null };
+    return { id: p.id, name: p.name, price: getPriceForSize(p, c.size), qty: c.qty, size: c.size || null };
   });
   const paymentMethod = payOptLabel($('.pay-opt.active'));
 
