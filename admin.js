@@ -242,6 +242,12 @@ $(document).on('submit', '#adminAddProductForm', async function(e){
     return;
   }
 
+  // Only set on creation, never on edit — this is what "Newest" sorting
+  // on the Menu/Merchandise pages orders by (script.js's sortProducts).
+  // Older seed-catalog products don't have this field at all and just
+  // sort to the end of "Newest" rather than crashing anything.
+  fields.createdAt = new Date().toISOString();
+
   $btn.prop('disabled', true).text('Adding...');
   try{
     const newId = await window.CCProducts.addProduct(fields);
