@@ -139,4 +139,36 @@ export async function decrementStock(items){
   }
 }
 
-window.CCProducts = { fetchAllProducts, addProduct, updateProduct, deleteProduct, seedProducts, getCachedProducts, decrementStock };
+/* One-off cleanup for merch products that still carry stray
+   ingredients/allergens fields written before category-aware saving
+   existed (see the comment on updateProduct above). Normally those
+   fields only get deleted when an admin re-saves that specific
+   product through the edit form — this walks every product still in
+   Firestore and deletes the two fields from any doc whose category
+   isn't food, so a merch item nobody has re-saved yet still gets
+   cleaned up.
+
+   foodCategories is passed in from admin.js's FOOD_CATEGORIES rather
+   than duplicated here, so the two lists can't drift apart. Returns
+   the ids of every product that was actually changed, so the caller
+   can report a real count instead of "done" with no detail. */
+export async function cleanupLegacyFoodFields(foodCategories){
+  const snap = await getDocs(collection(db, PRODUCTS_COL));
+  const cleaned = [];
+  for(const docSnap of snap.docs){
+    const data = docSnap.data();
+    if(foodCategories.includes(data.cat)) continue; // food item — these fields belong here
+    const hasIngredients = Object.prototype.hasOwnProperty.call(data, 'ingredients');
+    const hasAllergens = Object.prototype.hasOwnProperty.call(data, 'allergens');
+    if(!hasIngredients && !hasAllergens) continue; // already clean
+    const fieldsToDelete = {};
+    if(hasIngredients) fieldsToDelete.ingredients = deleteField();
+    if(hasAllergens) fieldsToDelete.allergens = deleteField();
+    await updateDoc(doc(db, PRODUCTS_COL, docSnap.id), fieldsToDelete);
+    patchCachedProduct(docSnap.id, {}, ['ingredients', 'allergens']);
+    cleaned.push(docSnap.id);
+  }
+  return cleaned;
+}
+
+window.CCProducts = { fetchAllProducts, addProduct, updateProduct, deleteProduct, seedProducts, getCachedProducts, decrementStock, cleanupLegacyFoodFields };
