@@ -201,13 +201,16 @@
       <div class="breadcrumb" id="menuBreadcrumb">Drinks / Caffeine</div>
       <div class="menu-heading-row">
         <h1 id="menuHeading">Caffeine</h1>
-        <select id="menuSort" class="sort-select" aria-label="Sort products">
-          <option value="featured">Featured</option>
-          <option value="price-asc">Price: Low to High</option>
-          <option value="price-desc">Price: High to Low</option>
-          <option value="name-asc">Name: A–Z</option>
-          <option value="newest">Newest</option>
-        </select>
+        <label class="sort-select-wrap">
+          <span class="sort-select-label">Sort</span>
+          <select id="menuSort" class="sort-select" aria-label="Sort products">
+            <option value="featured">Featured</option>
+            <option value="price-asc">Price: Low to High</option>
+            <option value="price-desc">Price: High to Low</option>
+            <option value="name-asc">Name: A–Z</option>
+            <option value="newest">Newest</option>
+          </select>
+        </label>
       </div>
       <div class="menu-grid" id="menuGrid"></div>
     </div>
@@ -230,13 +233,16 @@
       <div class="breadcrumb" id="merchBreadcrumb">Wearables / Shirts</div>
       <div class="menu-heading-row">
         <h1 id="merchHeading">Shirts</h1>
-        <select id="merchSort" class="sort-select" aria-label="Sort products">
-          <option value="featured">Featured</option>
-          <option value="price-asc">Price: Low to High</option>
-          <option value="price-desc">Price: High to Low</option>
-          <option value="name-asc">Name: A–Z</option>
-          <option value="newest">Newest</option>
-        </select>
+        <label class="sort-select-wrap">
+          <span class="sort-select-label">Sort</span>
+          <select id="merchSort" class="sort-select" aria-label="Sort products">
+            <option value="featured">Featured</option>
+            <option value="price-asc">Price: Low to High</option>
+            <option value="price-desc">Price: High to Low</option>
+            <option value="name-asc">Name: A–Z</option>
+            <option value="newest">Newest</option>
+          </select>
+        </label>
       </div>
       <div class="menu-grid" id="merchGrid"></div>
     </div>
@@ -358,7 +364,9 @@
       <div>
         <div class="eyebrow">Your Account</div>
         <h1>Your Favorites</h1>
+        <p class="wishlist-count" id="wishlistCount"></p>
       </div>
+      <button type="button" class="btn btn-outline btn-sm" id="wishlistClearBtn" style="display:none;">Clear All</button>
     </div>
     <div id="wishlistGrid" class="product-grid"></div>
   </div>
@@ -733,7 +741,7 @@
             <input type="hidden" id="apEditId" value="">
             <div class="form-row">
               <div class="form-group"><label for="apName">Product name</label><input type="text" id="apName" placeholder="Iced Spanish Latte" required></div>
-              <div class="form-group"><label for="apPrice">Price (₱)</label><input type="number" id="apPrice" min="0" step="1" placeholder="150" required></div>
+              <div class="form-group" id="apPriceGroup"><label for="apPrice">Price (₱)</label><input type="number" id="apPrice" min="0" step="1" placeholder="150" required></div>
             </div>
             <div class="form-row">
               <div class="form-group"><label for="apStock">Stock quantity</label><input type="number" id="apStock" min="0" step="1" placeholder="e.g. 50" required></div>
@@ -756,10 +764,17 @@
                 <option value="Keychains">Keychains</option>
               </select>
             </div>
+            <div class="form-group" id="apSizesField" style="display:none;">
+              <label>Sizes &amp; Prices</label>
+              <div id="apSizeRows" class="size-price-rows"></div>
+              <p class="form-hint">Each size can have its own price — for example, larger shirt sizes can cost more.</p>
+            </div>
             <div class="form-group"><label for="apDesc">Short description</label><input type="text" id="apDesc" placeholder="One or two sentences describing the item" required></div>
             <div class="form-group"><label for="apImg">Image URL</label><input type="text" id="apImg" placeholder="https://... (leave blank for a placeholder image)"></div>
-            <div class="form-group"><label for="apIngredients">Ingredients</label><input type="text" id="apIngredients" placeholder="Comma-separated ingredients"></div>
-            <div class="form-group"><label for="apAllergens">Allergens</label><input type="text" id="apAllergens" placeholder="e.g. Gluten (wheat), Milk"></div>
+            <div id="apFoodFields">
+              <div class="form-group"><label for="apIngredients">Ingredients</label><input type="text" id="apIngredients" placeholder="Comma-separated ingredients"></div>
+              <div class="form-group"><label for="apAllergens">Allergens</label><input type="text" id="apAllergens" placeholder="e.g. Gluten (wheat), Milk"></div>
+            </div>
             <button type="submit" class="btn btn-primary btn-full" id="adminFormSubmitBtn">Add Product</button>
             <button type="button" class="btn btn-outline btn-full admin-cancel-edit" id="adminCancelEditBtn" style="display:none;">Cancel Edit</button>
           </form>
