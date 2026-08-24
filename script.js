@@ -415,9 +415,14 @@ let pdQty = 1;
 let pdSize = null;
 let menuFilter = 'Coffee';
 let menuSearch = '';
+let menuSort = 'featured';
 let merchFilter = 'Shirts';
 let merchSearch = '';
+let merchSort = 'featured';
 let fulfillment = 'delivery';
+
+let wishlist = []; // array of product ids
+let wishlistOwnerUid = null; // uid whose wishlist is currently loaded — null while signed out
 
 /* ================= MENU SIDEBAR DATA ================= */
 const MENU_SIDEBAR = [
@@ -466,6 +471,97 @@ const CAT_LABELS = {
 /* ================= HELPERS ================= */
 const peso = n => '₱' + n.toLocaleString('en-PH');
 const findProduct = id => PRODUCTS.find(p => p.id === id);
+const escapeHtml = str => $('<div>').text(str == null ? '' : str).html();
+
+/* Shared by the Menu and Merchandise grids. "Featured" keeps the
+   catalog's natural order but pulls best sellers to the front — it's
+   the closest thing this app has to a popularity signal without a real
+   sales-analytics pipeline behind it. "Newest" relies on createdAt,
+   which only admin-added products have (see products-services.js /
+   admin.js) — older seed products fall back to the end of that sort. */
+function sortProducts(items, sortValue){
+  const list = [...items];
+  const toMs = (val) => {
+    if(!val) return 0;
+    const parsed = new Date(val).getTime();
+    return isNaN(parsed) ? 0 : parsed;
+  };
+  switch(sortValue){
+    case 'price-asc': return list.sort((a,b) => a.price - b.price);
+    case 'price-desc': return list.sort((a,b) => b.price - a.price);
+    case 'name-asc': return list.sort((a,b) => a.name.localeCompare(b.name));
+    case 'newest': return list.sort((a,b) => toMs(b.createdAt) - toMs(a.createdAt));
+    case 'featured':
+    default:
+      return list.sort((a,b) => {
+        const ai = BEST_SELLER_IDS.indexOf(a.id), bi = BEST_SELLER_IDS.indexOf(b.id);
+        if(ai === -1 && bi === -1) return 0;
+        if(ai === -1) return 1;
+        if(bi === -1) return -1;
+        return ai - bi;
+      });
+  }
+}
+
+/* ================= WISHLIST ================= */
+function isWishlisted(id){
+  return wishlist.includes(id);
+}
+
+function persistWishlist(){
+  if(!wishlistOwnerUid) return;
+  window.CCWishlist.saveWishlist(wishlistOwnerUid, wishlist);
+}
+
+/* Wishlisting requires a real account (not guest/anonymous) since it's
+   saved per-user in Firestore — unlike the cart, there's no local-first
+   guest version of this, so signed-out taps just prompt a login. */
+function toggleWishlist(id){
+  if(!window.currentUser || window.currentUser.isAnonymous){
+    showToast('Please log in to save favorites.');
+    navigate('login');
+    return;
+  }
+  if(wishlist.includes(id)){
+    wishlist = wishlist.filter(x => x !== id);
+  } else {
+    wishlist.push(id);
+  }
+  persistWishlist();
+  $(`[data-wishlist-toggle="${id}"]`).toggleClass('active', wishlist.includes(id))
+    .find('svg').attr('fill', wishlist.includes(id) ? 'currentColor' : 'none');
+  if($('.page[data-page="wishlist"]').hasClass('active')) renderWishlistPage();
+}
+
+/* Called from authStateReady alongside syncCartToAccount. */
+async function syncWishlistToAccount(realUser){
+  if(realUser){
+    if(wishlistOwnerUid === realUser.uid) return;
+    wishlist = await window.CCWishlist.fetchWishlist(realUser.uid);
+    wishlistOwnerUid = realUser.uid;
+    if($('.page[data-page="wishlist"]').hasClass('active')) renderWishlistPage();
+    return;
+  }
+  if(wishlistOwnerUid === null) return;
+  wishlistOwnerUid = null;
+  wishlist = [];
+}
+
+function renderWishlistPage(){
+  const $grid = $('#wishlistGrid');
+  const items = PRODUCTS.filter(p => wishlist.includes(p.id));
+  if(!items.length){
+    $grid.html(`<div class="empty-state" style="grid-column:1/-1;">No favorites yet — tap the heart on anything you love.</div>`);
+    return;
+  }
+  $grid.html(items.map(productCard).join(''));
+  initReveal();
+}
+
+$(document).on('click', '[data-wishlist-toggle]', function(e){
+  e.stopPropagation();
+  toggleWishlist($(this).data('wishlist-toggle'));
+});
 
 function showToast(msg){
   const $t = $('#toast');
@@ -611,10 +707,17 @@ function navigate(pageName){
     $('.page[data-page="login"]').addClass('active');
     return;
   }
+  if(pageName === 'wishlist' && (!window.currentUser || window.currentUser.isAnonymous)){
+    showToast('Please log in to view your favorites.');
+    $('.page').removeClass('active');
+    $('.page[data-page="login"]').addClass('active');
+    return;
+  }
   if(pageName === 'product') renderProductDetail();
   if(pageName === 'cart') renderCart();
   if(pageName === 'checkout') renderCheckoutSummary();
   if(pageName === 'order-history') renderOrderHistory();
+  if(pageName === 'wishlist') renderWishlistPage();
   if(pageName === 'about'){
     navigate('home');
     setTimeout(()=> $('.about-split')[0]?.scrollIntoView({behavior:'smooth'}), 50);
@@ -676,6 +779,7 @@ async function renderOrderHistory(){
           <span class="order-status-badge order-status-${status}">${status.charAt(0).toUpperCase() + status.slice(1)}</span>
         </div>
         <p class="order-card-items">${itemsText}</p>
+        ${orderStatusTracker(status)}
         <div class="order-card-foot">
           <span>${toDate(o.createdAt)} · ${o.fulfillment === 'delivery' ? 'Delivery' : 'Pickup'}</span>
           <span class="order-card-total">${peso(o.totals?.total || 0)}</span>
@@ -684,6 +788,34 @@ async function renderOrderHistory(){
     `;
   }).join('');
   $list.html(rows);
+}
+
+/* Visual step tracker for order history — mirrors the status values the
+   admin dashboard's dropdown writes (pending/preparing/ready/completed/
+   cancelled, see orders-service.js + admin.js). Cancelled breaks out of
+   the linear flow entirely rather than showing a "stuck" progress bar. */
+const ORDER_STAGES = [
+  { key:'pending', label:'Pending' },
+  { key:'preparing', label:'Preparing' },
+  { key:'ready', label:'Ready' },
+  { key:'completed', label:'Completed' }
+];
+
+function orderStatusTracker(status){
+  if(status === 'cancelled'){
+    return `<div class="order-tracker-cancelled">This order was cancelled.</div>`;
+  }
+  const idx = Math.max(0, ORDER_STAGES.findIndex(s => s.key === status));
+  return `
+    <div class="order-tracker">
+      ${ORDER_STAGES.map((s,i) => `
+        <div class="order-tracker-step ${i <= idx ? 'done' : ''} ${i === idx ? 'current' : ''}">
+          <span class="order-tracker-dot"></span>
+          <span class="order-tracker-label">${s.label}</span>
+        </div>
+      `).join('')}
+    </div>
+  `;
 }
 
 // Delegated nav click — covers elements rendered now or later
@@ -730,9 +862,15 @@ $(document).on('click', '[data-menu-filter]', function(){
 });
 
 function productCard(p, i=0){
+  const saved = isWishlisted(p.id);
   return `
     <div class="product-card reveal" style="--i:${i}">
-      <div class="product-img" data-open-product="${p.id}"><img src="${p.img}" alt="${p.name}"></div>
+      <div class="product-img" data-open-product="${p.id}">
+        <img src="${p.img}" alt="${p.name}">
+        <button type="button" class="wishlist-btn ${saved ? 'active' : ''}" data-wishlist-toggle="${p.id}" aria-label="${saved ? 'Remove from favorites' : 'Save to favorites'}">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="${saved ? 'currentColor' : 'none'}"><path d="M12 21s-7.5-4.6-10-9.3C.6 8.1 2.4 4.5 6 4c2-.3 3.7.7 6 3 2.3-2.3 4-3.3 6-3 3.6.5 5.4 4.1 4 7.7C19.5 16.4 12 21 12 21z" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/></svg>
+        </button>
+      </div>
       <div class="product-info">
         <div class="product-name" data-open-product="${p.id}">${p.name}</div>
         <div class="product-desc">${p.desc}</div>
@@ -984,6 +1122,7 @@ function renderMenuGrid(){
     const q = menuSearch.trim().toLowerCase();
     items = items.filter(p => p.name.toLowerCase().includes(q) || p.desc.toLowerCase().includes(q));
   }
+  items = sortProducts(items, menuSort);
   const $grid = $('#menuGrid');
   if(items.length === 0){
     $grid.html(`<div class="empty-state" style="grid-column:1/-1;">No items here yet. Try another category or search term.</div>`);
@@ -1005,10 +1144,16 @@ function renderMenuPage(){
   }
   renderMenuGrid();
   $('#menuSearch').val(menuSearch);
+  $('#menuSort').val(menuSort);
 }
 
 $(document).on('input', '#menuSearch', function(){
   menuSearch = $(this).val();
+  renderMenuGrid();
+});
+
+$(document).on('change', '#menuSort', function(){
+  menuSort = $(this).val();
   renderMenuGrid();
 });
 
@@ -1035,6 +1180,7 @@ function renderMerchGrid(){
     const q = merchSearch.trim().toLowerCase();
     items = items.filter(p => p.name.toLowerCase().includes(q) || p.desc.toLowerCase().includes(q));
   }
+  items = sortProducts(items, merchSort);
   const $grid = $('#merchGrid');
   if(items.length === 0){
     $grid.html(`<div class="empty-state" style="grid-column:1/-1;">No items here yet. Try another category or search term.</div>`);
@@ -1056,10 +1202,16 @@ function renderMerchPage(){
   }
   renderMerchGrid();
   $('#merchSearch').val(merchSearch);
+  $('#merchSort').val(merchSort);
 }
 
 $(document).on('input', '#merchSearch', function(){
   merchSearch = $(this).val();
+  renderMerchGrid();
+});
+
+$(document).on('change', '#merchSort', function(){
+  merchSort = $(this).val();
   renderMerchGrid();
 });
 
@@ -1144,6 +1296,9 @@ function renderProductDetail(){
           <button data-qty-action="plus">+</button>
         </div>
         <button class="btn btn-primary" id="pdAddBtn" data-pd-add="${p.id}">Add to Cart · ${peso(p.price)}</button>
+        <button type="button" class="wishlist-btn pd-wishlist-btn ${isWishlisted(p.id) ? 'active' : ''}" data-wishlist-toggle="${p.id}" aria-label="Save to favorites">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="${isWishlisted(p.id) ? 'currentColor' : 'none'}"><path d="M12 21s-7.5-4.6-10-9.3C.6 8.1 2.4 4.5 6 4c2-.3 3.7.7 6 3 2.3-2.3 4-3.3 6-3 3.6.5 5.4 4.1 4 7.7C19.5 16.4 12 21 12 21z" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/></svg>
+        </button>
       </div>
     </div>
   `);
@@ -1152,7 +1307,102 @@ function renderProductDetail(){
   const fill = related.length < 4 ? PRODUCTS.filter(x=>x.id!==p.id && !related.includes(x)).slice(0, 4-related.length) : [];
   $('#relatedGrid').html([...related, ...fill].map(productCard).join(''));
   initReveal();
+  loadAndRenderReviews(p.id);
 }
+
+/* ================= RATINGS & REVIEWS ================= */
+function starString(rating){
+  const r = Math.round(rating);
+  return '★★★★★'.slice(0, r) + '☆☆☆☆☆'.slice(0, 5 - r);
+}
+
+async function loadAndRenderReviews(productId){
+  const $wrap = $('#productReviews');
+  $wrap.html('<p class="reviews-loading">Loading reviews...</p>');
+  let reviews;
+  try{
+    reviews = await window.CCReviews.fetchReviewsForProduct(productId);
+  } catch(err){
+    console.error(err);
+    $wrap.html('<p class="reviews-loading">Could not load reviews right now.</p>');
+    return;
+  }
+  // Bail if the person has already navigated to a different product by
+  // the time this resolves — don't paint stale reviews over a new page.
+  if(currentProductId !== productId) return;
+  renderReviewsSection(reviews, productId);
+}
+
+function renderReviewsSection(reviews, productId){
+  const avg = reviews.length ? reviews.reduce((s,r) => s + r.rating, 0) / reviews.length : 0;
+  const summaryHtml = `
+    <div class="review-summary">
+      <div class="review-summary-score">${avg ? avg.toFixed(1) : '—'}</div>
+      <div>
+        <div class="stars">${starString(avg)}</div>
+        <div class="review-summary-count">${reviews.length} review${reviews.length === 1 ? '' : 's'}</div>
+      </div>
+    </div>
+  `;
+
+  const listHtml = reviews.length
+    ? reviews.map(r => `
+      <div class="review-card real-review">
+        <div class="review-top">
+          <div>
+            <div class="review-name">${escapeHtml(r.userName || 'Customer')}</div>
+            <div class="stars">${starString(r.rating)}</div>
+          </div>
+        </div>
+        ${r.text ? `<p class="review-text">${escapeHtml(r.text)}</p>` : ''}
+      </div>
+    `).join('')
+    : `<p class="reviews-empty">No reviews yet — be the first to share what you thought.</p>`;
+
+  const realUser = window.currentUser && !window.currentUser.isAnonymous ? window.currentUser : null;
+  const myReview = realUser ? reviews.find(r => r.uid === realUser.uid) : null;
+
+  const formHtml = realUser ? `
+    <div class="review-form">
+      <h4>${myReview ? 'Edit your review' : 'Write a review'}</h4>
+      <div class="review-star-input" id="reviewStarInput" data-value="${myReview ? myReview.rating : 0}">
+        ${[1,2,3,4,5].map(n => `<span data-star="${n}" class="${myReview && n <= myReview.rating ? 'active' : ''}">★</span>`).join('')}
+      </div>
+      <textarea id="reviewTextInput" placeholder="Optional — what did you think?">${myReview ? escapeHtml(myReview.text || '') : ''}</textarea>
+      <button class="btn btn-primary" id="submitReviewBtn" data-product-id="${productId}">${myReview ? 'Update Review' : 'Submit Review'}</button>
+    </div>
+  ` : `<p class="reviews-login-hint"><a data-nav="login">Log in</a> to leave a review.</p>`;
+
+  $('#productReviews').html(summaryHtml + `<div class="review-list">${listHtml}</div>` + formHtml);
+}
+
+$(document).on('click', '#reviewStarInput span', function(){
+  const val = Number($(this).data('star'));
+  $('#reviewStarInput').attr('data-value', val)
+    .find('span').each(function(){ $(this).toggleClass('active', Number($(this).data('star')) <= val); });
+});
+
+$(document).on('click', '#submitReviewBtn', async function(){
+  const productId = $(this).data('product-id');
+  const rating = Number($('#reviewStarInput').attr('data-value')) || 0;
+  const text = $('#reviewTextInput').val().trim();
+  if(!rating){
+    showToast('Please select a star rating.');
+    return;
+  }
+  const $btn = $(this);
+  const originalText = $btn.text();
+  $btn.prop('disabled', true).text('Saving...');
+  try{
+    await window.CCReviews.submitReview(productId, window.currentUser.uid, window.currentUser.displayName || 'Customer', rating, text);
+    showToast('Thanks for the review!');
+    loadAndRenderReviews(productId);
+  } catch(err){
+    console.error(err);
+    showToast('Could not save your review. Please try again.');
+    $btn.prop('disabled', false).text(originalText);
+  }
+});
 
 $(document).on('click', '[data-pd-size]', function(){
   pdSize = $(this).data('pd-size');
@@ -1667,6 +1917,7 @@ document.addEventListener('authStateReady', function(e){
   const { user } = e.detail;
   const realUser = user && !user.isAnonymous ? user : null;
   syncCartToAccount(realUser);
+  syncWishlistToAccount(realUser);
   $('#accountStatusDot').toggle(!!realUser);
   $('#accountBtn').attr('title', realUser ? `Signed in as ${realUser.displayName || realUser.email}` : 'Not signed in — click to log in')
     .toggleClass('signed-in', !!realUser);
@@ -1691,6 +1942,7 @@ function renderAccountDropdown(user, otpVerified){
     ${!otpVerified ? `<button type="button" class="account-dd-unverified" id="accountDdVerifyBtn">Email not verified — tap to verify</button>` : ''}
     <div class="account-dd-divider"></div>
     <button type="button" class="account-dd-link" id="accountDdOrdersBtn">Order History</button>
+    <button type="button" class="account-dd-link" id="accountDdWishlistBtn">Favorites</button>
     <button class="btn btn-outline account-dd-logout" id="accountLogoutBtn">Log Out</button>
   `);
 }
@@ -1698,6 +1950,11 @@ function renderAccountDropdown(user, otpVerified){
 $(document).on('click', '#accountDdOrdersBtn', function(){
   $('#accountDropdownWrap').removeClass('open');
   navigate('order-history');
+});
+
+$(document).on('click', '#accountDdWishlistBtn', function(){
+  $('#accountDropdownWrap').removeClass('open');
+  navigate('wishlist');
 });
 
 $(document).on('click', '#accountBtn', function(e){
