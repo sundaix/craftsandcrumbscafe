@@ -50,5 +50,36 @@ service cloud.firestore {
     match /carts/{cartId} {
       allow read, write: if request.auth != null && request.auth.uid == cartId;
     }
+
+    // Same pattern as carts: one doc per user, doc id = their own uid,
+    // holding the full list of saved product ids.
+    match /wishlists/{wishlistId} {
+      allow read, write: if request.auth != null && request.auth.uid == wishlistId;
+    }
+
+    // Reviews are public to read (they're social proof on the product
+    // page) but writes are locked down three ways: (1) the doc id must
+    // be `${productId}_${uid}`, a deterministic composite key rather than
+    // an auto-id — that's what makes "one review per person per product"
+    // automatic, since a second submission just overwrites the first
+    // instead of creating a duplicate; (2) the uid field in the review
+    // must match the writer's own uid, so nobody can post a review that
+    // impersonates someone else; (3) anonymous/guest sessions (used for
+    // guest checkout) can't post at all, since a review should be tied to
+    // a real account. Only the review's own author (or an admin, for
+    // moderation) can delete it.
+    match /reviews/{reviewId} {
+      allow read: if true;
+      allow create, update: if request.auth != null &&
+        request.auth.token.firebase.sign_in_provider != 'anonymous' &&
+        reviewId == (request.resource.data.productId + '_' + request.auth.uid) &&
+        request.resource.data.uid == request.auth.uid &&
+        request.resource.data.rating is int &&
+        request.resource.data.rating >= 1 && request.resource.data.rating <= 5;
+      allow delete: if request.auth != null && (
+        resource.data.uid == request.auth.uid ||
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin'
+      );
+    }
   }
 }
