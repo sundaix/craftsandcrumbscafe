@@ -215,6 +215,13 @@ function renderSizePriceRows(cat, existingProduct){
   const isSized = Object.prototype.hasOwnProperty.call(DEFAULT_SIZES_BY_CATEGORY, cat);
   $('#apSizesField').toggle(isSized);
   $('#apPriceGroup').toggle(!isSized);
+  // A `required` field that's hidden (display:none) makes the browser
+  // silently refuse to submit the WHOLE form — no error shown, the
+  // submit event just never fires. #apPrice needs to stop being
+  // required the moment it's hidden behind the per-size price rows,
+  // or every edit/add on a sized category (Shirts, Caps, Shorts,
+  // Socks) quietly does nothing when you click Save.
+  $('#apPrice').prop('required', !isSized);
   if(!isSized){
     $('#apSizeRows').empty();
     return;
