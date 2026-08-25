@@ -26,10 +26,14 @@ export async function fetchMyReviewForProduct(productId, uid){
   return snap.exists() ? { id: snap.id, ...snap.data() } : null;
 }
 
-export async function submitReview(productId, uid, userName, rating, text){
-  await setDoc(doc(db, REVIEWS_COL, reviewDocId(productId, uid)), {
+export async function submitReview(productId, uid, userName, rating, text, verified){
+  const ref = doc(db, REVIEWS_COL, reviewDocId(productId, uid));
+  const existing = await getDoc(ref);
+  await setDoc(ref, {
     productId, uid, userName, rating, text,
-    createdAt: new Date().toISOString()
+    verified: !!verified,
+    createdAt: existing.exists() ? existing.data().createdAt : new Date().toISOString(),
+    updatedAt: new Date().toISOString()
   });
 }
 
