@@ -680,6 +680,13 @@
           <button class="btn btn-outline" id="adminCleanupFieldsBtn">Clean Up Legacy Fields</button>
           <p id="adminCleanupStatus" style="margin-top:10px;"></p>
         </div>
+
+        <div class="form-card">
+          <h3>Apply Per-Size Pricing to Sized Merch</h3>
+          <p>Caps, Shorts, or Socks products added before per-size pricing existed may still charge the same price across every size instead of pricing up for bigger sizes, like Shirts do. This gives every such product graduated per-size pricing — One Size items (like most Caps) are left as-is since there's nothing to graduate. Safe to click more than once; products that already have per-size pricing are skipped.</p>
+          <button class="btn btn-outline" id="adminGraduatePricingBtn">Apply Per-Size Pricing</button>
+          <p id="adminGraduatePricingStatus" style="margin-top:10px;"></p>
+        </div>
       </div>
 
       <!-- products -->
@@ -983,6 +990,29 @@
         <button type="submit" class="btn btn-primary" id="resetPasswordSubmit">Send Link</button>
       </div>
     </form>
+  </div>
+</div>
+
+<div class="promo-overlay" id="promoOverlay">
+  <div class="promo-modal" id="promoModal" role="dialog" aria-modal="true" aria-labelledby="promoModalTitle">
+    <div class="promo-modal-glow"></div>
+    <div class="promo-modal-sparkles" aria-hidden="true">
+      <span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span>
+    </div>
+    <button type="button" class="promo-modal-close" id="promoModalClose" aria-label="Close">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M6 6l12 12M18 6L6 18" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+    </button>
+    <div class="promo-badge">
+      <span class="promo-badge-ring"></span>
+      <span class="promo-badge-text">New</span>
+    </div>
+    <p class="eyebrow promo-eyebrow">Just Dropped</p>
+    <h3 id="promoModalTitle">Fresh Brews,<br>Fresh Merch.</h3>
+    <p class="promo-modal-copy">New seasonal drinks and a handcrafted merch line just landed at Crafts &amp; Crumbs — brewed and stitched with the same care as always.</p>
+    <div class="promo-modal-actions">
+      <button type="button" class="btn btn-primary" id="promoModalCta" data-nav="menu">Take a Look</button>
+      <button type="button" class="btn btn-outline" id="promoModalDismiss">Maybe later</button>
+    </div>
   </div>
 </div>
 
