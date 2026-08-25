@@ -1427,6 +1427,40 @@ function starString(rating){
   return '★★★★★'.slice(0, r) + '☆☆☆☆☆'.slice(0, 5 - r);
 }
 
+/* State for the currently-open product's reviews, kept in memory so
+   switching the sort order re-sorts instantly instead of re-fetching
+   from Firestore every time. Reset whenever a new product's reviews load. */
+let reviewsState = { productId: null, reviews: [], purchased: false, sort: 'recent' };
+
+/* Deterministic avatar color from the reviewer's name, picked from
+   the site's own palette so avatars never look out of place. */
+const AVATAR_PALETTE = ['var(--sage)', 'var(--cta)', 'var(--dusk)', 'var(--cta-dark)'];
+function avatarColor(name){
+  let hash = 0;
+  for(let i = 0; i < name.length; i++) hash = (hash * 31 + name.charCodeAt(i)) >>> 0;
+  return AVATAR_PALETTE[hash % AVATAR_PALETTE.length];
+}
+function avatarInitials(name){
+  const parts = (name || 'Customer').trim().split(/\s+/);
+  const initials = parts.length > 1 ? parts[0][0] + parts[parts.length - 1][0] : parts[0].slice(0, 2);
+  return initials.toUpperCase();
+}
+
+function formatReviewDate(iso){
+  if(!iso) return '';
+  const d = new Date(iso);
+  if(isNaN(d.getTime())) return '';
+  return d.toLocaleDateString('en-US', { month:'short', day:'numeric', year:'numeric' });
+}
+
+function sortReviews(reviews, mode){
+  const list = [...reviews];
+  if(mode === 'highest') list.sort((a,b) => b.rating - a.rating || new Date(b.createdAt) - new Date(a.createdAt));
+  else if(mode === 'lowest') list.sort((a,b) => a.rating - b.rating || new Date(b.createdAt) - new Date(a.createdAt));
+  else list.sort((a,b) => new Date(b.createdAt) - new Date(a.createdAt));
+  return list;
+}
+
 /* "Purchased" = at least one of the account's own orders (any status
    except cancelled — a cancelled order was never actually fulfilled)
    contains this product id. Run alongside the reviews fetch so both
@@ -1461,37 +1495,71 @@ async function loadAndRenderReviews(productId){
   // Bail if the person has already navigated to a different product by
   // the time this resolves — don't paint stale reviews over a new page.
   if(currentProductId !== productId) return;
-  renderReviewsSection(reviews, productId, purchased);
+  reviewsState = { productId, reviews, purchased, sort: 'recent' };
+  renderReviewsSection();
 }
 
-function renderReviewsSection(reviews, productId, purchased){
-  const avg = reviews.length ? reviews.reduce((s,r) => s + r.rating, 0) / reviews.length : 0;
-  const summaryHtml = `
-    <div class="review-summary">
-      <div class="review-summary-score">${avg ? avg.toFixed(1) : '—'}</div>
-      <div>
-        <div class="stars">${starString(avg)}</div>
-        <div class="review-summary-count">${reviews.length} review${reviews.length === 1 ? '' : 's'}</div>
+function renderReviewsSection(){
+  const { productId, reviews, purchased, sort } = reviewsState;
+  const total = reviews.length;
+  const avg = total ? reviews.reduce((s,r) => s + r.rating, 0) / total : 0;
+
+  // 5→1 breakdown, used for the distribution bars next to the score.
+  const counts = [0,0,0,0,0]; // index 0 = 5-star ... index 4 = 1-star
+  reviews.forEach(r => { const i = 5 - Math.round(r.rating); if(counts[i] !== undefined) counts[i]++; });
+  const barsHtml = counts.map((c, i) => {
+    const star = 5 - i;
+    const pct = total ? Math.round((c / total) * 100) : 0;
+    return `
+      <div class="rating-bar-row">
+        <span class="rating-bar-label">${star}<span class="rating-bar-star">★</span></span>
+        <div class="rating-bar-track"><div class="rating-bar-fill" style="width:${pct}%"></div></div>
+        <span class="rating-bar-pct">${pct}%</span>
       </div>
+    `;
+  }).join('');
+
+  const summaryHtml = `
+    <div class="reviews-summary-card">
+      <div class="review-summary-score">${avg ? avg.toFixed(1) : '—'}</div>
+      <div class="stars stars-lg">${starString(avg)}</div>
+      <div class="review-summary-count">${total} review${total === 1 ? '' : 's'}</div>
+      ${total ? `<div class="rating-bars">${barsHtml}</div>` : ''}
     </div>
   `;
 
-  const listHtml = reviews.length
-    ? reviews.map(r => `
-      <div class="review-card real-review">
+  const realUser = window.currentUser && !window.currentUser.isAnonymous ? window.currentUser : null;
+  const myReview = realUser ? reviews.find(r => r.uid === realUser.uid) : null;
+
+  const sorted = sortReviews(reviews, sort);
+  const listHtml = sorted.length
+    ? sorted.map(r => {
+        const name = r.userName || 'Customer';
+        const mine = realUser && r.uid === realUser.uid;
+        return `
+      <div class="review-card real-review${mine ? ' review-card-mine' : ''}">
         <div class="review-top">
-          <div>
-            <div class="review-name">${escapeHtml(r.userName || 'Customer')}</div>
-            <div class="stars">${starString(r.rating)}</div>
+          <div class="review-avatar" style="background:${avatarColor(name)}">${avatarInitials(name)}</div>
+          <div class="review-meta">
+            <div class="review-name-row">
+              <span class="review-name">${escapeHtml(name)}</span>
+              ${r.verified ? `<span class="verified-badge"><svg width="10" height="10" viewBox="0 0 24 24" fill="none"><path d="M5 13l4 4L19 7" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/></svg>Verified Purchase</span>` : ''}
+            </div>
+            <div class="review-stars-row">
+              <span class="stars">${starString(r.rating)}</span>
+              <span class="review-date">${formatReviewDate(r.createdAt)}</span>
+            </div>
           </div>
+          ${mine ? `<button class="review-delete-btn" data-review-delete="${productId}" title="Delete your review">Delete</button>` : ''}
         </div>
         ${r.text ? `<p class="review-text">${escapeHtml(r.text)}</p>` : ''}
       </div>
-    `).join('')
-    : `<p class="reviews-empty">No reviews yet — be the first to share what you thought.</p>`;
-
-  const realUser = window.currentUser && !window.currentUser.isAnonymous ? window.currentUser : null;
-  const myReview = realUser ? reviews.find(r => r.uid === realUser.uid) : null;
+    `;
+      }).join('')
+    : `<div class="reviews-empty">
+        <svg width="30" height="30" viewBox="0 0 24 24" fill="none"><path d="M12 17.3l-5.8 3 1.1-6.5-4.7-4.6 6.5-1 2.9-5.9 2.9 5.9 6.5 1-4.7 4.6 1.1 6.5z" stroke="var(--line-strong)" stroke-width="1.4" stroke-linejoin="round"/></svg>
+        <p>No reviews yet — be the first to share what you thought.</p>
+      </div>`;
 
   // Gate the form on having actually bought the item — but an existing
   // reviewer can still edit/delete their own review even if that order
@@ -1506,13 +1574,43 @@ function renderReviewsSection(reviews, productId, purchased){
       <div class="review-star-input" id="reviewStarInput" data-value="${myReview ? myReview.rating : 0}">
         ${[1,2,3,4,5].map(n => `<span data-star="${n}" class="${myReview && n <= myReview.rating ? 'active' : ''}">★</span>`).join('')}
       </div>
-      <textarea id="reviewTextInput" placeholder="Optional — what did you think?">${myReview ? escapeHtml(myReview.text || '') : ''}</textarea>
-      <button class="btn btn-primary" id="submitReviewBtn" data-product-id="${productId}">${myReview ? 'Update Review' : 'Submit Review'}</button>
+      <textarea id="reviewTextInput" placeholder="Optional — what did you think?" maxlength="600">${myReview ? escapeHtml(myReview.text || '') : ''}</textarea>
+      <div class="review-form-footer">
+        <span class="review-form-hint">${purchased ? 'You purchased this item' : 'Verified from a past order'}</span>
+        <button class="btn btn-primary" id="submitReviewBtn" data-product-id="${productId}">${myReview ? 'Update Review' : 'Submit Review'}</button>
+      </div>
     </div>
   ` : `<p class="reviews-login-hint">Only customers who've purchased this item can leave a review.</p>`;
 
-  $('#productReviews').html(summaryHtml + `<div class="review-list">${listHtml}</div>` + formHtml);
+  const sortHtml = total > 1 ? `
+    <label class="sort-select-wrap reviews-sort-wrap">
+      <span class="sort-select-label">Sort</span>
+      <select id="reviewSort" class="sort-select">
+        <option value="recent" ${sort === 'recent' ? 'selected' : ''}>Most Recent</option>
+        <option value="highest" ${sort === 'highest' ? 'selected' : ''}>Highest Rated</option>
+        <option value="lowest" ${sort === 'lowest' ? 'selected' : ''}>Lowest Rated</option>
+      </select>
+    </label>
+  ` : '';
+
+  const mainHtml = `
+    <div class="reviews-main">
+      <div class="reviews-main-head">
+        <h4 class="reviews-main-title">${total ? `Customer Reviews (${total})` : 'Customer Reviews'}</h4>
+        ${sortHtml}
+      </div>
+      <div class="review-list">${listHtml}</div>
+      ${formHtml}
+    </div>
+  `;
+
+  $('#productReviews').html(`<div class="reviews-panel">${summaryHtml}${mainHtml}</div>`);
 }
+
+$(document).on('change', '#reviewSort', function(){
+  reviewsState.sort = $(this).val();
+  renderReviewsSection();
+});
 
 $(document).on('click', '#reviewStarInput span', function(){
   const val = Number($(this).data('star'));
@@ -1532,13 +1630,34 @@ $(document).on('click', '#submitReviewBtn', async function(){
   const originalText = $btn.text();
   $btn.prop('disabled', true).text('Saving...');
   try{
-    await window.CCReviews.submitReview(productId, window.currentUser.uid, window.currentUser.displayName || 'Customer', rating, text);
+    const myExisting = reviewsState.reviews.find(r => r.uid === window.currentUser.uid);
+    const verified = reviewsState.purchased || (myExisting ? myExisting.verified : false);
+    await window.CCReviews.submitReview(productId, window.currentUser.uid, window.currentUser.displayName || 'Customer', rating, text, verified);
     showToast('Thanks for the review!');
     loadAndRenderReviews(productId);
   } catch(err){
     console.error(err);
     showToast('Could not save your review. Please try again.');
     $btn.prop('disabled', false).text(originalText);
+  }
+});
+
+$(document).on('click', '[data-review-delete]', async function(){
+  const productId = $(this).data('review-delete');
+  const ok = await showConfirm({
+    title: 'Delete your review?',
+    message: "This will remove your rating and comment from this product. This can't be undone.",
+    confirmText: 'Delete',
+    danger: true
+  });
+  if(!ok) return;
+  try{
+    await window.CCReviews.deleteReview(productId, window.currentUser.uid);
+    showToast('Your review was deleted.');
+    loadAndRenderReviews(productId);
+  } catch(err){
+    console.error(err);
+    showToast('Could not delete your review. Please try again.');
   }
 });
 
@@ -2439,3 +2558,35 @@ $(async function(){
   await loadProductsFromFirestore();
   renderAll();
 });
+/* ================= PROMO LAUNCH BANNER ================= */
+/* Fancy "New" popup shown once per browser session on page load.
+   sessionStorage (not localStorage) so it reappears on a fresh visit/tab
+   but doesn't nag on every reload within the same session. */
+(function initPromoOverlay(){
+  const PROMO_KEY = 'cc_promo_seen_v1';
+  const $overlay = $('#promoOverlay');
+  if(!$overlay.length) return;
+
+  function closePromo(){
+    $overlay.removeClass('open');
+    sessionStorage.setItem(PROMO_KEY, '1');
+  }
+
+  let seen = false;
+  try{ seen = sessionStorage.getItem(PROMO_KEY) === '1'; } catch(err){ /* private mode — just show it */ }
+
+  if(!seen){
+    // Slight delay so it arrives after the hero's own entrance animation
+    // has had a moment to breathe, rather than competing with it.
+    setTimeout(() => $overlay.addClass('open'), 900);
+  }
+
+  $('#promoModalClose, #promoModalDismiss').on('click', closePromo);
+  $('#promoModalCta').on('click', closePromo);
+  $overlay.on('click', function(e){
+    if(e.target === this) closePromo();
+  });
+  $(document).on('keydown', function(e){
+    if(e.key === 'Escape' && $overlay.hasClass('open')) closePromo();
+  });
+})();
