@@ -588,3 +588,35 @@ $(document).on('click', '#adminCleanupFieldsBtn', async function(){
     $btn.prop('disabled', false).text('Clean Up Legacy Fields');
   }
 });
+
+/* ================= APPLY PER-SIZE PRICING TO SIZED MERCH ================= */
+/* Fixes Caps/Shorts/Socks products that still charge the same price on
+   every size (usually because they were added to Firestore before
+   per-size pricing existed) so they graduate by size the same way
+   Shirts already do. See CCProducts.applyGraduatedSizePricing for how
+   the new prices are chosen. SIZED_CATEGORIES and SEED_PRODUCTS come
+   from script.js, loaded before this file. */
+$(document).on('click', '#adminGraduatePricingBtn', async function(){
+  const $btn = $(this);
+  const $status = $('#adminGraduatePricingStatus');
+  $btn.prop('disabled', true).text('Updating...');
+  $status.text('Scanning Caps/Shorts/Socks for flat per-size pricing...');
+  try{
+    const updatedIds = await window.CCProducts.applyGraduatedSizePricing(SIZED_CATEGORIES, SEED_PRODUCTS);
+    await loadProductsFromFirestore();
+    renderCategories();
+    renderBestSellers();
+    renderMenuPage();
+    renderMerchPage();
+    renderAdminProductsTable();
+    renderAdminOverviewStats();
+    $status.text(updatedIds.length
+      ? `Done — applied per-size pricing to ${updatedIds.length} product${updatedIds.length === 1 ? '' : 's'}: ${updatedIds.join(', ')}.`
+      : 'Done — every sized product already has per-size pricing.');
+  } catch(err){
+    console.error(err);
+    $status.text('Something went wrong while updating. Check the console for details.');
+  } finally {
+    $btn.prop('disabled', false).text('Apply Per-Size Pricing');
+  }
+});
