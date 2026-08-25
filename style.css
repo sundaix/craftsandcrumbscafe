@@ -771,27 +771,101 @@
   .review-text{ font-size:16px; color:var(--text); line-height:1.7; font-style:italic; font-family:'Lora',serif; font-weight:400; }
 
   /* ---------- Reviews (real, on the product detail page) ---------- */
-  .product-reviews{ max-width:720px; }
-  .review-summary{ display:flex; align-items:center; gap:16px; padding-bottom:20px; margin-bottom:8px; border-bottom:1px solid var(--line); }
-  .review-summary-score{ font-family:'Lora',serif; font-size:36px; font-weight:600; color:var(--ink); line-height:1; }
-  .review-summary-count{ font-size:12px; color:var(--text-faint); margin-top:4px; }
+  .product-reviews{ max-width:960px; padding-bottom:88px; }
+  .reviews-panel{
+    display:grid; grid-template-columns:230px 1fr; gap:52px;
+    align-items:start;
+  }
+
+  /* Summary card: big score, stars, distribution bars — sits sticky
+     alongside the list so it stays visible while scanning reviews. */
+  .reviews-summary-card{
+    position:sticky; top:100px;
+    background:var(--card); border-radius:var(--radius); padding:26px 24px;
+    display:flex; flex-direction:column; align-items:flex-start;
+  }
+  .review-summary-score{ font-family:'Lora',serif; font-size:44px; font-weight:600; color:var(--ink); line-height:1; }
+  .stars-lg{ font-size:15px; margin-top:8px; }
+  .review-summary-count{ font-size:12px; color:var(--text-faint); margin-top:6px; letter-spacing:0.02em; }
+  .rating-bars{ width:100%; margin-top:22px; padding-top:20px; border-top:1px solid var(--line); display:flex; flex-direction:column; gap:7px; }
+  .rating-bar-row{ display:flex; align-items:center; gap:8px; }
+  .rating-bar-label{
+    font-size:11px; font-weight:600; color:var(--text-soft); width:14px; flex:none;
+    display:flex; align-items:center; gap:1px;
+  }
+  .rating-bar-star{ color:var(--cta-dark); font-size:9px; }
+  .rating-bar-track{ flex:1; height:5px; border-radius:100px; background:var(--line-strong); overflow:hidden; }
+  .rating-bar-fill{ height:100%; background:var(--cta-dark); border-radius:100px; transition:width 0.6s var(--ease-premium); }
+  .rating-bar-pct{ font-size:10.5px; color:var(--text-faint); width:30px; text-align:right; flex:none; }
+
+  /* Main column: sort control, list, form */
+  .reviews-main-head{ display:flex; align-items:center; justify-content:space-between; gap:16px; margin-bottom:6px; }
+  .reviews-main-title{ font-size:17px; }
+  .reviews-sort-wrap{ padding:3px 12px 3px 14px; }
+
   .review-list{ display:flex; flex-direction:column; }
-  .real-review{ border:none; padding:20px 0 !important; border-top:1px solid var(--line); margin:0; }
-  .real-review:first-child{ border-top:none; padding-top:8px !important; }
-  .real-review .review-text{ font-size:14px; font-style:normal; font-family:'Poppins',sans-serif; font-weight:300; color:var(--text-soft); line-height:1.6; }
-  .reviews-empty, .reviews-loading{ color:var(--text-soft); font-size:13.5px; padding:16px 0; }
-  .review-form{ margin-top:24px; padding-top:24px; border-top:1px solid var(--line); max-width:420px; }
-  .review-form h4{ font-size:14px; margin-bottom:12px; }
-  .review-star-input{ display:flex; gap:4px; font-size:24px; line-height:1; color:var(--line-strong); margin-bottom:14px; cursor:pointer; }
-  .review-star-input span{ transition:color 0.15s ease; }
-  .review-star-input span.active{ color:var(--cta-dark); }
+  .real-review{ border:none; padding:22px 0 !important; border-top:1px solid var(--line); margin:0; background:transparent; box-shadow:none; }
+  .real-review:hover{ transform:none; box-shadow:none; }
+  .real-review:first-child{ border-top:none; padding-top:14px !important; }
+  .real-review .review-top{ align-items:flex-start; gap:12px; margin-bottom:10px; }
+  .review-avatar{
+    flex:none; width:36px; height:36px; border-radius:50%;
+    display:flex; align-items:center; justify-content:center;
+    color:#fff; font-family:'Lora',serif; font-weight:600; font-size:13px; letter-spacing:0.02em;
+  }
+  .review-meta{ flex:1; min-width:0; }
+  .review-name-row{ display:flex; align-items:center; gap:9px; flex-wrap:wrap; }
+  .real-review .review-name{ font-size:13.5px; font-weight:600; color:var(--ink); }
+  .verified-badge{
+    display:inline-flex; align-items:center; gap:4px;
+    font-size:10px; font-weight:600; color:var(--sage);
+    background:rgba(124,152,133,0.12); padding:3px 8px 3px 7px; border-radius:100px;
+    text-transform:uppercase; letter-spacing:0.04em;
+  }
+  .verified-badge svg{ flex:none; }
+  .review-stars-row{ display:flex; align-items:center; gap:9px; margin-top:5px; }
+  .review-date{ font-size:11px; color:var(--text-faint); }
+  .review-delete-btn{
+    flex:none; background:none; border:none; padding:2px 4px; font-size:11.5px; font-weight:600;
+    color:var(--text-faint); opacity:0; transition:opacity 0.2s ease, color 0.2s ease;
+  }
+  .review-card-mine:hover .review-delete-btn{ opacity:1; }
+  .review-delete-btn:hover{ color:var(--danger); }
+  .real-review .review-text{
+    font-size:14px; font-style:normal; font-family:'Poppins',sans-serif; font-weight:300;
+    color:var(--text-soft); line-height:1.65; margin-left:48px; max-width:560px;
+  }
+
+  .reviews-empty, .reviews-loading{
+    color:var(--text-soft); font-size:13.5px; padding:36px 0;
+    display:flex; flex-direction:column; align-items:center; gap:12px; text-align:center;
+  }
+  .reviews-loading{ padding:24px 0; display:block; }
+
+  .review-form{ margin-top:20px; padding:24px; background:var(--card); border-radius:var(--radius); max-width:520px; }
+  .review-form h4{ font-size:14px; margin-bottom:14px; }
+  .review-star-input{ display:flex; gap:6px; font-size:26px; line-height:1; color:var(--line-strong); margin-bottom:14px; cursor:pointer; }
+  .review-star-input span{ transition:color 0.15s ease, transform 0.2s var(--ease-premium); display:inline-block; }
+  .review-star-input span:hover, .review-star-input span.active{ color:var(--cta-dark); }
+  .review-star-input span:hover{ transform:scale(1.12); }
   .review-form textarea{
-    width:100%; min-height:80px; resize:vertical; padding:12px 14px; border:1px solid var(--line-strong);
-    border-radius:var(--radius-sm); font-size:13px; margin-bottom:12px; font-family:'Poppins',sans-serif;
+    width:100%; min-height:84px; resize:vertical; padding:12px 14px; border:1px solid var(--line-strong);
+    border-radius:var(--radius-sm); font-size:13px; margin-bottom:14px; font-family:'Poppins',sans-serif;
+    background:#fff; transition:border-color 0.2s ease, box-shadow 0.2s ease;
   }
   .review-form textarea:focus{ outline:none; box-shadow:var(--ring); border-color:var(--sage); }
+  .review-form-footer{ display:flex; align-items:center; justify-content:space-between; gap:14px; flex-wrap:wrap; }
+  .review-form-hint{ font-size:11px; color:var(--text-faint); }
+  .review-form-footer .btn{ padding:11px 22px; font-size:13px; }
   .reviews-login-hint{ font-size:13px; color:var(--text-soft); margin-top:20px; }
   .reviews-login-hint a{ color:var(--cta-dark); font-weight:600; cursor:pointer; }
+
+  @media (max-width:900px){
+    .reviews-panel{ grid-template-columns:1fr; gap:28px; }
+    .reviews-summary-card{ position:static; flex-direction:row; flex-wrap:wrap; align-items:center; gap:0 22px; }
+    .rating-bars{ margin-top:18px; }
+    .real-review .review-text{ margin-left:0; }
+  }
   @media (max-width:980px){
     .review-grid{ grid-template-columns:1fr; }
     .review-card{ border-left:none; border-top:1px solid var(--line); padding:34px 0 0; }
@@ -899,7 +973,7 @@
     .pd-info-grid{ grid-template-columns:1fr; }
   }
   .pd-actions{ display:flex; align-items:center; gap:16px; margin-bottom:10px; }
-  .related-title{ margin:50px 0 24px; font-size:22px; }
+  .related-title{ margin:64px 0 24px; font-size:22px; }
 
   /* ---- Product detail: wearables size selector ---- */
   .pd-sizing{ margin-bottom:24px; }
@@ -1731,4 +1805,156 @@
 @media (prefers-reduced-motion: reduce){
   .hero-eyebrow, .hero-inner h1, .hero p.lead, .hero-actions{ animation:none; opacity:1; transform:none; }
   .scroll-progress{ transition:none; }
+}
+/* ---------- Promo overlay (fancy "New" launch banner, shown on page load) ---------- */
+.promo-overlay{
+  position:fixed; inset:0; z-index:800;
+  display:flex; align-items:center; justify-content:center;
+  padding:20px;
+  background:rgba(33,28,22,0.42);
+  backdrop-filter:blur(6px); -webkit-backdrop-filter:blur(6px);
+  opacity:0; visibility:hidden;
+  transition:opacity 0.5s var(--ease-premium), visibility 0.5s;
+}
+.promo-overlay.open{ opacity:1; visibility:visible; }
+
+.promo-modal{
+  position:relative;
+  width:100%; max-width:440px;
+  background:linear-gradient(160deg, var(--card) 0%, var(--bg) 100%);
+  border:1px solid var(--line);
+  border-radius:var(--radius-lg);
+  box-shadow:var(--shadow-lift);
+  padding:44px 38px 36px;
+  text-align:center;
+  overflow:hidden;
+  transform:translateY(28px) scale(0.94);
+  opacity:0;
+  transition:transform 0.55s var(--ease-premium), opacity 0.5s var(--ease-premium);
+}
+.promo-overlay.open .promo-modal{ transform:translateY(0) scale(1); opacity:1; }
+
+/* Soft rotating glow behind the content — reads as premium light,
+   not a gimmick, since it stays slow and subtle. */
+.promo-modal-glow{
+  position:absolute; top:50%; left:50%; z-index:0;
+  width:340px; height:340px;
+  transform:translate(-50%,-50%);
+  background:conic-gradient(from 0deg, rgba(192,133,82,0.16), rgba(124,152,133,0.14), rgba(124,147,166,0.12), rgba(192,133,82,0.16));
+  filter:blur(30px);
+  animation:promoGlowSpin 14s linear infinite;
+  pointer-events:none;
+}
+@keyframes promoGlowSpin{ to{ transform:translate(-50%,-50%) rotate(360deg); } }
+
+/* Tiny drifting sparkles — kept few and quiet, not confetti */
+.promo-modal-sparkles{ position:absolute; inset:0; z-index:0; pointer-events:none; }
+.promo-modal-sparkles span{
+  position:absolute;
+  width:4px; height:4px; border-radius:50%;
+  background:var(--cta);
+  opacity:0;
+  animation:promoSparkle 3.6s ease-in-out infinite;
+}
+.promo-modal-sparkles span:nth-child(1){ top:14%; left:12%; animation-delay:0.1s; background:var(--sage); }
+.promo-modal-sparkles span:nth-child(2){ top:22%; left:82%; animation-delay:0.9s; }
+.promo-modal-sparkles span:nth-child(3){ top:70%; left:9%;  animation-delay:1.6s; background:var(--dusk); }
+.promo-modal-sparkles span:nth-child(4){ top:78%; left:88%; animation-delay:0.5s; }
+.promo-modal-sparkles span:nth-child(5){ top:8%;  left:52%; animation-delay:2.1s; background:var(--sage); }
+.promo-modal-sparkles span:nth-child(6){ top:50%; left:94%; animation-delay:1.2s; }
+.promo-modal-sparkles span:nth-child(7){ top:88%; left:46%; animation-delay:2.6s; background:var(--dusk); }
+.promo-modal-sparkles span:nth-child(8){ top:40%; left:4%;  animation-delay:1.9s; }
+@keyframes promoSparkle{
+  0%, 100%{ opacity:0; transform:scale(0.6) translateY(0); }
+  50%{ opacity:0.9; transform:scale(1.3) translateY(-6px); }
+}
+
+.promo-modal-close{
+  position:absolute; top:16px; right:16px; z-index:2;
+  width:32px; height:32px; border-radius:50%;
+  display:flex; align-items:center; justify-content:center;
+  background:transparent; color:var(--text-soft);
+  transition:background 0.2s var(--ease-premium), color 0.2s, transform 0.2s;
+}
+.promo-modal-close:hover{ background:var(--ink); color:#fff; transform:rotate(90deg); }
+
+.promo-badge{
+  position:relative; z-index:1;
+  width:76px; height:76px;
+  margin:0 auto 20px;
+  display:flex; align-items:center; justify-content:center;
+  border-radius:50%;
+  background:linear-gradient(145deg, var(--cta), var(--cta-dark));
+  box-shadow:0 10px 26px rgba(192,133,82,0.38);
+  opacity:0; transform:scale(0.4) rotate(-20deg);
+  animation:promoBadgeIn 0.7s var(--ease-premium) forwards;
+  animation-delay:0.15s;
+}
+@keyframes promoBadgeIn{ to{ opacity:1; transform:scale(1) rotate(0deg); } }
+.promo-badge-ring{
+  position:absolute; inset:-6px;
+  border-radius:50%;
+  border:1.5px solid rgba(192,133,82,0.5);
+  animation:promoRingPulse 2.2s var(--ease-premium) infinite;
+}
+@keyframes promoRingPulse{
+  0%{ transform:scale(0.9); opacity:0.9; }
+  70%{ transform:scale(1.35); opacity:0; }
+  100%{ transform:scale(1.35); opacity:0; }
+}
+.promo-badge-text{
+  position:relative; z-index:1;
+  font-family:'Poppins', sans-serif;
+  font-weight:700; font-size:13px;
+  letter-spacing:0.08em;
+  color:#fff;
+  text-transform:uppercase;
+}
+
+.promo-eyebrow{
+  position:relative; z-index:1;
+  justify-content:center;
+  opacity:0; transform:translateY(10px);
+  animation:promoTextIn 0.6s var(--ease-premium) forwards;
+  animation-delay:0.32s;
+}
+.promo-modal h3{
+  position:relative; z-index:1;
+  font-size:28px; margin-top:10px;
+  opacity:0; transform:translateY(10px);
+  animation:promoTextIn 0.6s var(--ease-premium) forwards;
+  animation-delay:0.4s;
+}
+.promo-modal-copy{
+  position:relative; z-index:1;
+  margin-top:12px; font-size:14px; color:var(--text-soft);
+  max-width:340px; margin-left:auto; margin-right:auto;
+  opacity:0; transform:translateY(10px);
+  animation:promoTextIn 0.6s var(--ease-premium) forwards;
+  animation-delay:0.48s;
+}
+.promo-modal-actions{
+  position:relative; z-index:1;
+  display:flex; gap:12px; justify-content:center;
+  margin-top:26px;
+  opacity:0; transform:translateY(10px);
+  animation:promoTextIn 0.6s var(--ease-premium) forwards;
+  animation-delay:0.56s;
+}
+@keyframes promoTextIn{ to{ opacity:1; transform:translateY(0); } }
+
+@media (max-width:520px){
+  .promo-modal{ padding:38px 24px 30px; }
+  .promo-modal h3{ font-size:24px; }
+  .promo-modal-actions{ flex-direction:column-reverse; }
+  .promo-modal-actions .btn{ width:100%; }
+}
+
+@media (prefers-reduced-motion: reduce){
+  .promo-overlay, .promo-modal, .promo-badge, .promo-badge-ring,
+  .promo-eyebrow, .promo-modal h3, .promo-modal-copy, .promo-modal-actions,
+  .promo-modal-glow, .promo-modal-sparkles span{
+    animation:none !important; transition:opacity 0.2s linear !important;
+    opacity:1; transform:none;
+  }
 }
