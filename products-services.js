@@ -171,4 +171,69 @@ export async function cleanupLegacyFoodFields(foodCategories){
   return cleaned;
 }
 
-window.CCProducts = { fetchAllProducts, addProduct, updateProduct, deleteProduct, seedProducts, getCachedProducts, decrementStock, cleanupLegacyFoodFields };
+/* One-time migration for sized merch (Caps, Shorts, Socks) that was
+   seeded/added before per-size pricing existed, or that was seeded
+   before the starter catalog's `sizes` prices were spread out to match
+   the Shirts pattern. seedProducts() only ever ADDS missing docs and
+   never touches ones that already exist, so a product added back when
+   Shorts/Socks/Caps still had one flat price across all sizes stays
+   flat forever unless something like this walks through and fixes it.
+
+   sizedCategories/seedProductsList are passed in from script.js's
+   SIZED_CATEGORIES/SEED_PRODUCTS (same reasoning as
+   cleanupLegacyFoodFields taking foodCategories) so this file doesn't
+   duplicate that list and the two can't drift apart.
+
+   For each sized product that doesn't yet have real per-size pricing:
+   - If its id matches one of the built-in starter-catalog items, it
+     gets that item's exact sizes/prices (same graduated pricing the
+     Shirts already use).
+   - Otherwise (a custom product an admin added) a graduated schedule
+     is derived from its current flat price, on the same "smaller
+     sizes stay at the base price, bigger sizes step up" pattern as
+     the Shirts seed data, so it's not left flat.
+   - A product with only one size (e.g. a Cap's "One Size") is left
+     alone — there's nothing to graduate across a single size, and
+     that's expected, not a bug.
+   - A product that already has two-plus differently-priced sizes is
+     left alone — it's already migrated.
+
+   Returns the ids of every product that was actually changed. */
+export async function applyGraduatedSizePricing(sizedCategories, seedProductsList){
+  const snap = await getDocs(collection(db, PRODUCTS_COL));
+  const seedById = {};
+  seedProductsList.forEach(p => { seedById[p.id] = p; });
+
+  const updated = [];
+  for(const docSnap of snap.docs){
+    const data = docSnap.data();
+    if(!sizedCategories.includes(data.cat)) continue;
+    if(!data.sizes || data.sizes.length < 2) continue; // no sizes, or only one (e.g. One Size Caps) — nothing to graduate
+
+    const opts = data.sizes.map(s => typeof s === 'string' ? { size: s, price: data.price } : s);
+    const alreadyVaries = new Set(opts.map(o => o.price)).size > 1;
+    if(alreadyVaries) continue; // already has shirt-style per-size pricing
+
+    const seed = seedById[docSnap.id];
+    let newSizes;
+    if(seed && seed.cat === data.cat && seed.sizes && seed.sizes.length > 1){
+      newSizes = seed.sizes.map(s => ({ ...s }));
+    } else {
+      const base = opts[0].price;
+      const step = Math.max(10, Math.round((base * 0.07) / 10) * 10); // ~7% of base price per size-tier, rounded to nearest ₱10
+      const midpoint = Math.ceil(opts.length / 2);
+      newSizes = opts.map((o, i) => ({
+        size: o.size,
+        price: base + Math.max(0, i - midpoint + 1) * step
+      }));
+    }
+
+    const newPrice = Math.min(...newSizes.map(s => s.price));
+    await updateDoc(doc(db, PRODUCTS_COL, docSnap.id), { sizes: newSizes, price: newPrice });
+    patchCachedProduct(docSnap.id, { sizes: newSizes, price: newPrice });
+    updated.push(docSnap.id);
+  }
+  return updated;
+}
+
+window.CCProducts = { fetchAllProducts, addProduct, updateProduct, deleteProduct, seedProducts, getCachedProducts, decrementStock, cleanupLegacyFoodFields, applyGraduatedSizePricing };
