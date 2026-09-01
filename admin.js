@@ -130,6 +130,9 @@ function renderAdminProductsTable(){
           <button class="admin-icon-btn" data-admin-edit="${p.id}" title="Edit" aria-label="Edit ${p.name}">
             <svg width="15" height="15" viewBox="0 0 24 24" fill="none"><path d="M4 20l1-4L16.5 4.5a1.5 1.5 0 0 1 2 0l1 1a1.5 1.5 0 0 1 0 2L8 19l-4 1Z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/></svg>
           </button>
+          <button class="admin-icon-btn" data-admin-duplicate="${p.id}" title="Duplicate" aria-label="Duplicate ${p.name}">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none"><rect x="8" y="8" width="12" height="12" rx="2" stroke="currentColor" stroke-width="1.5"/><path d="M16 8V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h2" stroke="currentColor" stroke-width="1.5"/></svg>
+          </button>
           <button class="admin-icon-btn admin-icon-btn-danger" data-admin-delete="${p.id}" title="Delete" aria-label="Delete ${p.name}">
             <svg width="15" height="15" viewBox="0 0 24 24" fill="none"><path d="M5 7h14M9 7V5a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2m-8 0v12a1 1 0 0 0 1 1h6a1 1 0 0 0 1-1V7" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
           </button>
@@ -185,6 +188,42 @@ $(document).on('click', '[data-admin-edit]', function(){
 
 $(document).on('click', '#adminCancelEditBtn', function(){
   resetAdminProductForm();
+});
+
+/* Duplicate: pre-fills the Add/Edit form with an existing product's
+   fields as a brand new (unsaved) product, instead of editing the
+   original. Meant for "same product, different size/price" cases —
+   e.g. a second tote bag design — so the admin doesn't have to
+   retype the name, category, description, image, and every size row
+   from scratch. adminEditingId is left null so Save runs as a real
+   addProduct() call and creates a separate catalog entry; the
+   original product is never touched. */
+$(document).on('click', '[data-admin-duplicate]', function(){
+  const p = PRODUCTS.find(x => x.id === $(this).data('admin-duplicate'));
+  if(!p) return;
+
+  adminEditingId = null;
+  $('#apEditId').val('');
+  $('#apName').val(p.name + ' (Copy)');
+  $('#apPrice').val(p.price);
+  $('#apCategory').val(p.cat);
+  $('#apDesc').val(p.desc || '');
+  $('#apImg').val(p.img || '');
+  $('#apIngredients').val(p.ingredients || '');
+  $('#apAllergens').val(p.allergens || '');
+  $('#apStock').val(p.stock !== undefined && p.stock !== null ? p.stock : '');
+  toggleFoodFields(p.cat);
+  renderSizePriceRows(p.cat, p); // pre-fills each size's price too — just adjust and save
+
+  $('#adminFormTitle').text(`Duplicate "${p.name}"`);
+  $('#adminFormSubmitBtn').text('Add Product');
+  $('#adminCancelEditBtn').show();
+
+  $('.admin-tab').removeClass('active');
+  $('.admin-tab[data-admin-tab="add-product"]').addClass('active');
+  $('.admin-panel').removeClass('active');
+  $('.admin-panel[data-admin-panel="add-product"]').addClass('active');
+  showToast(`Duplicated "${p.name}" — adjust sizing/price, then Add Product.`);
 });
 
 function resetAdminProductForm(){
@@ -252,6 +291,18 @@ $(document).on('change', '#apCategory', function(){
   const existing = adminEditingId ? PRODUCTS.find(x => x.id === adminEditingId) : null;
   toggleFoodFields(cat);
   renderSizePriceRows(cat, existing);
+});
+
+/* Number inputs silently change their value when the mouse wheel
+   scrolls over them while focused — an easy way to accidentally
+   mis-price a product just by scrolling the page past the field.
+   Blurring on wheel stops that: the input immediately loses focus so
+   the scroll event falls through to the page as a normal scroll
+   instead of being swallowed to bump the number. Prices on these
+   fields (the flat Price field and every per-size price row) are
+   meant to be typed by hand only. */
+$(document).on('wheel', '#apPrice, .size-price-input', function(){
+  $(this).blur();
 });
 
 /* Delete: confirm, then remove from Firestore and the in-memory list */
