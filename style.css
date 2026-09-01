@@ -1469,6 +1469,23 @@
   }
   .size-price-input:focus{ border-color:var(--sage); box-shadow:var(--ring); }
 
+  /* Price fields (single Price input + per-size price rows) are meant
+     to be typed, not spun/scrolled — scrolling the mouse wheel over a
+     focused number input silently changes the value, which is an easy
+     way for an admin to accidentally mis-price a product while just
+     scrolling the page. #apPrice.no-spin/.size-price-input pair this
+     with the wheel-blur handler in admin.js (which stops the value
+     from changing on scroll); this rule just hides the up/down spin
+     arrows so the field visually reads as "type a number" only. */
+  #apPrice, .size-price-input{
+    -moz-appearance: textfield;
+  }
+  #apPrice::-webkit-outer-spin-button, #apPrice::-webkit-inner-spin-button,
+  .size-price-input::-webkit-outer-spin-button, .size-price-input::-webkit-inner-spin-button{
+    -webkit-appearance: none;
+    margin: 0;
+  }
+
   /* ---------- Password show/hide toggle ---------- */
   .password-field{ position:relative; }
   .password-field input{ padding-right:44px; }
