@@ -119,165 +119,162 @@ const SEED_PRODUCTS = [
     allergens:'Gluten (wheat), Milk, Egg.' },
 
   /* ---- Drinks: Caffeine ---- */
-  { id:'p28', name:'Spanish Latte', cat:'Coffee', price:0,
+  { id:'p28', name:'Spanish Latte', cat:'Coffee', price:139,
     desc:'Espresso balanced with steamed milk and sweetened condensed milk.',
     img:'spanish latte.png', imgs:['spanish latte.png'],
     ingredients:'Espresso, steamed milk, condensed milk.',
-    allergens:'Milk.' },
-  { id:'p29', name:'Iced Americano', cat:'Coffee', price:0,
+    allergens:'Milk.',
+    sizes:[ { size:'12oz', price:139 }, { size:'16oz', price:159 }, { size:'20oz', price:179 } ] },
+  { id:'p29', name:'Iced Americano', cat:'Coffee', price:109,
     desc:'Bold espresso shots poured over ice and cold water for a clean, crisp finish.',
     img:'icedamericano.png', imgs:['icedamericano.png'],
     ingredients:'Espresso, cold water, ice.',
-    allergens:'None known.' },
-  { id:'p30', name:'White Mocha', cat:'Coffee', price:0,
+    allergens:'None known.',
+    sizes:[ { size:'12oz', price:109 }, { size:'16oz', price:129 }, { size:'20oz', price:149 } ] },
+  { id:'p30', name:'White Mocha', cat:'Coffee', price:149,
     desc:'Espresso blended with steamed milk and sweet white chocolate sauce.',
     img:'whitemocha.png', imgs:['whitemocha.png'],
     ingredients:'Espresso, steamed milk, white chocolate sauce.',
-    allergens:'Milk.' },
-  { id:'p31', name:'Vanilla Sweet Cream', cat:'Coffee', price:0,
+    allergens:'Milk.',
+    sizes:[ { size:'12oz', price:149 }, { size:'16oz', price:169 }, { size:'20oz', price:189 } ] },
+  { id:'p31', name:'Vanilla Sweet Cream', cat:'Coffee', price:139,
     desc:'Espresso topped with a smooth vanilla sweet cream foam.',
     img:'vanillacream.png', imgs:['vanillacream.png'],
     ingredients:'Espresso, milk, vanilla syrup, sweet cream foam.',
-    allergens:'Milk.' },
-  { id:'p32', name:'Dark Caramel Macchiato', cat:'Coffee', price:0,
+    allergens:'Milk.',
+    sizes:[ { size:'12oz', price:139 }, { size:'16oz', price:159 }, { size:'20oz', price:179 } ] },
+  { id:'p32', name:'Dark Caramel Macchiato', cat:'Coffee', price:149,
     desc:'Espresso layered with steamed milk and finished with dark caramel drizzle.',
     img:'darkcaramelmach.png', imgs:['darkcaramelmach.png'],
     ingredients:'Espresso, steamed milk, vanilla syrup, dark caramel sauce.',
-    allergens:'Milk.' },
+    allergens:'Milk.',
+    sizes:[ { size:'12oz', price:149 }, { size:'16oz', price:169 }, { size:'20oz', price:189 } ] },
 
   /* ---- Drinks: Non-Caffeine ---- */
-  { id:'p33', name:'Iced Matcha Latte', cat:'Non-Coffee', price:0,
+  { id:'p33', name:'Iced Matcha Latte', cat:'Non-Coffee', price:149,
     desc:'Ceremonial matcha whisked with cold milk and poured over ice.',
     img:'IcedGreenTeaLatte.jpg', imgs:['IcedGreenTeaLatte.jpg'],
     ingredients:'Matcha powder, milk, light syrup, ice.',
-    allergens:'Milk.' },
-  { id:'p34', name:'Hot Chocolate', cat:'Non-Coffee', price:0,
+    allergens:'Milk.',
+    sizes:[ { size:'12oz', price:149 }, { size:'16oz', price:169 }, { size:'20oz', price:189 } ] },
+  { id:'p34', name:'Hot Chocolate', cat:'Non-Coffee', price:119,
     desc:'Rich cocoa steamed with milk for a warm, comforting classic.',
     img:'hot-chocolate.jpeg', imgs:['hot-chocolate.jpeg'],
     ingredients:'Cocoa, milk, sugar.',
-    allergens:'Milk.' },
-  { id:'p35', name:'Chai Tea Cream', cat:'Non-Coffee', price:0,
+    allergens:'Milk.',
+    sizes:[ { size:'12oz', price:119 }, { size:'16oz', price:139 }, { size:'20oz', price:159 } ] },
+  { id:'p35', name:'Chai Tea Cream', cat:'Non-Coffee', price:129,
     desc:'Spiced chai tea blended with steamed milk and a light layer of cream.',
     img:'chaiteacream.png', imgs:['chaiteacream.png'],
     ingredients:'Chai tea concentrate, milk, warm spices, cream.',
-    allergens:'Milk.' },
-  { id:'p36', name:'Soy Milk', cat:'Non-Coffee', price:0,
+    allergens:'Milk.',
+    sizes:[ { size:'12oz', price:129 }, { size:'16oz', price:149 }, { size:'20oz', price:169 } ] },
+  { id:'p36', name:'Soy Milk', cat:'Non-Coffee', price:99,
     desc:'A smooth, plant-based milk option served warm or over ice.',
     img:'soy milk.jpg', imgs:['soy milk.jpg'],
     ingredients:'Soy milk.',
-    allergens:'Soy.' },
-  { id:'p37', name:'Oat Milk', cat:'Non-Coffee', price:0,
+    allergens:'Soy.',
+    sizes:[ { size:'12oz', price:99 }, { size:'16oz', price:119 }, { size:'20oz', price:139 } ] },
+  { id:'p37', name:'Oat Milk', cat:'Non-Coffee', price:109,
     desc:'Creamy, naturally sweet oat milk, our go-to dairy-free option.',
     img:'oatmilk.png', imgs:['oatmilk.png'],
     ingredients:'Oat milk.',
-    allergens:'Oats. May contain traces of gluten.' },
+    allergens:'Oats. May contain traces of gluten.',
+    sizes:[ { size:'12oz', price:109 }, { size:'16oz', price:129 }, { size:'20oz', price:149 } ] },
 
   /* ---- Drinks: Tea ---- */
-  { id:'p38', name:'Iced Hibiscus Tea with Honey Pearls', cat:'Tea', price:0,
+  { id:'p38', name:'Iced Hibiscus Tea with Honey Pearls', cat:'Tea', price:119,
     desc:'Tart hibiscus tea served cold with chewy honey glazed pearls.',
     img:'hibiscustea.png', imgs:['hibiscustea.png'],
     ingredients:'Hibiscus tea, honey pearls, ice.',
-    allergens:'None known.' },
-  { id:'p39', name:'Classic Organic Earl Grey', cat:'Tea', price:0,
+    allergens:'None known.',
+    sizes:[ { size:'12oz', price:119 }, { size:'16oz', price:139 }, { size:'20oz', price:159 } ] },
+  { id:'p39', name:'Classic Organic Earl Grey', cat:'Tea', price:99,
     desc:'Organic black tea leaves infused with fragrant bergamot.',
     img:'earlgrey.png', imgs:['earlgrey.png'],
     ingredients:'Organic Earl Grey tea leaves.',
-    allergens:'None known.' },
-  { id:'p40', name:'Iced Matcha with a Shot of Espresso', cat:'Tea', price:0,
+    allergens:'None known.',
+    sizes:[ { size:'12oz', price:99 }, { size:'16oz', price:119 }, { size:'20oz', price:139 } ] },
+  { id:'p40', name:'Iced Matcha with a Shot of Espresso', cat:'Tea', price:149,
     desc:'Iced matcha latte with a bold shot of espresso stirred through.',
     img:'matchaespresso.png', imgs:['matchaespresso.png'],
     ingredients:'Matcha powder, milk, espresso, ice.',
-    allergens:'Milk. Contains caffeine.' },
-  { id:'p41', name:'Black Tea', cat:'Tea', price:0,
+    allergens:'Milk. Contains caffeine.',
+    sizes:[ { size:'12oz', price:149 }, { size:'16oz', price:169 }, { size:'20oz', price:189 } ] },
+  { id:'p41', name:'Black Tea', cat:'Tea', price:89,
     desc:'A straightforward, full-bodied classic black tea, hot or iced.',
     img:'blacktea.png', imgs:['blacktea.png'],
     ingredients:'Black tea leaves.',
-    allergens:'None known.' },
-  { id:'p42', name:'Grapefruit Honey Iced Tea', cat:'Tea', price:0,
+    allergens:'None known.',
+    sizes:[ { size:'12oz', price:89 }, { size:'16oz', price:109 }, { size:'20oz', price:129 } ] },
+  { id:'p42', name:'Grapefruit Honey Iced Tea', cat:'Tea', price:109,
     desc:'Black tea brightened with grapefruit and a touch of honey, served over ice.',
     img:'grapefruittea.png', imgs:['grapefruittea.png'],
     ingredients:'Black tea, grapefruit, honey, ice.',
-    allergens:'None known.' },
+    allergens:'None known.',
+    sizes:[ { size:'12oz', price:109 }, { size:'16oz', price:129 }, { size:'20oz', price:149 } ] },
 
   /* ---- Merchandise: Wearables ---- */
   { id:'w-shirt-1', name:'Classic Logo Shirt', cat:'Shirts', price:449,
     desc:'Soft cotton shirt with the Crafts and Crumbs logo, made for everyday wear.',
     img:blankPlaceholder('w-shirt-1','Shirts'), imgs:[blankPlaceholder('w-shirt-1','Shirts')],
-    sizes:[
-      { size:'XS', price:449 }, { size:'S', price:449 }, { size:'M', price:449 },
-      { size:'L', price:499 }, { size:'XL', price:549 }, { size:'XXL', price:599 },
-    ],
+    sizes:['XS','S','M','L','XL','XXL'],
     fit:'Regular Fit', },
   { id:'w-shirt-2', name:'Cropped Tee', cat:'Shirts', price:399,
     desc:'Relaxed cropped tee with a small embroidered Crafts and Crumbs mark.',
     img:blankPlaceholder('w-shirt-2','Shirts'), imgs:[blankPlaceholder('w-shirt-2','Shirts')],
-    sizes:[
-      { size:'XS', price:399 }, { size:'S', price:399 },
-      { size:'M', price:429 }, { size:'L', price:429 },
-    ],
+    sizes:['XS','S','M','L'],
     fit:'Cropped Fit', },
   { id:'w-shirt-3', name:'Oversized Shirt', cat:'Shirts', price:549,
     desc:'Boxy, oversized fit shirt in heavyweight cotton with back print.',
     img:blankPlaceholder('w-shirt-3','Shirts'), imgs:[blankPlaceholder('w-shirt-3','Shirts')],
-    sizes:[
-      { size:'S', price:549 }, { size:'M', price:549 }, { size:'L', price:599 },
-      { size:'XL', price:649 }, { size:'XXL', price:699 },
-    ],
+    sizes:['S','M','L','XL','XXL'],
     fit:'Oversized Fit', },
 
   { id:'w-cap-1', name:'Classic Cap', cat:'Caps', price:349,
     desc:'Adjustable cap embroidered with the Crafts and Crumbs mark.',
     img:blankPlaceholder('w-cap-1','Caps'), imgs:[blankPlaceholder('w-cap-1','Caps')],
-    sizes:[ { size:'One Size', price:349 } ],
+    sizes:['One Size'],
     fit:'Adjustable', },
   { id:'w-cap-2', name:'Trucker Cap', cat:'Caps', price:379,
     desc:'Mesh-back trucker cap with a snapback closure and woven patch.',
     img:blankPlaceholder('w-cap-2','Caps'), imgs:[blankPlaceholder('w-cap-2','Caps')],
-    sizes:[ { size:'One Size', price:379 } ],
+    sizes:['One Size'],
     fit:'Adjustable', },
   { id:'w-cap-3', name:'Bucket Hat', cat:'Caps', price:399,
     desc:'Cotton twill bucket hat with a subtle embroidered logo.',
     img:blankPlaceholder('w-cap-3','Caps'), imgs:[blankPlaceholder('w-cap-3','Caps')],
-    sizes:[ { size:'One Size', price:399 } ],
+    sizes:['One Size'],
     fit:'Adjustable', },
 
   { id:'w-short-1', name:'Classic Shorts', cat:'Shorts', price:399,
     desc:'Comfortable everyday shorts featuring the Crafts and Crumbs branding.',
     img:blankPlaceholder('w-short-1','Shorts'), imgs:[blankPlaceholder('w-short-1','Shorts')],
-    sizes:[
-      { size:'XS', price:399 }, { size:'S', price:399 }, { size:'M', price:429 },
-      { size:'L', price:429 }, { size:'XL', price:459 }, { size:'XXL', price:489 },
-    ],
+    sizes:['XS','S','M','L','XL','XXL'],
     fit:'Regular Fit', },
   { id:'w-short-2', name:'Jogger Shorts', cat:'Shorts', price:499,
     desc:'Fleece jogger shorts with an elastic waistband and side pockets.',
     img:blankPlaceholder('w-short-2','Shorts'), imgs:[blankPlaceholder('w-short-2','Shorts')],
-    sizes:[
-      { size:'XS', price:499 }, { size:'S', price:499 },
-      { size:'M', price:529 }, { size:'L', price:529 }, { size:'XL', price:559 },
-    ],
+    sizes:['XS','S','M','L','XL'],
     fit:'Relaxed Fit', },
   { id:'w-short-3', name:'Cargo Shorts', cat:'Shorts', price:549,
     desc:'Utility cargo shorts with side pockets and an embroidered tag.',
     img:blankPlaceholder('w-short-3','Shorts'), imgs:[blankPlaceholder('w-short-3','Shorts')],
-    sizes:[
-      { size:'S', price:549 }, { size:'M', price:549 }, { size:'L', price:579 },
-      { size:'XL', price:609 }, { size:'XXL', price:639 },
-    ],
+    sizes:['S','M','L','XL','XXL'],
     fit:'Relaxed Fit', },
 
   { id:'w-socks-1', name:'Crew Socks', cat:'Socks', price:159,
     desc:'Cozy crew socks with a cafe-inspired print.',
     img:blankPlaceholder('w-socks-1','Socks'), imgs:[blankPlaceholder('w-socks-1','Socks')],
-    sizes:[ { size:'S', price:159 }, { size:'M', price:159 }, { size:'L', price:179 } ], },
+    sizes:['S','M','L'], },
   { id:'w-socks-2', name:'Ankle Socks', cat:'Socks', price:149,
     desc:'Low-cut ankle socks with a woven logo band.',
     img:blankPlaceholder('w-socks-2','Socks'), imgs:[blankPlaceholder('w-socks-2','Socks')],
-    sizes:[ { size:'S', price:149 }, { size:'M', price:149 }, { size:'L', price:169 } ], },
+    sizes:['S','M','L'], },
   { id:'w-socks-3', name:'Knit Socks', cat:'Socks', price:179,
     desc:'Ribbed knit socks in warm, cafe-inspired tones.',
     img:blankPlaceholder('w-socks-3','Socks'), imgs:[blankPlaceholder('w-socks-3','Socks')],
-    sizes:[ { size:'S', price:179 }, { size:'M', price:179 }, { size:'L', price:199 } ], },
+    sizes:['S','M','L'], },
 
   { id:'w-tote-1', name:'Canvas Tote', cat:'ToteBags', price:0,
     desc:'Sturdy canvas tote for carrying home your coffee and pastry haul.',
@@ -471,11 +468,12 @@ const MERCH_SIDEBAR = [
   ]},
 ];
 
-/* Categories that price per-size (see the seed data above, where each
-   of these has a `sizes: [{size, price}, ...]` array instead of a flat
-   price) vs everything else, which is priced as a single item. Shared
-   by the admin Add/Edit Product form (to know when to show size-price
-   rows instead of one Price field) and by getSizeOptions() below. */
+/* Wearable categories that price flat but track stock per size (see
+   the seed data above, where each has a `sizes: ['XS','S',...]`
+   array). Used by the admin Add/Edit form's stock-per-size UI and by
+   the "Flatten Size Pricing" legacy cleanup tool — it does NOT include
+   Coffee/Non-Coffee/Tea, which intentionally DO price per size
+   (12oz/16oz/20oz) and must never be "flattened" back to one price. */
 const SIZED_CATEGORIES = ['Shirts', 'Caps', 'Shorts', 'Socks'];
 const CAT_LABELS = {
   'Coffee': { group:'Drinks', sub:'Caffeine' },
@@ -498,15 +496,54 @@ const peso = n => '₱' + n.toLocaleString('en-PH');
 const findProduct = id => PRODUCTS.find(p => p.id === id);
 const escapeHtml = str => $('<div>').text(str == null ? '' : str).html();
 
-/* Normalizes a product's `sizes` field to `[{size, price}, ...]` no
-   matter which shape it's actually in — new admin-saved products use
-   objects with their own price, but anything seeded/edited before this
-   feature existed still has plain strings (['S','M','L']) and one flat
-   top-level price. Everything else in the app reads sizes through this
-   instead of touching p.sizes directly, so both shapes keep working. */
+/* Normalizes a product's `sizes` field to `[{size, price, stock}, ...]`
+   no matter which shape it's actually in:
+   - plain string ('S') — legacy/seed data, flat price, no stock tracked
+   - {size, price} — drinks (Coffee/Non-Coffee/Tea): 12oz/16oz/20oz each
+     priced independently; stock isn't tracked per size for these
+   - {size, stock} — wearables (Shirts/Caps/Shorts/Socks): one flat
+     price, stock tracked per size
+   `stock: null` means stock isn't tracked for that size at all, which
+   the storefront treats as always available (never crossed out). */
 function getSizeOptions(p){
   if(!p.sizes) return [];
-  return p.sizes.map(s => typeof s === 'string' ? { size: s, price: p.price } : s);
+  return p.sizes.map(s => {
+    if(typeof s === 'string') return { size: s, price: p.price, stock: null };
+    return {
+      size: s.size,
+      price: typeof s.price === 'number' ? s.price : p.price,
+      stock: typeof s.stock === 'number' ? s.stock : null
+    };
+  });
+}
+
+/* True when a specific size is out of stock — only ever true when
+   that size actually has stock tracked (stock isn't null) and it's
+   down to zero or below. A size with no stock tracking at all is
+   always treated as available. */
+function isSizeOutOfStock(p, sizeLabel){
+  const opts = getSizeOptions(p);
+  const match = opts.find(o => o.size === sizeLabel);
+  return !!match && match.stock !== null && match.stock <= 0;
+}
+
+/* Single source of truth for "is this product out of stock", shared by
+   every customer-facing surface (grid cards, quick add, product detail
+   page) so they always agree with each other AND with the admin
+   dashboard's stock badge (admin.js), which is built from these same
+   two stock shapes:
+   - Per-size tracked (wearables — Shirts/Caps/Shorts/Socks): out of
+     stock only once every size that actually tracks stock is at 0 or
+     below. Sizes with stock:null (untracked) don't count either way.
+   - Flat top-level stock (drinks, food, ToteBags/Bracelets/Keychains):
+     out of stock when p.stock is a tracked number <= 0.
+   A product with no stock tracked anywhere (p.stock is null/undefined
+   and no sizes track stock) is always treated as available — same as
+   the admin table's "—" badge. */
+function isProductOutOfStock(p){
+  const trackedSizes = getSizeOptions(p).filter(o => o.stock !== null);
+  if(trackedSizes.length) return trackedSizes.every(o => o.stock <= 0);
+  return typeof p.stock === 'number' && p.stock <= 0;
 }
 
 function getPriceForSize(p, sizeLabel){
@@ -517,30 +554,26 @@ function getPriceForSize(p, sizeLabel){
 }
 
 /* The price to show before a size is picked — the lowest of the
-   available sizes, e.g. a shirt that runs ₱449–₱599 just shows ₱449. */
+   available sizes, e.g. a latte that runs ₱139–₱179 just shows ₱139. */
 function getDisplayPrice(p){
   const opts = getSizeOptions(p);
   if(!opts.length) return p.price;
   return Math.min(...opts.map(o => o.price));
 }
 
-/* True when at least two sizes are actually priced differently — used
-   to decide whether each size chip on the product page needs its own
-   price shown (socks are all one price, for instance, so there's
-   nothing extra to show there). */
+/* True when at least two sizes are actually priced differently — true
+   for every drink (12oz/16oz/20oz each cost more) and false for
+   wearables (one flat price regardless of size), which is what
+   decides whether each size chip needs its own price shown. */
 function hasVariablePricing(p){
   const opts = getSizeOptions(p);
   if(opts.length < 2) return false;
   return new Set(opts.map(o => o.price)).size > 1;
 }
 
-/* Was always peso(getDisplayPrice(p)) — the LOWEST size's price only.
-   That made the admin table and storefront cards look "stuck": raising
-   the price on any size other than the cheapest one changed nothing
-   visible, since the lowest price shown never moved. Sized products
-   with genuinely different prices per size now show a range instead
-   (e.g. "₱449–₱599"); everything else (single price, or same price
-   across all sizes) still shows one number exactly as before. */
+/* Drinks show a range across their three sizes (e.g. "₱139–₱179");
+   everything else (one flat price, sized or not) shows a single
+   number. */
 function priceLabel(p){
   if(hasVariablePricing(p)){
     const opts = getSizeOptions(p);
@@ -969,10 +1002,12 @@ $(document).on('click', '[data-menu-filter]', function(){
 
 function productCard(p, i=0){
   const saved = isWishlisted(p.id);
+  const oos = isProductOutOfStock(p);
   return `
-    <div class="product-card reveal" style="--i:${i}">
+    <div class="product-card reveal${oos ? ' oos' : ''}" style="--i:${i}">
       <div class="product-img" data-open-product="${p.id}">
         <img src="${p.img}" alt="${p.name}">
+        ${oos ? '<span class="oos-badge">Out of Stock</span>' : ''}
         <button type="button" class="wishlist-btn ${saved ? 'active' : ''}" data-wishlist-toggle="${p.id}" aria-label="${saved ? 'Remove from favorites' : 'Save to favorites'}">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="${saved ? 'currentColor' : 'none'}"><path d="M12 21s-7.5-4.6-10-9.3C.6 8.1 2.4 4.5 6 4c2-.3 3.7.7 6 3 2.3-2.3 4-3.3 6-3 3.6.5 5.4 4.1 4 7.7C19.5 16.4 12 21 12 21z" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/></svg>
         </button>
@@ -982,7 +1017,7 @@ function productCard(p, i=0){
         <div class="product-desc">${p.desc}</div>
         <div class="product-footer">
           <span class="price">${priceLabel(p)}</span>
-          <button class="add-btn" data-quick-add="${p.id}" aria-label="Add to cart">
+          <button class="add-btn" data-quick-add="${p.id}" aria-label="${oos ? 'Out of stock' : 'Add to cart'}" ${oos ? 'disabled' : ''}>
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M12 5v14M5 12h14" stroke="#fff" stroke-width="2.2" stroke-linecap="round"/></svg>
           </button>
         </div>
@@ -1001,11 +1036,13 @@ function placeholderImg(p){
 }
 
 function bestSellerCard(p, i){
+  const oos = isProductOutOfStock(p);
   return `
-    <div class="product-card best-card" style="--i:${i}">
+    <div class="product-card best-card${oos ? ' oos' : ''}" style="--i:${i}">
       <div class="product-img" data-open-product="${p.id}">
         <span class="bestseller-tag">${String(i+1).padStart(2,'0')}</span>
         <img src="${p.img}" alt="${p.name}">
+        ${oos ? '<span class="oos-badge">Out of Stock</span>' : ''}
         <div class="best-card-shade"></div>
       </div>
       <div class="product-info">
@@ -1014,7 +1051,7 @@ function bestSellerCard(p, i){
         <div class="product-desc">${p.desc}</div>
         <div class="product-footer">
           <span class="price">${priceLabel(p)}</span>
-          <button class="add-btn" data-quick-add="${p.id}" aria-label="Add to cart">
+          <button class="add-btn" data-quick-add="${p.id}" aria-label="${oos ? 'Out of stock' : 'Add to cart'}" ${oos ? 'disabled' : ''}>
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M12 5v14M5 12h14" stroke="#fff" stroke-width="2.2" stroke-linecap="round"/></svg>
           </button>
         </div>
@@ -1192,8 +1229,12 @@ $(document).on('click', '[data-quick-add]', function(e){
   e.stopPropagation();
   const id = $(this).data('quick-add');
   const p = findProduct(id);
+  if(isProductOutOfStock(p)){
+    showToast('This item is out of stock.');
+    return;
+  }
   const opts = getSizeOptions(p);
-  if(SIZE_CHARTS[p.cat] && opts.length > 1){
+  if(opts.length > 1){
     currentProductId = id;
     navigate('product');
     showToast('Please select a size');
@@ -1211,7 +1252,9 @@ function renderMenuSidebar(){
   const html = MENU_SIDEBAR.map(g => `
     <div class="sidebar-group">
       <div class="sidebar-group-title">${g.group}</div>
-      ${g.items.map(it => `<a class="sidebar-link ${menuFilter===it.cat?'active':''}" data-menu-cat="${it.cat}">${it.label}</a>`).join('')}
+      <div class="sidebar-group-items">
+        ${g.items.map(it => `<a class="sidebar-link ${menuFilter===it.cat?'active':''}" data-menu-cat="${it.cat}">${it.label}</a>`).join('')}
+      </div>
     </div>
   `).join('');
   $('#menuSidebarGroups').html(html);
@@ -1267,9 +1310,11 @@ $(document).on('change', '#menuSort', function(){
 /* ================= RENDER: MERCHANDISE ================= */
 function renderMerchSidebar(){
   const html = MERCH_SIDEBAR.map(g => `
-    <div class="sidebar-group">
+    <div class="sidebar-group${g.group ? '' : ' sidebar-group-untitled'}">
       ${g.group ? `<div class="sidebar-group-title">${g.group}</div>` : ''}
-      ${g.items.map(it => `<a class="sidebar-link ${merchFilter===it.cat?'active':''}" data-merch-cat="${it.cat}">${it.label}</a>`).join('')}
+      <div class="sidebar-group-items">
+        ${g.items.map(it => `<a class="sidebar-link ${merchFilter===it.cat?'active':''}" data-merch-cat="${it.cat}">${it.label}</a>`).join('')}
+      </div>
     </div>
   `).join('');
   $('#merchSidebarGroups').html(html);
@@ -1323,44 +1368,60 @@ $(document).on('change', '#merchSort', function(){
 });
 
 /* ================= RENDER: PRODUCT DETAIL ================= */
-/* Renders either the ingredients/allergens block (food) or a Uniqlo-style
-   size selector + fit tag + measurement guide (wearables with a SIZE_CHARTS
-   entry). Other merch (totes, bracelets, keychains) gets neither. */
+/* Renders the size selector (any product with a `sizes` array — both
+   wearables with a SIZE_CHARTS fit guide and drinks with plain
+   12oz/16oz/20oz pricing), the ingredients/allergens block (any
+   product with `ingredients` — food AND drinks), or both together for
+   a sized drink. Other merch (totes, bracelets, keychains) gets
+   neither. */
 function renderPdSecondary(p){
   const chart = SIZE_CHARTS[p.cat];
-  if(chart){
+  let sizingHtml = '';
+  if(p.sizes && p.sizes.length){
     const opts = getSizeOptions(p);
     const singleSize = opts.length === 1;
     const variable = hasVariablePricing(p);
-    return `
+    sizingHtml = `
       <div class="pd-sizing">
         <div class="pd-sizing-head">
           <h4>${singleSize ? 'Size' : 'Select Size'}</h4>
           ${p.fit ? `<span class="pd-fit-tag">${p.fit}</span>` : ''}
         </div>
         ${singleSize ? `
-          <div class="size-chip active" data-pd-size="${opts[0].size}">${opts[0].size}</div>
+          <div class="size-chip active${opts[0].stock !== null && opts[0].stock <= 0 ? ' size-chip-oos' : ''}" data-pd-size="${opts[0].size}">
+            <span class="size-chip-label">${opts[0].size}</span>
+            ${opts[0].stock !== null && opts[0].stock <= 0 ? '<span class="size-chip-oos-label">Out of stock</span>' : ''}
+          </div>
         ` : `
           <div class="size-chip-row" id="pdSizeRow">
-            ${opts.map(o => `<button type="button" class="size-chip" data-pd-size="${o.size}">${o.size}${variable ? `<span class="size-chip-price">${peso(o.price)}</span>` : ''}</button>`).join('')}
+            ${opts.map(o => {
+              const oos = o.stock !== null && o.stock <= 0;
+              return `<button type="button" class="size-chip${oos ? ' size-chip-oos' : ''}" data-pd-size="${o.size}" ${oos ? 'disabled' : ''}>
+                <span class="size-chip-label">${o.size}</span>${variable ? `<span class="size-chip-price">${peso(o.price)}</span>` : ''}
+                ${oos ? '<span class="size-chip-oos-label">Out of stock</span>' : ''}
+              </button>`;
+            }).join('')}
           </div>
         `}
-        <button type="button" class="size-guide-toggle" id="pdSizeGuideToggle">Size Guide</button>
-        <div class="size-guide-table" id="pdSizeGuideTable" style="display:none;">
-          <table>
-            <thead><tr><th>Size</th>${chart.columns.map(c=>`<th>${c}${chart.unit? ` (${chart.unit})`:''}</th>`).join('')}</tr></thead>
-            <tbody>
-              ${Object.entries(chart.rows).map(([size, vals]) => `
-                <tr><td>${size}</td>${vals.map(v=>`<td>${v}</td>`).join('')}</tr>
-              `).join('')}
-            </tbody>
-          </table>
-        </div>
+        ${chart ? `
+          <button type="button" class="size-guide-toggle" id="pdSizeGuideToggle">Size Guide</button>
+          <div class="size-guide-table" id="pdSizeGuideTable" style="display:none;">
+            <table>
+              <thead><tr><th>Size</th>${chart.columns.map(c=>`<th>${c}${chart.unit? ` (${chart.unit})`:''}</th>`).join('')}</tr></thead>
+              <tbody>
+                ${Object.entries(chart.rows).map(([size, vals]) => `
+                  <tr><td>${size}</td>${vals.map(v=>`<td>${v}</td>`).join('')}</tr>
+                `).join('')}
+              </tbody>
+            </table>
+          </div>
+        ` : ''}
       </div>
     `;
   }
+  let infoHtml = '';
   if(p.ingredients){
-    return `
+    infoHtml = `
       <div class="pd-info-grid">
         <div class="pd-ingredients">
           <h4>Ingredients</h4>
@@ -1373,20 +1434,25 @@ function renderPdSecondary(p){
       </div>
     `;
   }
-  return '';
+  return sizingHtml + infoHtml;
 }
 
 function renderProductDetail(){
   const p = findProduct(currentProductId);
   pdQty = 1;
   const pdOpts = getSizeOptions(p);
-  pdSize = (SIZE_CHARTS[p.cat] && pdOpts.length === 1) ? pdOpts[0].size : null;
+  pdSize = pdOpts.length === 1 ? pdOpts[0].size : null;
   $('#pdCrumb').text(p.name);
   const isMerch = ['Shirts','Caps','Shorts','Socks','ToteBags','Bracelets','Keychains'].includes(p.cat);
   $('#pdSectionLink').text(isMerch ? 'Merchandise' : 'Menu')
     .attr('data-nav', isMerch ? 'merchandise' : 'menu')
     .data('nav', isMerch ? 'merchandise' : 'menu');
   const startPrice = pdSize ? getPriceForSize(p, pdSize) : getDisplayPrice(p);
+  // Sized products: judge the currently-selected size. Unsized products,
+  // and sized products where every size is out of stock (so nothing was
+  // pre-selected), fall back to isProductOutOfStock — same check the
+  // grid cards and admin dashboard use, so this page never disagrees.
+  const startOos = pdSize ? isSizeOutOfStock(p, pdSize) : isProductOutOfStock(p);
   $('#pdContent').html(`
     <div>
       <div class="pd-main-img"><img id="pdMainImg" src="${p.imgs[0]}" alt="${p.name}"></div>
@@ -1406,7 +1472,7 @@ function renderProductDetail(){
           <span id="pdQtyVal">1</span>
           <button data-qty-action="plus">+</button>
         </div>
-        <button class="btn btn-primary" id="pdAddBtn" data-pd-add="${p.id}">Add to Cart · ${peso(startPrice)}</button>
+        <button class="btn btn-primary" id="pdAddBtn" data-pd-add="${p.id}" ${startOos ? 'disabled' : ''}>${startOos ? 'Out of Stock' : `Add to Cart · ${peso(startPrice)}`}</button>
         <button type="button" class="wishlist-btn pd-wishlist-btn ${isWishlisted(p.id) ? 'active' : ''}" data-wishlist-toggle="${p.id}" aria-label="Save to favorites">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="${isWishlisted(p.id) ? 'currentColor' : 'none'}"><path d="M12 21s-7.5-4.6-10-9.3C.6 8.1 2.4 4.5 6 4c2-.3 3.7.7 6 3 2.3-2.3 4-3.3 6-3 3.6.5 5.4 4.1 4 7.7C19.5 16.4 12 21 12 21z" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/></svg>
         </button>
@@ -1661,14 +1727,15 @@ $(document).on('click', '[data-review-delete]', async function(){
   }
 });
 
-$(document).on('click', '[data-pd-size]', function(){
+$(document).on('click', '[data-pd-size]:not([disabled])', function(){
   pdSize = $(this).data('pd-size');
   $('#pdSizeRow .size-chip').removeClass('active');
   $(this).addClass('active');
   const p = findProduct(currentProductId);
   const unitPrice = getPriceForSize(p, pdSize);
+  const oos = isSizeOutOfStock(p, pdSize);
   $('#pdPriceDisplay').text(peso(unitPrice));
-  $('#pdAddBtn').text(`Add to Cart · ${peso(unitPrice * pdQty)}`);
+  $('#pdAddBtn').prop('disabled', oos).text(oos ? 'Out of Stock' : `Add to Cart · ${peso(unitPrice * pdQty)}`);
 });
 
 $(document).on('click', '#pdSizeGuideToggle', function(){
@@ -1687,13 +1754,26 @@ $(document).on('click', '[data-qty-action]', function(){
   else pdQty = Math.max(1, pdQty - 1);
   $('#pdQtyVal').text(pdQty);
   const unitPrice = pdSize ? getPriceForSize(p, pdSize) : getDisplayPrice(p);
-  $('#pdAddBtn').text(`Add to Cart · ${peso(unitPrice * pdQty)}`);
+  const oos = pdSize ? isSizeOutOfStock(p, pdSize) : false;
+  if(!oos) $('#pdAddBtn').text(`Add to Cart · ${peso(unitPrice * pdQty)}`);
 });
 
 $(document).on('click', '[data-pd-add]', function(){
   const p = findProduct($(this).data('pd-add'));
-  if(SIZE_CHARTS[p.cat] && p.sizes && p.sizes.length > 1 && !pdSize){
+  // Unsized products (flat stock) and sized products where every size
+  // is out of stock never get a pdSize selected, so neither check below
+  // would catch them — guard with the same product-level check the
+  // grid cards and admin dashboard use.
+  if(!pdSize && isProductOutOfStock(p)){
+    showToast('This item is out of stock.');
+    return;
+  }
+  if(p.sizes && p.sizes.length > 1 && !pdSize){
     showToast('Please select a size first');
+    return;
+  }
+  if(pdSize && isSizeOutOfStock(p, pdSize)){
+    showToast('That size is out of stock.');
     return;
   }
   addToCart(p.id, pdQty, pdSize);
@@ -1937,9 +2017,11 @@ async function placeOrder(){
     }
     // Only decrement products that actually track stock (merch items
     // without a stock field are skipped by decrementStock's caller here).
+    // Sized products (Shirts/Caps/Shorts/Socks) carry the size along so
+    // the per-size stock count gets decremented instead of the flat total.
     const stockUpdates = items
       .filter(it => typeof findProduct(it.id)?.stock === 'number')
-      .map(it => ({ id: it.id, qty: it.qty }));
+      .map(it => ({ id: it.id, qty: it.qty, size: it.size || null }));
     if(stockUpdates.length){
       window.CCProducts.decrementStock(stockUpdates).catch(err => console.error('Stock decrement failed:', err));
     }
