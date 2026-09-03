@@ -6,6 +6,13 @@
 <title>Crafts & Crumbs</title>
 <meta name="description" content="Handcrafted coffee, freshly baked pastries, and charming accessories — brewed and made in small batches, delivered or ready for pickup.">
 
+<link rel="icon" href="favicon.ico" sizes="any">
+<link rel="icon" type="image/png" sizes="16x16" href="favicon-16.png">
+<link rel="icon" type="image/png" sizes="32x32" href="favicon-32.png">
+<link rel="icon" type="image/png" sizes="48x48" href="favicon-48.png">
+<link rel="icon" type="image/png" sizes="192x192" href="favicon-192.png">
+<link rel="apple-touch-icon" sizes="180x180" href="favicon-180.png">
+
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Lora:ital,wght@0,500;0,600;0,700;1,500;1,600&family=Poppins:wght@300;400;500;600;700&display=swap" rel="stylesheet">
@@ -526,7 +533,7 @@
       </div>
       <div class="contact-info-row">
         <span class="contact-info-label">Hours</span>
-        <span>Monday to Sunday, all day and all night</span>
+        <span>Monday to Sunday, 7AM to 9PM</span>
       </div>
       <div class="contact-info-socials">
         <a href="#" class="ftr-social">Facebook</a>
@@ -682,9 +689,9 @@
         </div>
 
         <div class="form-card">
-          <h3>Apply Per-Size Pricing to Sized Merch</h3>
-          <p>Caps, Shorts, or Socks products added before per-size pricing existed may still charge the same price across every size instead of pricing up for bigger sizes, like Shirts do. This gives every such product graduated per-size pricing — One Size items (like most Caps) are left as-is since there's nothing to graduate. Safe to click more than once; products that already have per-size pricing are skipped.</p>
-          <button class="btn btn-outline" id="adminGraduatePricingBtn">Apply Per-Size Pricing</button>
+          <h3>Flatten Per-Size Pricing on Sized Merch</h3>
+          <p>Shirts, Caps, Shorts, or Socks products may still have old per-size pricing saved on them, where bigger sizes cost more than smaller ones. This rewrites every such product back to one flat price shared by all its sizes (the lowest price it was already charging). Safe to click more than once; products that are already flat are skipped.</p>
+          <button class="btn btn-outline" id="adminGraduatePricingBtn">Flatten Per-Size Pricing</button>
           <p id="adminGraduatePricingStatus" style="margin-top:10px;"></p>
         </div>
       </div>
@@ -758,7 +765,7 @@
               <div class="form-group" id="apPriceGroup"><label for="apPrice">Price (₱)</label><input type="number" id="apPrice" min="0" step="1" placeholder="150" required></div>
             </div>
             <div class="form-row">
-              <div class="form-group"><label for="apStock">Stock quantity</label><input type="number" id="apStock" min="0" step="1" placeholder="e.g. 50" required></div>
+              <div class="form-group" id="apStockGroup"><label for="apStock">Stock quantity</label><input type="number" id="apStock" min="0" step="1" placeholder="e.g. 50" required></div>
             </div>
             <div class="form-group">
               <label for="apCategory">Category</label>
@@ -779,9 +786,14 @@
               </select>
             </div>
             <div class="form-group" id="apSizesField" style="display:none;">
+              <label>Sizes &amp; Stock</label>
+              <div id="apSizeRows" class="size-stock-rows"></div>
+              <p class="form-hint">Every size shares the Price field above. Uncheck a size the product doesn't come in at all — leave a size checked with 0 stock to keep it listed but show it as out of stock.</p>
+            </div>
+            <div class="form-group" id="apDrinkSizesField" style="display:none;">
               <label>Sizes &amp; Prices</label>
-              <div id="apSizeRows" class="size-price-rows"></div>
-              <p class="form-hint">Each size can have its own price — for example, larger shirt sizes can cost more.</p>
+              <div id="apDrinkSizeRows" class="size-price-rows"></div>
+              <p class="form-hint">Every drink comes in these three sizes, each priced on its own — bigger sizes usually cost a bit more.</p>
             </div>
             <div class="form-group"><label for="apDesc">Short description</label><input type="text" id="apDesc" placeholder="One or two sentences describing the item" required></div>
             <div class="form-group"><label for="apImg">Image URL</label><input type="text" id="apImg" placeholder="https://... (leave blank for a placeholder image)"></div>
