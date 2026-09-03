@@ -159,6 +159,19 @@
     </div>
   </section>
 
+  <section class="reveal best-sellers" id="featuredCombosSection" style="display:none;">
+    <div class="container">
+      <div class="section-head">
+        <div>
+          <div class="eyebrow">Better together</div>
+          <h2>Combo sets</h2>
+          <p>A drink and a pastry, paired and discounted.</p>
+        </div>
+      </div>
+      <div class="product-grid" id="featuredCombosGrid"></div>
+    </div>
+  </section>
+
   <section class="reveal merch-promo">
     <div class="container merch-promo-inner">
       <div class="merch-promo-text">
@@ -263,7 +276,7 @@
   </div>
   <div class="container pd-grid" id="pdContent"></div>
   <div class="container">
-    <h3 class="related-title">You might also like</h3>
+    <h3 class="related-title" id="relatedHeading">You might also like</h3>
     <div class="product-grid" id="relatedGrid"></div>
   </div>
   <div class="container">
@@ -647,8 +660,10 @@
     <aside class="admin-sidebar">
       <button class="admin-tab active" data-admin-tab="overview">Overview</button>
       <button class="admin-tab" data-admin-tab="products">Products</button>
+      <button class="admin-tab" data-admin-tab="combos">Combos</button>
       <button class="admin-tab" data-admin-tab="orders">Orders</button>
       <button class="admin-tab" data-admin-tab="add-product">Add Product</button>
+      <button class="admin-tab" data-admin-tab="settings">Settings</button>
     </aside>
 
     <div class="admin-main">
@@ -754,6 +769,64 @@
         </div>
       </div>
 
+      <!-- combos -->
+      <div class="admin-panel" data-admin-panel="combos">
+        <div class="admin-panel-head">
+          <h3 id="adminComboFormTitle">Manage Combos</h3>
+        </div>
+
+        <div class="admin-table-wrap">
+          <table class="admin-table">
+            <thead>
+              <tr><th>Combo</th><th>Drink</th><th>Pastry</th><th>Discount</th><th>Status</th><th></th></tr>
+            </thead>
+            <tbody id="adminCombosBody"></tbody>
+          </table>
+        </div>
+
+        <div class="form-card" style="margin-top:26px;">
+          <h3 id="adminComboFormHeading">Add Combo</h3>
+          <form id="adminAddComboForm">
+            <input type="hidden" id="acEditId" value="">
+            <div class="form-group"><label for="acName">Combo name</label><input type="text" id="acName" placeholder="Morning Set" required></div>
+            <div class="form-row">
+              <div class="form-group"><label for="acDrink">Drink</label><select id="acDrink" class="form-select" required></select></div>
+              <div class="form-group"><label for="acPastry">Pastry</label><select id="acPastry" class="form-select" required></select></div>
+            </div>
+            <div class="form-row">
+              <div class="form-group"><label for="acDiscount">Discount off combined price (%)</label><input type="number" id="acDiscount" min="0" max="90" step="1" placeholder="10" required></div>
+              <div class="form-group">
+                <label for="acActive">Status</label>
+                <select id="acActive" class="form-select">
+                  <option value="true">Active — visible on the home page</option>
+                  <option value="false">Inactive — hidden (e.g. out of season)</option>
+                </select>
+              </div>
+            </div>
+            <div class="form-group"><label for="acDesc">Short description</label><input type="text" id="acDesc" placeholder="Leave blank to auto-generate from the drink + pastry names"></div>
+            <div class="form-group">
+              <label>Combo Image</label>
+              <div class="image-upload-field">
+                <div class="image-upload-preview" id="acImgPreview">
+                  <img id="acImgPreviewImg" style="display:none;" alt="">
+                  <span id="acImgPreviewPlaceholder" class="image-upload-placeholder">No image yet</span>
+                </div>
+                <div class="image-upload-controls">
+                  <label for="acImgFile" class="btn btn-outline btn-sm image-upload-btn">Choose Image</label>
+                  <input type="file" id="acImgFile" accept="image/*" style="display:none;">
+                  <p class="form-hint">Automatically cropped to a square and resized to 1000×1000 for consistent display everywhere it's shown.</p>
+                  <p class="image-upload-status" id="acImgUploadStatus"></p>
+                </div>
+              </div>
+              <label for="acImg" class="form-label-secondary">or paste an image URL</label>
+              <input type="text" id="acImg" placeholder="https://..." required>
+            </div>
+            <button type="submit" class="btn btn-primary btn-full" id="adminComboFormSubmitBtn">Add Combo</button>
+            <button type="button" class="btn btn-outline btn-full admin-cancel-edit" id="adminComboCancelEditBtn" style="display:none;">Cancel Edit</button>
+          </form>
+        </div>
+      </div>
+
       <!-- add / edit product -->
       <div class="admin-panel" data-admin-panel="add-product">
         <div class="form-card">
@@ -796,13 +869,45 @@
               <p class="form-hint">Every drink comes in these three sizes, each priced on its own — bigger sizes usually cost a bit more.</p>
             </div>
             <div class="form-group"><label for="apDesc">Short description</label><input type="text" id="apDesc" placeholder="One or two sentences describing the item" required></div>
-            <div class="form-group"><label for="apImg">Image URL</label><input type="text" id="apImg" placeholder="https://... (leave blank for a placeholder image)"></div>
+            <div class="form-group">
+              <label>Product Image</label>
+              <div class="image-upload-field">
+                <div class="image-upload-preview" id="apImgPreview">
+                  <img id="apImgPreviewImg" style="display:none;" alt="">
+                  <span id="apImgPreviewPlaceholder" class="image-upload-placeholder">No image yet</span>
+                </div>
+                <div class="image-upload-controls">
+                  <label for="apImgFile" class="btn btn-outline btn-sm image-upload-btn">Choose Image</label>
+                  <input type="file" id="apImgFile" accept="image/*" style="display:none;">
+                  <p class="form-hint">Automatically cropped to a square and resized to 1000×1000 for consistent display everywhere it's shown.</p>
+                  <p class="image-upload-status" id="apImgUploadStatus"></p>
+                </div>
+              </div>
+              <label for="apImg" class="form-label-secondary">or paste an image URL</label>
+              <input type="text" id="apImg" placeholder="https://... (leave blank for a placeholder image)">
+            </div>
             <div id="apFoodFields">
               <div class="form-group"><label for="apIngredients">Ingredients</label><input type="text" id="apIngredients" placeholder="Comma-separated ingredients"></div>
               <div class="form-group"><label for="apAllergens">Allergens</label><input type="text" id="apAllergens" placeholder="e.g. Gluten (wheat), Milk"></div>
             </div>
             <button type="submit" class="btn btn-primary btn-full" id="adminFormSubmitBtn">Add Product</button>
             <button type="button" class="btn btn-outline btn-full admin-cancel-edit" id="adminCancelEditBtn" style="display:none;">Cancel Edit</button>
+          </form>
+        </div>
+      </div>
+
+      <!-- settings -->
+      <div class="admin-panel" data-admin-panel="settings">
+        <div class="form-card">
+          <h3>Delivery Fee</h3>
+          <p>Flat fee added to every order at checkout when the customer chooses Delivery. Pickup orders are never charged this fee.</p>
+          <form id="adminSettingsForm">
+            <div class="form-group">
+              <label for="asDeliveryFee">Delivery fee (₱)</label>
+              <input type="number" id="asDeliveryFee" min="0" step="1" required>
+            </div>
+            <button type="submit" class="btn btn-primary" id="adminSettingsSubmitBtn">Save Delivery Fee</button>
+            <p id="adminSettingsStatus" style="margin-top:10px;"></p>
           </form>
         </div>
       </div>
@@ -1032,24 +1137,20 @@
 <script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
 
-<!-- EmailJS: sends real emails (OTP codes, order confirmations, contact
-     form messages) straight from the browser — no backend server needed.
-     Fill in your own IDs at the top of email-notifications.js. -->
 <script src="https://cdn.jsdelivr.net/npm/@emailjs/browser@4/dist/email.min.js"></script>
 
-<!-- Firebase (Auth + Firestore). These are ES modules, loaded from
-     Google's CDN — no npm/build step needed. They run before
-     DOMContentLoaded, so by the time script.js's $(document).ready
-     fires, window.CCAuth / CCProducts / CCOrders are ready to use. -->
 <script type="module" src="firebase-config.js"></script>
 <script type="module" src="auth.js"></script>
 <script type="module" src="products-services.js"></script>
+<script type="module" src="settings-service.js"></script>
+<script type="module" src="combos-service.js"></script>
 <script type="module" src="orders-service.js"></script>
 <script type="module" src="cart-service.js"></script>
 <script type="module" src="wishlist-service.js"></script>
 <script type="module" src="review-service.js"></script>
 
 <script src="email-notifications.js"></script>
+<script src="image-upload-service.js"></script>
 <script src="script.js"></script>
 <script src="admin.js"></script>
 </body>
