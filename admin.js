@@ -1,33 +1,10 @@
-/* =========================================================
-   Crafts & Crumbs — admin.js
-   Everything specific to the Admin Side lives in this file:
-   the dashboard tabs, product management (add/edit/delete),
-   order management (view + update status), and the starter
-   catalog seeder. Kept separate from script.js so the
-   customer-facing code doesn't carry admin-only logic.
-
-   Depends on globals already set up in script.js by the time
-   these handlers actually run: PRODUCTS, SEED_PRODUCTS, peso(),
-   showToast(), blankPlaceholder(), renderMenuPage(),
-   renderMerchPage(), renderCategories(), renderBestSellers(),
-   loadProductsFromFirestore(), CAT_LABELS. Load this file after script.js.
-========================================================= */
-
 let ADMIN_ORDERS = [];
-let adminEditingId = null; // set while editing an existing product, null when adding a new one
-let adminProductSearch = '';    // current text in the Products search box
-let adminCategoryFilter = 'All'; // current selection in the category filter dropdown
+let adminEditingId = null; 
+let adminProductSearch = '';    
+let adminCategoryFilter = 'All'; 
 
-/* Food categories get the Ingredients/Allergens fields; everything else
-   (Shirts, Caps, totes, keychains, etc.) doesn't — those fields simply
-   don't mean anything for merchandise. SIZED_CATEGORIES comes from
-   script.js (loaded first) and drives the per-size price rows below. */
 const FOOD_CATEGORIES = ['Coffee', 'Non-Coffee', 'Tea', 'Pastries', 'Sandwiches', 'Cakes'];
 
-/* Default size list offered for each sized category when adding a new
-   product, or when switching an existing product to one of these
-   categories. Editing a product that already has its own size list
-   keeps that list instead (see renderSizePriceRows). */
 const DEFAULT_SIZES_BY_CATEGORY = {
   Shirts: ['XS','S','M','L','XL','XXL'],
   Shorts: ['XS','S','M','L','XL','XXL'],
@@ -35,10 +12,9 @@ const DEFAULT_SIZES_BY_CATEGORY = {
   Caps: ['One Size'],
 };
 
-/* Maps each category's broader group (from CAT_LABELS, the same
-   taxonomy the storefront's menu/merch sidebars use) to one of four
-   badge colors, so the admin Products table reads at a glance
-   instead of everyone's category being the same plain text. */
+const DRINK_CATEGORIES = ['Coffee', 'Non-Coffee', 'Tea'];
+const DRINK_SIZES = ['12oz', '16oz', '20oz'];
+
 const ADMIN_CATEGORY_BADGE_CLASS = {
   'Drinks': 'drinks',
   'Food': 'food',
@@ -53,10 +29,6 @@ function categoryBadge(cat){
   return `<span class="admin-cat-badge admin-cat-badge-${groupClass}">${label}</span>`;
 }
 
-/* Shows the admin nav icon only once we know the signed-in
-   account's role is 'admin' (fired from auth.js). Uses the same
-   stroke-icon language as the cart/account buttons instead of an
-   emoji so it sits flush with the rest of the header. */
 const ADMIN_NAV_ICON = `<svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M12 15.2a3.2 3.2 0 1 0 0-6.4 3.2 3.2 0 0 0 0 6.4Z" stroke="currentColor" stroke-width="1.5"/><path d="M19.4 13.9c.05-.6.05-1.2 0-1.8l1.9-1.4a.8.8 0 0 0 .2-1L19.7 6.9a.8.8 0 0 0-.95-.35l-2.2.85a7.4 7.4 0 0 0-1.55-.9l-.35-2.3a.8.8 0 0 0-.8-.7h-3.7a.8.8 0 0 0-.8.7l-.35 2.3c-.56.23-1.08.53-1.55.9l-2.2-.85a.8.8 0 0 0-.95.35L2.5 9.7a.8.8 0 0 0 .2 1l1.9 1.4a8.3 8.3 0 0 0 0 1.8l-1.9 1.4a.8.8 0 0 0-.2 1l1.85 2.8c.2.32.6.44.95.35l2.2-.85c.47.37.99.67 1.55.9l.35 2.3c.06.4.42.7.8.7h3.7c.38 0 .74-.3.8-.7l.35-2.3c.56-.23 1.08-.53 1.55-.9l2.2.85c.35.09.75-.03.95-.35l1.85-2.8a.8.8 0 0 0-.2-1l-1.9-1.4Z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/></svg>`;
 
 document.addEventListener('authRoleReady', function(e){
@@ -67,9 +39,6 @@ document.addEventListener('authRoleReady', function(e){
   }
 });
 
-/* ================= DASHBOARD ENTRY POINT ================= */
-/* Called from script.js's navigate() every time the admin page
-   is opened. Cheap to re-run, so it just refreshes everything. */
 function renderAdminDashboard(){
   renderAdminOverviewStats();
   renderAdminProductsTable();
@@ -213,7 +182,7 @@ $(document).on('click', '[data-admin-duplicate]', function(){
   $('#apAllergens').val(p.allergens || '');
   $('#apStock').val(p.stock !== undefined && p.stock !== null ? p.stock : '');
   toggleFoodFields(p.cat);
-  renderSizePriceRows(p.cat, p); // pre-fills each size's price too — just adjust and save
+  renderSizePriceRows(p.cat, p); // pre-checks the same sizes the original has — just adjust and save
 
   $('#adminFormTitle').text(`Duplicate "${p.name}"`);
   $('#adminFormSubmitBtn').text('Add Product');
@@ -244,46 +213,99 @@ function toggleFoodFields(cat){
   $('#apFoodFields').toggle(FOOD_CATEGORIES.includes(cat));
 }
 
-/* Shows a price input per size instead of the single Price field
-   whenever the selected category is one that prices per-size. When
-   editing a product that already has its own sizes (possibly a
-   different list than the category default, e.g. a tee that only
-   comes in XS–L), those exact sizes and prices are preserved instead
-   of being replaced by the category's default list. */
+/* Shows the right sizing UI for the selected category:
+   - Wearables (Shirts/Caps/Shorts/Socks): a row of size checkboxes
+     with a stock input each. Price still comes from the single Price
+     field — only stock is per-size. Unchecking a size removes it from
+     the product entirely; leaving it checked with 0 stock keeps it
+     listed but shown crossed out as out of stock.
+   - Drinks (Coffee/Non-Coffee/Tea): a price input for each of the
+     fixed 12oz/16oz/20oz sizes instead of the single Price field —
+     every drink always offers all three, priced independently.
+   - Everything else: neither block, just the flat Price + Stock
+     fields.
+   When editing a product that already has its own size list/prices
+   (possibly different from the category default, e.g. a tee that only
+   comes in XS–L), those exact values are preserved and pre-filled
+   instead of being replaced by the category's defaults. */
 function renderSizePriceRows(cat, existingProduct){
-  const isSized = Object.prototype.hasOwnProperty.call(DEFAULT_SIZES_BY_CATEGORY, cat);
-  $('#apSizesField').toggle(isSized);
-  $('#apPriceGroup').toggle(!isSized);
+  const isStockSized = Object.prototype.hasOwnProperty.call(DEFAULT_SIZES_BY_CATEGORY, cat);
+  const isPriceSized = DRINK_CATEGORIES.includes(cat);
+
+  $('#apSizesField').toggle(isStockSized);
+  $('#apDrinkSizesField').toggle(isPriceSized);
+  $('#apPriceGroup').toggle(!isPriceSized);
+  $('#apStockGroup').toggle(!isStockSized);
   // A `required` field that's hidden (display:none) makes the browser
   // silently refuse to submit the WHOLE form — no error shown, the
-  // submit event just never fires. #apPrice needs to stop being
-  // required the moment it's hidden behind the per-size price rows,
-  // or every edit/add on a sized category (Shirts, Caps, Shorts,
-  // Socks) quietly does nothing when you click Save.
-  $('#apPrice').prop('required', !isSized);
-  if(!isSized){
-    $('#apSizeRows').empty();
+  // submit event just never fires. These need to stop being required
+  // the moment they're hidden behind their per-size replacement.
+  $('#apStock').prop('required', !isStockSized);
+  $('#apPrice').prop('required', !isPriceSized);
+
+  if(isStockSized){
+    $('#apDrinkSizeRows').empty();
+
+    let sizeList = DEFAULT_SIZES_BY_CATEGORY[cat];
+    let checkedSet = new Set(sizeList); // default: everything checked for a fresh product
+    const stockMap = {};
+
+    if(existingProduct && existingProduct.cat === cat && existingProduct.sizes && existingProduct.sizes.length){
+      const opts = getSizeOptions(existingProduct);
+      const existingSizes = opts.map(o => o.size);
+      // Union of the category's default sizes and whatever the product
+      // already has (e.g. a legacy custom size) so nothing disappears,
+      // but only the product's own sizes start checked.
+      sizeList = Array.from(new Set([...sizeList, ...existingSizes]));
+      checkedSet = new Set(existingSizes);
+      opts.forEach(o => { stockMap[o.size] = o.stock; });
+    }
+
+    $('#apSizeRows').html(sizeList.map(sz => {
+      const checked = checkedSet.has(sz);
+      const stockVal = stockMap[sz];
+      const stockDisplay = typeof stockVal === 'number' ? stockVal : '';
+      return `
+      <div class="size-stock-row">
+        <label class="size-stock-checkbox${checked ? ' checked' : ''}">
+          <input type="checkbox" class="size-toggle-input" value="${sz}" ${checked ? 'checked' : ''}>
+          <span>${sz}</span>
+        </label>
+        <div class="size-stock-input-wrap">
+          <input type="number" min="0" step="1" class="size-stock-input" data-size="${sz}"
+            value="${stockDisplay}" placeholder="Stock" ${checked ? '' : 'disabled'}>
+        </div>
+      </div>`;
+    }).join(''));
     return;
   }
 
-  let sizeList = DEFAULT_SIZES_BY_CATEGORY[cat];
-  const priceMap = {};
-  if(existingProduct && existingProduct.cat === cat && existingProduct.sizes && existingProduct.sizes.length){
-    const opts = getSizeOptions(existingProduct);
-    sizeList = opts.map(o => o.size);
-    opts.forEach(o => { priceMap[o.size] = o.price; });
+  if(isPriceSized){
+    $('#apSizeRows').empty();
+
+    let sizeList = DRINK_SIZES;
+    const priceMap = {};
+    if(existingProduct && existingProduct.cat === cat && existingProduct.sizes && existingProduct.sizes.length){
+      const opts = getSizeOptions(existingProduct);
+      sizeList = opts.map(o => o.size);
+      opts.forEach(o => { priceMap[o.size] = o.price; });
+    }
+
+    $('#apDrinkSizeRows').html(sizeList.map(sz => `
+      <div class="size-price-row">
+        <span class="size-price-label">${sz}</span>
+        <div class="size-price-input-wrap">
+          <span class="size-price-currency">₱</span>
+          <input type="number" min="0" step="1" class="size-price-input" data-size="${sz}"
+            value="${priceMap[sz] !== undefined ? priceMap[sz] : ''}" placeholder="0" required>
+        </div>
+      </div>
+    `).join(''));
+    return;
   }
 
-  $('#apSizeRows').html(sizeList.map(sz => `
-    <div class="size-price-row">
-      <span class="size-price-label">${sz}</span>
-      <div class="size-price-input-wrap">
-        <span class="size-price-currency">₱</span>
-        <input type="number" min="0" step="1" class="size-price-input" data-size="${sz}"
-          value="${priceMap[sz] !== undefined ? priceMap[sz] : ''}" placeholder="0" required>
-      </div>
-    </div>
-  `).join(''));
+  $('#apSizeRows').empty();
+  $('#apDrinkSizeRows').empty();
 }
 
 $(document).on('change', '#apCategory', function(){
@@ -293,15 +315,19 @@ $(document).on('change', '#apCategory', function(){
   renderSizePriceRows(cat, existing);
 });
 
+$(document).on('change', '.size-toggle-input', function(){
+  const checked = this.checked;
+  $(this).closest('.size-stock-checkbox').toggleClass('checked', checked);
+  $(this).closest('.size-stock-row').find('.size-stock-input').prop('disabled', !checked);
+});
+
 /* Number inputs silently change their value when the mouse wheel
    scrolls over them while focused — an easy way to accidentally
-   mis-price a product just by scrolling the page past the field.
-   Blurring on wheel stops that: the input immediately loses focus so
-   the scroll event falls through to the page as a normal scroll
-   instead of being swallowed to bump the number. Prices on these
-   fields (the flat Price field and every per-size price row) are
-   meant to be typed by hand only. */
-$(document).on('wheel', '#apPrice, .size-price-input', function(){
+   mis-price or mis-stock a product just by scrolling the page past
+   the field. Blurring on wheel stops that: the input immediately
+   loses focus so the scroll event falls through to the page as a
+   normal scroll instead of being swallowed to bump the number. */
+$(document).on('wheel', '#apPrice, #apStock, .size-stock-input, .size-price-input', function(){
   $(this).blur();
 });
 
@@ -335,30 +361,55 @@ $(document).on('submit', '#adminAddProductForm', async function(e){
   const desc = $('#apDesc').val().trim();
   const imgInput = $('#apImg').val().trim();
   const img = imgInput || blankPlaceholder((adminEditingId || 'admin-' + Date.now()), cat);
-  const stock = parseInt($('#apStock').val(), 10);
 
-  const isSized = Object.prototype.hasOwnProperty.call(DEFAULT_SIZES_BY_CATEGORY, cat);
-  let price, sizes;
-  if(isSized){
-    sizes = $('#apSizeRows .size-price-input').map(function(){
+  const isStockSized = Object.prototype.hasOwnProperty.call(DEFAULT_SIZES_BY_CATEGORY, cat);
+  const isPriceSized = DRINK_CATEGORIES.includes(cat);
+  let price, sizes, stock;
+
+  if(isStockSized){
+    sizes = $('#apSizeRows .size-stock-row').map(function(){
+      const $chk = $(this).find('.size-toggle-input');
+      if(!$chk.prop('checked')) return null;
+      const stockVal = parseInt($(this).find('.size-stock-input').val(), 10);
+      return { size: $chk.val(), stock: isNaN(stockVal) ? 0 : stockVal };
+    }).get().filter(Boolean);
+    if(!sizes.length){
+      showToast('Select at least one size.');
+      return;
+    }
+    price = Number($('#apPrice').val());
+    // Stock isn't typed as one flat number for stock-sized products —
+    // it's the sum of every size's stock, kept in sync here so the
+    // admin table's Stock column and any "is stock tracked" check
+    // elsewhere in the app still work off the same top-level field.
+    stock = sizes.reduce((sum, s) => sum + s.stock, 0);
+  } else if(isPriceSized){
+    sizes = $('#apDrinkSizeRows .size-price-input').map(function(){
       return { size: $(this).data('size'), price: Number($(this).val()) || 0 };
     }).get();
     if(!sizes.length){
       showToast('Add a price for at least one size.');
       return;
     }
+    // The flat top-level `price` mirrors the cheapest size, same as
+    // wearables — used by the admin table and anywhere a single
+    // number is needed before a size is picked.
     price = Math.min(...sizes.map(s => s.price));
+    const stockVal = parseInt($('#apStock').val(), 10);
+    stock = isNaN(stockVal) ? 0 : stockVal;
   } else {
     price = Number($('#apPrice').val());
+    const stockVal = parseInt($('#apStock').val(), 10);
+    stock = isNaN(stockVal) ? 0 : stockVal;
   }
 
   const isFood = FOOD_CATEGORIES.includes(cat);
   const fields = {
     name, cat, price, desc,
     img, imgs: [img],
-    stock: isNaN(stock) ? 0 : stock,
+    stock,
   };
-  if(isSized) fields.sizes = sizes;
+  if(isStockSized || isPriceSized) fields.sizes = sizes;
   if(isFood){
     fields.ingredients = $('#apIngredients').val().trim() || 'Details coming soon.';
     fields.allergens = $('#apAllergens').val().trim() || 'Please ask our staff for full allergen details.';
@@ -378,7 +429,7 @@ $(document).on('submit', '#adminAddProductForm', async function(e){
     if(prevProduct){
       if(!isFood && prevProduct.ingredients !== undefined) fieldsToDelete.push('ingredients');
       if(!isFood && prevProduct.allergens !== undefined) fieldsToDelete.push('allergens');
-      if(!isSized && prevProduct.sizes !== undefined) fieldsToDelete.push('sizes');
+      if(!isStockSized && !isPriceSized && prevProduct.sizes !== undefined) fieldsToDelete.push('sizes');
     }
     try{
       await window.CCProducts.updateProduct(adminEditingId, fields, fieldsToDelete);
@@ -640,20 +691,15 @@ $(document).on('click', '#adminCleanupFieldsBtn', async function(){
   }
 });
 
-/* ================= APPLY PER-SIZE PRICING TO SIZED MERCH ================= */
-/* Fixes Caps/Shorts/Socks products that still charge the same price on
-   every size (usually because they were added to Firestore before
-   per-size pricing existed) so they graduate by size the same way
-   Shirts already do. See CCProducts.applyGraduatedSizePricing for how
-   the new prices are chosen. SIZED_CATEGORIES and SEED_PRODUCTS come
-   from script.js, loaded before this file. */
+/* PER-SIZE PRICING */
+
 $(document).on('click', '#adminGraduatePricingBtn', async function(){
   const $btn = $(this);
   const $status = $('#adminGraduatePricingStatus');
   $btn.prop('disabled', true).text('Updating...');
-  $status.text('Scanning Caps/Shorts/Socks for flat per-size pricing...');
+  $status.text('Scanning Shirts/Caps/Shorts/Socks for old per-size pricing...');
   try{
-    const updatedIds = await window.CCProducts.applyGraduatedSizePricing(SIZED_CATEGORIES, SEED_PRODUCTS);
+    const updatedIds = await window.CCProducts.flattenSizePricing(SIZED_CATEGORIES);
     await loadProductsFromFirestore();
     renderCategories();
     renderBestSellers();
@@ -662,12 +708,12 @@ $(document).on('click', '#adminGraduatePricingBtn', async function(){
     renderAdminProductsTable();
     renderAdminOverviewStats();
     $status.text(updatedIds.length
-      ? `Done — applied per-size pricing to ${updatedIds.length} product${updatedIds.length === 1 ? '' : 's'}: ${updatedIds.join(', ')}.`
-      : 'Done — every sized product already has per-size pricing.');
+      ? `Done — flattened per-size pricing on ${updatedIds.length} product${updatedIds.length === 1 ? '' : 's'}: ${updatedIds.join(', ')}.`
+      : 'Done — every sized product already has flat pricing.');
   } catch(err){
     console.error(err);
     $status.text('Something went wrong while updating. Check the console for details.');
   } finally {
-    $btn.prop('disabled', false).text('Apply Per-Size Pricing');
+    $btn.prop('disabled', false).text('Flatten Per-Size Pricing');
   }
 });
