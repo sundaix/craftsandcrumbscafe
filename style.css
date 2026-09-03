@@ -518,6 +518,27 @@
   .add-btn:hover{ background:var(--ink); border-color:var(--ink); color:#fff; transform:scale(1.06); }
   .add-btn:active{ transform:scale(0.95); }
   .add-btn.added{ background:var(--sage); border-color:var(--sage); color:#fff; }
+  .add-btn:disabled{
+    opacity:0.35; cursor:not-allowed; pointer-events:none;
+  }
+
+  /* Out-of-stock grid cards (menu, merch, related, best sellers) — same
+     "out of stock" language as the admin dashboard's stock badge and
+     the product detail page's size chips: a dimmed image, a small
+     pill overlay, and the whole card reads as unavailable at a glance
+     without hiding it from browsing entirely. */
+  .product-card.oos .product-img img{ filter:grayscale(0.5); opacity:0.55; }
+  .product-card.oos .product-name{ color:var(--text-faint); }
+  .product-card.oos .price{ color:var(--text-faint); }
+  .oos-badge{
+    position:absolute; top:10px; left:10px; z-index:2;
+    background:var(--ink); color:#fff;
+    font-size:10px; font-weight:700; letter-spacing:0.05em; text-transform:uppercase;
+    padding:5px 10px; border-radius:100px;
+  }
+  /* Best-seller cards already use top-left for the ranking number
+     (.bestseller-tag) — keep the out-of-stock pill from overlapping it. */
+  .best-card .oos-badge{ top:10px; left:auto; right:10px; }
 
   /* ---------- Popular this week — auto-scrolling marquee ---------- */
   .best-sellers{
@@ -916,14 +937,67 @@
 
   /* ---------- Menu page (sidebar layout) ---------- */
   .menu-layout{ display:grid; grid-template-columns:220px 1fr; gap:44px; padding:36px 0 70px; align-items:start; }
-  .menu-sidebar{ background:var(--card); border-radius:var(--radius); padding:26px 22px; }
-  .menu-sidebar-title{ font-family:'Lora',serif; font-size:20px; font-weight:700; margin-bottom:20px; }
-  .sidebar-group{ margin-bottom:24px; }
-  .sidebar-group:last-child{ margin-bottom:0; }
-  .sidebar-group-title{ font-weight:700; font-size:14px; margin-bottom:10px; color:var(--text); }
-  .sidebar-link{ display:block; padding:6px 0; font-size:14px; color:var(--text-soft); cursor:pointer; transition:color 0.2s ease; }
-  .sidebar-link:hover{ color:var(--cta); }
-  .sidebar-link.active{ color:var(--cta); font-weight:600; }
+  .menu-sidebar{
+    background:var(--card);
+    border:1px solid var(--line);
+    border-radius:var(--radius);
+    padding:30px 26px 28px;
+  }
+  .menu-sidebar-title{
+    font-family:'Lora',serif; font-size:21px; font-weight:700;
+    letter-spacing:0.01em; margin-bottom:0;
+    position:relative; padding-bottom:16px;
+  }
+  /* Short accent rule under the sidebar heading — same restrained,
+     one-flourish approach as .eyebrow's leading line elsewhere on the
+     site, just oriented for a heading instead of a label. */
+  .menu-sidebar-title::after{
+    content:''; position:absolute; left:0; bottom:0;
+    width:30px; height:2px; background:var(--cta); border-radius:2px;
+  }
+  .sidebar-group{
+    margin-top:24px; padding-bottom:22px;
+    border-bottom:1px solid var(--line);
+  }
+  .sidebar-group:last-child{ padding-bottom:0; border-bottom:none; }
+  .sidebar-group-untitled{ margin-top:22px; }
+  .sidebar-group-title{
+    font-family:'Poppins',sans-serif; font-size:10.5px; font-weight:700;
+    text-transform:uppercase; letter-spacing:0.13em;
+    color:var(--text-faint); margin-bottom:14px;
+  }
+  /* The vertical spine + per-item connector ticks are what read as
+     "indentation" without just shoving the text over with padding —
+     each category visibly branches off its group, like a printed
+     boutique menu's nested listing. */
+  .sidebar-group-items{
+    display:flex; flex-direction:column;
+    border-left:1px solid var(--line-strong);
+    padding-left:18px;
+    gap:2px;
+  }
+  .sidebar-link{
+    position:relative;
+    display:block;
+    padding:7px 0;
+    font-family:'Lora',serif;
+    font-size:14.5px;
+    color:var(--text-soft);
+    cursor:pointer;
+    transition:color 0.25s ease, transform 0.3s var(--ease-premium);
+  }
+  .sidebar-link::before{
+    content:'';
+    position:absolute; left:-18px; top:50%;
+    width:11px; height:1px;
+    background:var(--line-strong);
+    transform:translateY(-50%);
+    transition:background 0.25s ease, width 0.25s var(--ease-premium);
+  }
+  .sidebar-link:hover{ color:var(--ink); transform:translateX(3px); }
+  .sidebar-link:hover::before{ width:16px; background:var(--text-soft); }
+  .sidebar-link.active{ color:var(--cta); font-weight:600; transform:translateX(3px); }
+  .sidebar-link.active::before{ width:16px; background:var(--cta); }
   .menu-content-search{ max-width:320px; margin-bottom:24px; }
   .menu-content .breadcrumb{ margin-bottom:8px; }
   .menu-content h1{ font-size:26px; margin-bottom:26px; }
@@ -995,6 +1069,28 @@
   .size-chip.active .size-chip-price{ color:rgba(255,255,255,0.75); }
   .size-chip:hover{ border-color:var(--sage); }
   .size-chip.active{ background:var(--ink); border-color:var(--ink); color:#fff; }
+
+  /* Out-of-stock sizes keep the exact same pill shape as every other
+     size chip — same dimensions, same layout — so the row reads as one
+     consistent set of options at a glance. The only default difference
+     is the size label itself getting a strikethrough. The explicit
+     "Out of stock" wording only appears as an overlay on hover/focus,
+     instead of being shown up front, so browsing the row isn't visually
+     noisy with repeated "Out of stock" labels next to every size. */
+  .size-chip.size-chip-oos{
+    position:relative; overflow:hidden; cursor:not-allowed;
+    background:var(--card); border-color:var(--line-strong); color:var(--text-faint);
+  }
+  .size-chip.size-chip-oos .size-chip-label{ text-decoration:line-through; }
+  .size-chip.size-chip-oos:hover{ border-color:var(--line-strong); }
+  .size-chip-oos-label{
+    position:absolute; inset:0; display:flex; align-items:center; justify-content:center;
+    background:var(--card); font-size:9.5px; font-weight:700; letter-spacing:0.03em;
+    text-transform:uppercase; color:var(--text-faint);
+    opacity:0; transition:opacity 0.15s ease; pointer-events:none;
+  }
+  .size-chip.size-chip-oos:hover .size-chip-oos-label,
+  .size-chip.size-chip-oos:focus-visible .size-chip-oos-label{ opacity:1; }
   .size-guide-toggle{
     background:none; border:none; padding:0; font-size:13px; font-weight:600;
     color:var(--sage); text-decoration:underline; text-underline-offset:3px; cursor:pointer;
@@ -1454,13 +1550,34 @@
   }
   .form-hint{ font-size:11.5px; color:var(--text-faint); margin-top:8px; }
 
+  .size-stock-rows{ display:flex; flex-direction:column; gap:8px; }
+  .size-stock-row{
+    display:flex; align-items:center; justify-content:space-between; gap:12px;
+    padding:8px 12px; background:var(--bg); border:1px solid var(--line); border-radius:10px;
+  }
+  .size-stock-checkbox{
+    display:flex; align-items:center; gap:8px; cursor:pointer; user-select:none;
+    font-size:13px; font-weight:600; color:var(--text-faint); min-width:56px;
+    transition:color 0.2s ease;
+  }
+  .size-stock-checkbox.checked{ color:var(--text); }
+  .size-stock-checkbox input{ width:15px; height:15px; accent-color:var(--sage); cursor:pointer; }
+  .size-stock-input-wrap{ display:flex; align-items:center; gap:6px; flex:1; max-width:120px; }
+  .size-stock-input{
+    width:100%; padding:8px 10px; border-radius:8px; border:1px solid var(--line-strong);
+    font-size:13px; outline:none; background:#fff;
+    transition:border-color 0.2s ease, box-shadow 0.2s ease;
+  }
+  .size-stock-input:focus{ border-color:var(--sage); box-shadow:var(--ring); }
+  .size-stock-input:disabled{ background:var(--line); color:var(--text-faint); cursor:not-allowed; }
+
   .size-price-rows{ display:flex; flex-direction:column; gap:8px; }
   .size-price-row{
     display:flex; align-items:center; justify-content:space-between; gap:12px;
     padding:8px 12px; background:var(--bg); border:1px solid var(--line); border-radius:10px;
   }
   .size-price-label{ font-size:13px; font-weight:600; color:var(--text); min-width:56px; }
-  .size-price-input-wrap{ display:flex; align-items:center; gap:6px; flex:1; max-width:140px; }
+  .size-price-input-wrap{ display:flex; align-items:center; gap:6px; flex:1; max-width:130px; }
   .size-price-currency{ font-size:13px; color:var(--text-faint); }
   .size-price-input{
     width:100%; padding:8px 10px; border-radius:8px; border:1px solid var(--line-strong);
@@ -1469,18 +1586,20 @@
   }
   .size-price-input:focus{ border-color:var(--sage); box-shadow:var(--ring); }
 
-  /* Price fields (single Price input + per-size price rows) are meant
-     to be typed, not spun/scrolled — scrolling the mouse wheel over a
-     focused number input silently changes the value, which is an easy
-     way for an admin to accidentally mis-price a product while just
-     scrolling the page. #apPrice.no-spin/.size-price-input pair this
-     with the wheel-blur handler in admin.js (which stops the value
-     from changing on scroll); this rule just hides the up/down spin
-     arrows so the field visually reads as "type a number" only. */
-  #apPrice, .size-price-input{
+  /* The Price and Stock fields (and every per-size stock row) are
+     meant to be typed, not spun/scrolled — scrolling the mouse wheel
+     over a focused number input silently changes the value, which is
+     an easy way for an admin to accidentally mis-price or mis-stock a
+     product while just scrolling the page. This pairs with the
+     wheel-blur handler in admin.js (which stops the value from
+     changing on scroll); this rule just hides the up/down spin
+     arrows so the fields visually read as "type a number" only. */
+  #apPrice, #apStock, .size-stock-input, .size-price-input{
     -moz-appearance: textfield;
   }
   #apPrice::-webkit-outer-spin-button, #apPrice::-webkit-inner-spin-button,
+  #apStock::-webkit-outer-spin-button, #apStock::-webkit-inner-spin-button,
+  .size-stock-input::-webkit-outer-spin-button, .size-stock-input::-webkit-inner-spin-button,
   .size-price-input::-webkit-outer-spin-button, .size-price-input::-webkit-inner-spin-button{
     -webkit-appearance: none;
     margin: 0;
