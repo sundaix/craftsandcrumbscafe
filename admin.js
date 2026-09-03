@@ -1,10 +1,14 @@
 let ADMIN_ORDERS = [];
-let adminEditingId = null; 
-let adminProductSearch = '';    
-let adminCategoryFilter = 'All'; 
+let adminEditingId = null; // set while editing an existing product, null when adding a new one
+let adminProductSearch = '';    // current text in the Products search box
+let adminCategoryFilter = 'All'; // current selection in the category filter dropdown
 
 const FOOD_CATEGORIES = ['Coffee', 'Non-Coffee', 'Tea', 'Pastries', 'Sandwiches', 'Cakes'];
 
+/* Default size list offered for each sized category when adding a new
+   product, or when switching an existing product to one of these
+   categories. Editing a product that already has its own size list
+   keeps that list instead (see renderSizePriceRows). */
 const DEFAULT_SIZES_BY_CATEGORY = {
   Shirts: ['XS','S','M','L','XL','XXL'],
   Shorts: ['XS','S','M','L','XL','XXL'],
@@ -43,6 +47,8 @@ function renderAdminDashboard(){
   renderAdminOverviewStats();
   renderAdminProductsTable();
   loadAndRenderAdminOrders();
+  loadAndRenderAdminCombos();
+  loadAndRenderAdminSettings();
 }
 
 /* ================= TABS ================= */
@@ -64,11 +70,6 @@ function renderAdminOverviewStats(){
   $('#statTotalRevenue').text(ADMIN_ORDERS.length ? peso(revenue) : '—');
 }
 
-/* ================= PRODUCTS TABLE ================= */
-/* Reads its filters from adminProductSearch/adminCategoryFilter
-   (rather than taking params) so every caller — after an add, edit,
-   delete, or seed — can just call renderAdminProductsTable() and
-   trust the currently-active search + category filter stays applied. */
 function renderAdminProductsTable(){
   const q = adminProductSearch.trim().toLowerCase();
   const rows = PRODUCTS
@@ -144,6 +145,8 @@ $(document).on('click', '[data-admin-edit]', function(){
   $('#apStock').val(p.stock !== undefined && p.stock !== null ? p.stock : '');
   toggleFoodFields(p.cat);
   renderSizePriceRows(p.cat, p);
+  setImagePreview('apImgPreviewImg', 'apImgPreviewPlaceholder', p.img || '');
+  $('#apImgUploadStatus').text('').removeClass('image-upload-error');
 
   $('#adminFormTitle').text(`Edit "${p.name}"`);
   $('#adminFormSubmitBtn').text('Update Product');
@@ -159,14 +162,6 @@ $(document).on('click', '#adminCancelEditBtn', function(){
   resetAdminProductForm();
 });
 
-/* Duplicate: pre-fills the Add/Edit form with an existing product's
-   fields as a brand new (unsaved) product, instead of editing the
-   original. Meant for "same product, different size/price" cases —
-   e.g. a second tote bag design — so the admin doesn't have to
-   retype the name, category, description, image, and every size row
-   from scratch. adminEditingId is left null so Save runs as a real
-   addProduct() call and creates a separate catalog entry; the
-   original product is never touched. */
 $(document).on('click', '[data-admin-duplicate]', function(){
   const p = PRODUCTS.find(x => x.id === $(this).data('admin-duplicate'));
   if(!p) return;
@@ -183,6 +178,8 @@ $(document).on('click', '[data-admin-duplicate]', function(){
   $('#apStock').val(p.stock !== undefined && p.stock !== null ? p.stock : '');
   toggleFoodFields(p.cat);
   renderSizePriceRows(p.cat, p); // pre-checks the same sizes the original has — just adjust and save
+  setImagePreview('apImgPreviewImg', 'apImgPreviewPlaceholder', p.img || '');
+  $('#apImgUploadStatus').text('').removeClass('image-upload-error');
 
   $('#adminFormTitle').text(`Duplicate "${p.name}"`);
   $('#adminFormSubmitBtn').text('Add Product');
@@ -205,6 +202,8 @@ function resetAdminProductForm(){
   const cat = $('#apCategory').val();
   toggleFoodFields(cat);
   renderSizePriceRows(cat, null);
+  setImagePreview('apImgPreviewImg', 'apImgPreviewPlaceholder', '');
+  $('#apImgUploadStatus').text('').removeClass('image-upload-error');
 }
 
 /* Shows Ingredients/Allergens only for food categories — those fields
@@ -213,21 +212,6 @@ function toggleFoodFields(cat){
   $('#apFoodFields').toggle(FOOD_CATEGORIES.includes(cat));
 }
 
-/* Shows the right sizing UI for the selected category:
-   - Wearables (Shirts/Caps/Shorts/Socks): a row of size checkboxes
-     with a stock input each. Price still comes from the single Price
-     field — only stock is per-size. Unchecking a size removes it from
-     the product entirely; leaving it checked with 0 stock keeps it
-     listed but shown crossed out as out of stock.
-   - Drinks (Coffee/Non-Coffee/Tea): a price input for each of the
-     fixed 12oz/16oz/20oz sizes instead of the single Price field —
-     every drink always offers all three, priced independently.
-   - Everything else: neither block, just the flat Price + Stock
-     fields.
-   When editing a product that already has its own size list/prices
-   (possibly different from the category default, e.g. a tee that only
-   comes in XS–L), those exact values are preserved and pre-filled
-   instead of being replaced by the category's defaults. */
 function renderSizePriceRows(cat, existingProduct){
   const isStockSized = Object.prototype.hasOwnProperty.call(DEFAULT_SIZES_BY_CATEGORY, cat);
   const isPriceSized = DRINK_CATEGORIES.includes(cat);
@@ -236,10 +220,6 @@ function renderSizePriceRows(cat, existingProduct){
   $('#apDrinkSizesField').toggle(isPriceSized);
   $('#apPriceGroup').toggle(!isPriceSized);
   $('#apStockGroup').toggle(!isStockSized);
-  // A `required` field that's hidden (display:none) makes the browser
-  // silently refuse to submit the WHOLE form — no error shown, the
-  // submit event just never fires. These need to stop being required
-  // the moment they're hidden behind their per-size replacement.
   $('#apStock').prop('required', !isStockSized);
   $('#apPrice').prop('required', !isPriceSized);
 
@@ -253,9 +233,6 @@ function renderSizePriceRows(cat, existingProduct){
     if(existingProduct && existingProduct.cat === cat && existingProduct.sizes && existingProduct.sizes.length){
       const opts = getSizeOptions(existingProduct);
       const existingSizes = opts.map(o => o.size);
-      // Union of the category's default sizes and whatever the product
-      // already has (e.g. a legacy custom size) so nothing disappears,
-      // but only the product's own sizes start checked.
       sizeList = Array.from(new Set([...sizeList, ...existingSizes]));
       checkedSet = new Set(existingSizes);
       opts.forEach(o => { stockMap[o.size] = o.stock; });
@@ -321,12 +298,6 @@ $(document).on('change', '.size-toggle-input', function(){
   $(this).closest('.size-stock-row').find('.size-stock-input').prop('disabled', !checked);
 });
 
-/* Number inputs silently change their value when the mouse wheel
-   scrolls over them while focused — an easy way to accidentally
-   mis-price or mis-stock a product just by scrolling the page past
-   the field. Blurring on wheel stops that: the input immediately
-   loses focus so the scroll event falls through to the page as a
-   normal scroll instead of being swallowed to bump the number. */
 $(document).on('wheel', '#apPrice, #apStock, .size-stock-input, .size-price-input', function(){
   $(this).blur();
 });
@@ -345,11 +316,66 @@ $(document).on('click', '[data-admin-delete]', async function(){
     renderAdminOverviewStats();
     renderMenuPage();
     renderMerchPage();
+    buildComboProducts();
+    renderFeaturedCombos();
     showToast(`Deleted "${p.name}".`);
   } catch(err){
     console.error(err);
     showToast('Could not delete product. Please try again.');
   }
+});
+
+function setImagePreview(imgId, placeholderId, url){
+  if(url){
+    $('#' + imgId).attr('src', url).show();
+    $('#' + placeholderId).hide();
+  } else {
+    $('#' + imgId).attr('src', '').hide();
+    $('#' + placeholderId).show();
+  }
+}
+
+async function handleAdminImageUpload(file, { urlFieldId, imgId, placeholderId, statusId, folder, fileId }){
+  const $status = $('#' + statusId);
+  if(!file.type.startsWith('image/')){
+    $status.text('Please choose an image file.').addClass('image-upload-error');
+    return;
+  }
+  $status.text('Processing image...').removeClass('image-upload-error');
+  try{
+    const blob = await window.CCImages.resizeImageToSquare(file);
+    setImagePreview(imgId, placeholderId, URL.createObjectURL(blob));
+    $status.text('Uploading...');
+    const url = await window.CCImages.uploadImage(blob, folder, fileId);
+    $('#' + urlFieldId).val(url);
+    $status.text('Uploaded — 1000×1000, ready to save.');
+  } catch(err){
+    console.error(err);
+    const msg = err.message === 'cloudinary-not-configured'
+      ? 'Image upload isn\'t set up yet — add your Cloudinary cloud name and upload preset in image-upload-service.js. You can paste an image URL below in the meantime.'
+      : 'Upload failed. Please try again, or paste an image URL instead.';
+    $status.text(msg).addClass('image-upload-error');
+  }
+}
+
+$(document).on('change', '#apImgFile', function(){
+  const file = this.files[0];
+  if(!file) return;
+  handleAdminImageUpload(file, {
+    urlFieldId: 'apImg', imgId: 'apImgPreviewImg', placeholderId: 'apImgPreviewPlaceholder',
+    statusId: 'apImgUploadStatus', folder: 'products',
+    fileId: adminEditingId || ('admin-' + Date.now())
+  });
+});
+
+$(document).on('change', '#acImgFile', function(){
+  const file = this.files[0];
+  if(!file) return;
+  handleAdminImageUpload(file, {
+    urlFieldId: 'acImg', imgId: 'acImgPreviewImg', placeholderId: 'acImgPreviewPlaceholder',
+    statusId: 'acImgUploadStatus', folder: 'combos',
+    fileId: adminEditingComboId || ('admin-' + Date.now())
+  });
 });
 
 /* ================= ADD / EDIT PRODUCT FORM ================= */
@@ -378,10 +404,7 @@ $(document).on('submit', '#adminAddProductForm', async function(e){
       return;
     }
     price = Number($('#apPrice').val());
-    // Stock isn't typed as one flat number for stock-sized products —
-    // it's the sum of every size's stock, kept in sync here so the
-    // admin table's Stock column and any "is stock tracked" check
-    // elsewhere in the app still work off the same top-level field.
+
     stock = sizes.reduce((sum, s) => sum + s.stock, 0);
   } else if(isPriceSized){
     sizes = $('#apDrinkSizeRows .size-price-input').map(function(){
@@ -444,6 +467,8 @@ $(document).on('submit', '#adminAddProductForm', async function(e){
       renderAdminProductsTable();
       renderMenuPage();
       renderMerchPage();
+      buildComboProducts();
+      renderFeaturedCombos();
       $('.admin-tab').removeClass('active');
       $('.admin-tab[data-admin-tab="products"]').addClass('active');
       $('.admin-panel').removeClass('active');
@@ -473,6 +498,8 @@ $(document).on('submit', '#adminAddProductForm', async function(e){
     renderAdminOverviewStats();
     renderMenuPage();
     renderMerchPage();
+    buildComboProducts();
+    renderFeaturedCombos();
   } catch(err){
     console.error(err);
     showToast('Could not add product. Please try again.');
@@ -651,6 +678,8 @@ $(document).on('click', '#adminSeedBtn', async function(){
     renderBestSellers();
     renderMenuPage();
     renderMerchPage();
+    buildComboProducts();
+    renderFeaturedCombos();
     renderAdminProductsTable();
     renderAdminOverviewStats();
     $status.text(`Done — ${SEED_PRODUCTS.length} products are now in Firestore.`);
@@ -678,6 +707,8 @@ $(document).on('click', '#adminCleanupFieldsBtn', async function(){
     await loadProductsFromFirestore();
     renderMenuPage();
     renderMerchPage();
+    buildComboProducts();
+    renderFeaturedCombos();
     renderAdminProductsTable();
     renderAdminOverviewStats();
     $status.text(cleanedIds.length
@@ -691,8 +722,15 @@ $(document).on('click', '#adminCleanupFieldsBtn', async function(){
   }
 });
 
-/* PER-SIZE PRICING */
-
+/* ================= FLATTEN LEGACY PER-SIZE PRICING ================= */
+/* Some Shirts/Caps/Shorts/Socks products may still carry old per-size
+   pricing (a `sizes` array of {size, price} objects with different
+   prices per size) from before per-size pricing was reverted. This
+   rewrites every such product to the flat, single-price model: each
+   size becomes a plain string and the product's one Price field
+   applies to all of them. See CCProducts.flattenSizePricing for how
+   the flat price is chosen. SIZED_CATEGORIES comes from script.js,
+   loaded before this file. */
 $(document).on('click', '#adminGraduatePricingBtn', async function(){
   const $btn = $(this);
   const $status = $('#adminGraduatePricingStatus');
@@ -705,6 +743,8 @@ $(document).on('click', '#adminGraduatePricingBtn', async function(){
     renderBestSellers();
     renderMenuPage();
     renderMerchPage();
+    buildComboProducts();
+    renderFeaturedCombos();
     renderAdminProductsTable();
     renderAdminOverviewStats();
     $status.text(updatedIds.length
@@ -715,5 +755,261 @@ $(document).on('click', '#adminGraduatePricingBtn', async function(){
     $status.text('Something went wrong while updating. Check the console for details.');
   } finally {
     $btn.prop('disabled', false).text('Flatten Per-Size Pricing');
+  }
+});
+
+/* ================= SETTINGS ================= */
+/* Populates the delivery fee input from Firestore each time the
+   dashboard is (re)rendered, e.g. on navigating to the Admin page. */
+async function loadAndRenderAdminSettings(){
+  try{
+    const settings = await window.CCSettings.fetchSettings();
+    DELIVERY_FEE = settings.deliveryFee;
+    $('#asDeliveryFee').val(settings.deliveryFee);
+  } catch(err){
+    console.error('Could not load settings from Firestore.', err);
+    // Fall back to whatever's cached (or the built-in default) so the
+    // field isn't left blank if the fetch above failed.
+    $('#asDeliveryFee').val(DELIVERY_FEE);
+  }
+}
+
+$(document).on('submit', '#adminSettingsForm', async function(e){
+  e.preventDefault();
+  const fee = parseFloat($('#asDeliveryFee').val());
+  if(isNaN(fee) || fee < 0){
+    $('#adminSettingsStatus').text('Enter a valid, non-negative delivery fee.');
+    return;
+  }
+  const $btn = $('#adminSettingsSubmitBtn');
+  const $status = $('#adminSettingsStatus');
+  $btn.prop('disabled', true).text('Saving...');
+  $status.text('');
+  try{
+    await window.CCSettings.updateDeliveryFee(fee);
+    // Update the in-memory value script.js reads at checkout, so the
+    // new fee takes effect immediately without a page reload.
+    DELIVERY_FEE = fee;
+    $status.text('Saved — new orders will use this delivery fee.');
+  } catch(err){
+    console.error(err);
+    $status.text('Something went wrong while saving. Check the console for details.');
+  } finally {
+    $btn.prop('disabled', false).text('Save Delivery Fee');
+  }
+});
+
+/* ================= COMBOS ================= */
+let adminEditingComboId = null; // set while editing an existing combo, null when adding a new one
+const PASTRY_CATEGORY = 'Pastries';
+
+/* Drink/Pastry dropdowns are rebuilt from the current PRODUCTS list
+   every time the Combos tab is rendered, so a product added/renamed
+   elsewhere in the admin always shows up here without a page reload.
+   Whatever was previously selected is restored by value so editing a
+   combo doesn't lose the current selection mid-rebuild. */
+function renderComboProductDropdowns(){
+  const drinks = PRODUCTS.filter(p => DRINK_CATEGORIES.includes(p.cat));
+  const pastries = PRODUCTS.filter(p => p.cat === PASTRY_CATEGORY);
+  const prevDrink = $('#acDrink').val();
+  const prevPastry = $('#acPastry').val();
+  $('#acDrink').html(drinks.length
+    ? drinks.map(p => `<option value="${p.id}">${p.name}</option>`).join('')
+    : '<option value="" disabled>No drinks in the catalog yet</option>');
+  $('#acPastry').html(pastries.length
+    ? pastries.map(p => `<option value="${p.id}">${p.name}</option>`).join('')
+    : '<option value="" disabled>No pastries in the catalog yet</option>');
+  if(prevDrink) $('#acDrink').val(prevDrink);
+  if(prevPastry) $('#acPastry').val(prevPastry);
+}
+
+async function loadAndRenderAdminCombos(){
+  renderComboProductDropdowns();
+  $('#adminCombosBody').html(`<tr><td colspan="6" class="admin-empty-row">Loading combos...</td></tr>`);
+  try{
+    COMBOS = await window.CCCombos.fetchAllCombos();
+  } catch(err){
+    console.error(err);
+    $('#adminCombosBody').html(`<tr><td colspan="6" class="admin-empty-row">Could not load combos. Please try refreshing.</td></tr>`);
+    return;
+  }
+  buildComboProducts();
+  renderFeaturedCombos();
+  renderAdminCombosTable();
+}
+
+function renderAdminCombosTable(){
+  if(!COMBOS.length){
+    $('#adminCombosBody').html(`<tr><td colspan="6" class="admin-empty-row">No combos yet — add one below.</td></tr>`);
+    return;
+  }
+  const rows = COMBOS.map(c => {
+    const drink = PRODUCTS.find(p => p.id === c.drinkId);
+    const pastry = PRODUCTS.find(p => p.id === c.pastryId);
+    const broken = !drink || !pastry;
+    return `
+      <tr data-combo-row="${c.id}">
+        <td class="admin-td-product">
+          <div class="admin-td-product-inner">
+            <img src="${c.img || blankPlaceholder(c.id, 'Combo')}" alt="${c.name}">
+            <span>${c.name}</span>
+          </div>
+        </td>
+        <td>${drink ? drink.name : '<span class="admin-stock-badge admin-stock-out">Missing</span>'}</td>
+        <td>${pastry ? pastry.name : '<span class="admin-stock-badge admin-stock-out">Missing</span>'}</td>
+        <td>${Number(c.discountPercent) || 0}%</td>
+        <td>
+          ${broken
+            ? '<span class="admin-stock-badge admin-stock-out">Broken link</span>'
+            : c.active
+              ? '<span class="admin-stock-badge admin-stock-ok">Active</span>'
+              : '<span class="admin-stock-badge admin-stock-unknown">Inactive</span>'}
+        </td>
+        <td class="admin-td-actions">
+          <button class="admin-icon-btn" data-admin-combo-toggle="${c.id}" title="${c.active ? 'Deactivate' : 'Activate'}" aria-label="${c.active ? 'Deactivate' : 'Activate'} ${c.name}">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none"><path d="M5 12h14" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>${c.active ? '' : '<path d="M12 5v14" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>'}</svg>
+          </button>
+          <button class="admin-icon-btn" data-admin-combo-edit="${c.id}" title="Edit" aria-label="Edit ${c.name}">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none"><path d="M4 20l1-4L16.5 4.5a1.5 1.5 0 0 1 2 0l1 1a1.5 1.5 0 0 1 0 2L8 19l-4 1Z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/></svg>
+          </button>
+          <button class="admin-icon-btn admin-icon-btn-danger" data-admin-combo-delete="${c.id}" title="Delete" aria-label="Delete ${c.name}">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none"><path d="M5 7h14M9 7V5a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2m-8 0v12a1 1 0 0 0 1 1h6a1 1 0 0 0 1-1V7" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          </button>
+        </td>
+      </tr>
+    `;
+  }).join('');
+  $('#adminCombosBody').html(rows);
+}
+
+function resetAdminComboForm(){
+  adminEditingComboId = null;
+  $('#adminAddComboForm')[0].reset();
+  $('#acEditId').val('');
+  $('#adminComboFormHeading').text('Add Combo');
+  $('#adminComboFormSubmitBtn').text('Add Combo');
+  $('#adminComboCancelEditBtn').hide();
+  setImagePreview('acImgPreviewImg', 'acImgPreviewPlaceholder', '');
+  $('#acImgUploadStatus').text('').removeClass('image-upload-error');
+}
+
+$(document).on('click', '[data-admin-combo-edit]', function(){
+  const id = $(this).data('admin-combo-edit');
+  const c = COMBOS.find(x => x.id === id);
+  if(!c) return;
+  adminEditingComboId = id;
+  $('#acEditId').val(id);
+  $('#acName').val(c.name);
+  renderComboProductDropdowns();
+  $('#acDrink').val(c.drinkId);
+  $('#acPastry').val(c.pastryId);
+  $('#acDiscount').val(c.discountPercent);
+  $('#acActive').val(String(!!c.active));
+  $('#acDesc').val(c.desc || '');
+  $('#acImg').val(c.img || '');
+  setImagePreview('acImgPreviewImg', 'acImgPreviewPlaceholder', c.img || '');
+  $('#acImgUploadStatus').text('').removeClass('image-upload-error');
+  $('#adminComboFormHeading').text(`Edit "${c.name}"`);
+  $('#adminComboFormSubmitBtn').text('Update Combo');
+  $('#adminComboCancelEditBtn').show();
+});
+
+$(document).on('click', '#adminComboCancelEditBtn', resetAdminComboForm);
+
+/* Quick on/off switch right from the table row — the fastest way to
+   pull a seasonal combo without deleting and re-creating it later. */
+$(document).on('click', '[data-admin-combo-toggle]', async function(){
+  const id = $(this).data('admin-combo-toggle');
+  const c = COMBOS.find(x => x.id === id);
+  if(!c) return;
+  const $btn = $(this);
+  $btn.prop('disabled', true);
+  try{
+    await window.CCCombos.updateCombo(id, { active: !c.active });
+    c.active = !c.active;
+    buildComboProducts();
+    renderFeaturedCombos();
+    renderAdminCombosTable();
+    showToast(`"${c.name}" is now ${c.active ? 'active' : 'inactive'}.`);
+  } catch(err){
+    console.error(err);
+    showToast('Could not update that combo. Please try again.');
+  } finally {
+    $btn.prop('disabled', false);
+  }
+});
+
+$(document).on('click', '[data-admin-combo-delete]', async function(){
+  const id = $(this).data('admin-combo-delete');
+  const c = COMBOS.find(x => x.id === id);
+  if(!c || !confirm(`Delete "${c.name}"? This can't be undone.`)) return;
+  try{
+    await window.CCCombos.deleteCombo(id);
+    COMBOS = COMBOS.filter(x => x.id !== id);
+    buildComboProducts();
+    renderFeaturedCombos();
+    renderAdminCombosTable();
+    showToast(`Deleted "${c.name}".`);
+    if(adminEditingComboId === id) resetAdminComboForm();
+  } catch(err){
+    console.error(err);
+    showToast('Could not delete that combo. Please try again.');
+  }
+});
+
+$(document).on('submit', '#adminAddComboForm', async function(e){
+  e.preventDefault();
+  const $btn = $('#adminComboFormSubmitBtn');
+  const drinkId = $('#acDrink').val();
+  const pastryId = $('#acPastry').val();
+  if(!drinkId || !pastryId){
+    showToast('Add at least one drink and one pastry to the catalog first.');
+    return;
+  }
+  const drink = PRODUCTS.find(p => p.id === drinkId);
+  const pastry = PRODUCTS.find(p => p.id === pastryId);
+  const fields = {
+    name: $('#acName').val().trim(),
+    drinkId, pastryId,
+    discountPercent: Number($('#acDiscount').val()) || 0,
+    active: $('#acActive').val() === 'true',
+    desc: $('#acDesc').val().trim() || `${drink.name} + ${pastry.name}`,
+    img: $('#acImg').val().trim()
+  };
+
+  if(adminEditingComboId){
+    $btn.prop('disabled', true).text('Updating...');
+    try{
+      await window.CCCombos.updateCombo(adminEditingComboId, fields);
+      const idx = COMBOS.findIndex(x => x.id === adminEditingComboId);
+      if(idx > -1) COMBOS[idx] = { id: adminEditingComboId, ...fields };
+      buildComboProducts();
+      renderFeaturedCombos();
+      renderAdminCombosTable();
+      showToast(`Updated "${fields.name}".`);
+      resetAdminComboForm();
+    } catch(err){
+      console.error(err);
+      showToast('Could not update combo. Please try again.');
+    } finally {
+      $btn.prop('disabled', false).text('Update Combo');
+    }
+    return;
+  }
+
+  $btn.prop('disabled', true).text('Adding...');
+  try{
+    const newId = await window.CCCombos.addCombo(fields);
+    COMBOS.push({ id: newId, ...fields });
+    buildComboProducts();
+    renderFeaturedCombos();
+    renderAdminCombosTable();
+    showToast(`Added "${fields.name}".`);
+    resetAdminComboForm();
+  } catch(err){
+    console.error(err);
+    showToast('Could not add combo. Please try again.');
+  } finally {
+    $btn.prop('disabled', false).text('Add Combo');
   }
 });
