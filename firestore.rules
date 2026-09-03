@@ -16,6 +16,17 @@ service cloud.firestore {
       );
     }
 
+    // Combo/meal sets (a drink + a pastry sold together at a discount).
+    // Same shape as products: public read, admin-only write — nothing
+    // here needs the customer-writable "stock" carve-out products.js
+    // has, since a combo's own stock is derived live from its linked
+    // drink/pastry products, never stored on the combo doc itself.
+    match /combos/{comboId} {
+      allow read: if true;
+      allow write: if request.auth != null &&
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin';
+    }
+
     // Any signed-in customer can create their own order; only the
     // order's owner or an admin can read it back.
     match /orders/{orderId} {
