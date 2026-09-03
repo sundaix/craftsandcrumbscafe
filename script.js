@@ -31,6 +31,10 @@ function blankPlaceholder(id, cat){
    that the site actually renders from is the mutable PRODUCTS
    array below, populated from Firestore at startup. */
 let PRODUCTS = [];
+// Flat delivery fee, admin-configurable (Admin > Settings). Starts at the
+// same value that used to be hardcoded here, and is overwritten by the
+// cached/live value from settings-service.js during init below.
+let DELIVERY_FEE = 60;
 const SEED_PRODUCTS = [
   /* ---- Pastries: All-day Bakery ---- */
   { id:'p13', name:'Classic Buttered Croissant', cat:'Pastries', price:120,
@@ -381,6 +385,15 @@ const REVIEWS = [
 let cart = []; // {id, qty, size}
 let cartOwnerUid = null; // uid whose cart is currently loaded into `cart` — null while signed out
 
+/* Raw combo records from Firestore (name, desc, img, drinkId, pastryId,
+   discountPercent, active) and the "product-shaped" versions derived
+   from them — see buildComboProducts() further down. Kept as separate
+   arrays from PRODUCTS/PRODUCTS-derived state rather than merged in,
+   so the Menu/Merch grids and the admin Products table never
+   accidentally pick up a combo as if it were a real catalog item. */
+let COMBOS = [];
+let COMBO_PRODUCTS = [];
+
 function persistCart(){
   if(!cartOwnerUid) return;
   window.CCCart.saveCart(cartOwnerUid, cart);
@@ -493,7 +506,7 @@ const CAT_LABELS = {
 
 /* ================= HELPERS ================= */
 const peso = n => '₱' + n.toLocaleString('en-PH');
-const findProduct = id => PRODUCTS.find(p => p.id === id);
+const findProduct = id => PRODUCTS.find(p => p.id === id) || COMBO_PRODUCTS.find(p => p.id === id);
 const escapeHtml = str => $('<div>').text(str == null ? '' : str).html();
 
 /* Normalizes a product's `sizes` field to `[{size, price, stock}, ...]`
@@ -665,7 +678,7 @@ async function syncWishlistToAccount(realUser){
 
 function renderWishlistPage(){
   const $grid = $('#wishlistGrid');
-  const items = PRODUCTS.filter(p => wishlist.includes(p.id));
+  const items = [...PRODUCTS, ...COMBO_PRODUCTS].filter(p => wishlist.includes(p.id));
   if(!items.length){
     $('#wishlistCount').text('');
     $('#wishlistClearBtn').hide();
@@ -686,7 +699,132 @@ function renderWishlistPage(){
   }
   $('#wishlistCount').text(`${items.length} item${items.length === 1 ? '' : 's'} saved`);
   $('#wishlistClearBtn').show();
-  $grid.html(items.map(productCard).join(''));
+  $grid.html(items.map(p => p.comboMeta ? comboCard(p) : productCard(p)).join(''));
+  initReveal();
+}
+
+/* ================= COMBOS ================= */
+/* Turns each raw combo doc (name, desc, img, drinkId, pastryId,
+   discountPercent, active) into a "product" — same {sizes, price,
+   stock} shape a real drink already has — so every piece of storefront
+   machinery that already knows how to handle a sized product (price
+   display, size picker, add to cart, stock checks, cart line items,
+   checkout, order history) works on a combo completely unmodified.
+   The one addition is `comboMeta`, read in exactly two places: the
+   home page combo card (to show the discount + original price) and
+   placeOrder (to expand a combo line into its two real stock
+   decrements at checkout — see placeOrder below).
+
+   Only combos whose linked drink AND pastry both still exist end up
+   in COMBO_PRODUCTS — if either product was deleted from the catalog,
+   the combo silently drops off the storefront rather than crashing or
+   showing a broken card. Re-run whenever PRODUCTS or COMBOS changes
+   (product prices/stock updated, or a combo added/edited/toggled). */
+function buildComboProducts(){
+  COMBO_PRODUCTS = COMBOS.filter(c => c.active).map(c => {
+    const drink = PRODUCTS.find(p => p.id === c.drinkId);
+    const pastry = PRODUCTS.find(p => p.id === c.pastryId);
+    if(!drink || !pastry) return null;
+
+    const drinkOpts = getSizeOptions(drink).length ? getSizeOptions(drink) : [{ size: null, price: drink.price, stock: null }];
+    const discount = Number(c.discountPercent) || 0;
+    const originalSizes = drinkOpts.map(o => ({ size: o.size, price: o.price + pastry.price }));
+    const sizes = originalSizes.map(o => ({ size: o.size, price: Math.round(o.price * (1 - discount / 100)) }));
+
+    const stocks = [drink.stock, pastry.stock].filter(s => typeof s === 'number');
+    const stock = stocks.length ? Math.min(...stocks) : null;
+
+    return {
+      id: 'combo_' + c.id,
+      name: c.name,
+      desc: c.desc || `${drink.name} + ${pastry.name}`,
+      img: c.img,
+      imgs: [c.img],
+      cat: 'Combo',
+      sizes: drinkOpts[0].size ? sizes : undefined,
+      price: Math.min(...sizes.map(s => s.price)),
+      stock,
+      comboMeta: {
+        comboId: c.id,
+        drinkId: drink.id,
+        pastryId: pastry.id,
+        discountPercent: discount,
+        originalSizes
+      }
+    };
+  }).filter(Boolean);
+}
+
+async function loadCombosFromFirestore(){
+  try{
+    COMBOS = await window.CCCombos.fetchAllCombos();
+  } catch(err){
+    console.error('Could not load combos from Firestore.', err);
+    COMBOS = [];
+  }
+  buildComboProducts();
+}
+
+/* The struck-through "before discount" price shown next to a combo's
+   discounted price — mirrors priceLabel()'s single-value-vs-range
+   logic, just built from comboMeta.originalSizes instead of p.sizes. */
+function comboOriginalPriceLabel(p){
+  const sizes = p.comboMeta && p.comboMeta.originalSizes;
+  if(!sizes || !sizes.length) return '';
+  const min = Math.min(...sizes.map(s => s.price));
+  const max = Math.max(...sizes.map(s => s.price));
+  return min === max ? peso(min) : `${peso(min)}–${peso(max)}`;
+}
+
+/* Same struck-through original price, but for one specific chosen
+   size — used once a drink size is actually picked on the combo's
+   product detail page, instead of showing the full range. */
+function comboOriginalPriceForSize(p, size){
+  const sizes = p.comboMeta && p.comboMeta.originalSizes;
+  if(!sizes || !sizes.length) return '';
+  const match = sizes.find(s => s.size === size);
+  return match ? peso(match.price) : comboOriginalPriceLabel(p);
+}
+
+function comboCard(p, i=0){
+  const saved = isWishlisted(p.id);
+  const oos = isProductOutOfStock(p);
+  return `
+    <div class="product-card combo-card reveal${oos ? ' oos' : ''}" style="--i:${i}">
+      <div class="product-img" data-open-product="${p.id}">
+        <img src="${p.img}" alt="${p.name}">
+        <span class="combo-discount-badge">${p.comboMeta.discountPercent}% off</span>
+        ${oos ? '<span class="oos-badge">Out of Stock</span>' : ''}
+        <button type="button" class="wishlist-btn ${saved ? 'active' : ''}" data-wishlist-toggle="${p.id}" aria-label="${saved ? 'Remove from favorites' : 'Save to favorites'}">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="${saved ? 'currentColor' : 'none'}"><path d="M12 21s-7.5-4.6-10-9.3C.6 8.1 2.4 4.5 6 4c2-.3 3.7.7 6 3 2.3-2.3 4-3.3 6-3 3.6.5 5.4 4.1 4 7.7C19.5 16.4 12 21 12 21z" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/></svg>
+        </button>
+      </div>
+      <div class="product-info">
+        <div class="product-name" data-open-product="${p.id}">${p.name}</div>
+        <div class="product-desc">${p.desc}</div>
+        <div class="product-footer">
+          <span class="combo-price-group">
+            <span class="combo-price-original">${comboOriginalPriceLabel(p)}</span>
+            <span class="price">${priceLabel(p)}</span>
+          </span>
+          <button class="add-btn" data-quick-add="${p.id}" aria-label="${oos ? 'Out of stock' : 'Add to cart'}" ${oos ? 'disabled' : ''}>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M12 5v14M5 12h14" stroke="#fff" stroke-width="2.2" stroke-linecap="round"/></svg>
+          </button>
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+function renderFeaturedCombos(){
+  const $section = $('#featuredCombosSection');
+  if(!$section.length) return;
+  if(!COMBO_PRODUCTS.length){
+    $section.hide();
+    return;
+  }
+  $section.show();
+  $('#featuredCombosGrid').html(COMBO_PRODUCTS.map(comboCard).join(''));
   initReveal();
 }
 
@@ -878,6 +1016,7 @@ function navigate(pageName){
 
 async function refreshProductsThenRerender(pageName){
   await loadProductsFromFirestore();
+  buildComboProducts();
   if(!$(`.page[data-page="${pageName}"]`).hasClass('active')) return; // user already navigated away
   if(pageName === 'cart') renderCart();
   if(pageName === 'checkout') renderCheckoutSummary();
@@ -1444,9 +1583,10 @@ function renderProductDetail(){
   pdSize = pdOpts.length === 1 ? pdOpts[0].size : null;
   $('#pdCrumb').text(p.name);
   const isMerch = ['Shirts','Caps','Shorts','Socks','ToteBags','Bracelets','Keychains'].includes(p.cat);
-  $('#pdSectionLink').text(isMerch ? 'Merchandise' : 'Menu')
-    .attr('data-nav', isMerch ? 'merchandise' : 'menu')
-    .data('nav', isMerch ? 'merchandise' : 'menu');
+  const isCombo = p.cat === 'Combo';
+  $('#pdSectionLink').text(isCombo ? 'Home' : isMerch ? 'Merchandise' : 'Menu')
+    .attr('data-nav', isCombo ? 'home' : isMerch ? 'merchandise' : 'menu')
+    .data('nav', isCombo ? 'home' : isMerch ? 'merchandise' : 'menu');
   const startPrice = pdSize ? getPriceForSize(p, pdSize) : getDisplayPrice(p);
   // Sized products: judge the currently-selected size. Unsized products,
   // and sized products where every size is out of stock (so nothing was
@@ -1461,9 +1601,12 @@ function renderProductDetail(){
       </div>
     </div>
     <div>
-      <div class="eyebrow">${p.cat}</div>
+      <div class="eyebrow">${isCombo ? `Combo · ${p.comboMeta.discountPercent}% off` : p.cat}</div>
       <h1 style="margin:10px 0 4px;">${p.name}</h1>
-      <div class="pd-price" id="pdPriceDisplay">${peso(startPrice)}</div>
+      <div class="pd-price" id="pdPriceDisplay">
+        ${isCombo ? `<span class="combo-price-original combo-price-original-pd">${comboOriginalPriceLabel(p)}</span>` : ''}
+        <span id="pdPriceDisplayValue">${peso(startPrice)}</span>
+      </div>
       <p class="pd-desc">${p.desc}${p.ingredients ? ' Made in small batches at our counter, using seasonal ingredients whenever we can.' : ''}</p>
       ${renderPdSecondary(p)}
       <div class="pd-actions">
@@ -1480,8 +1623,19 @@ function renderProductDetail(){
     </div>
   `);
 
-  const related = PRODUCTS.filter(x => x.cat === p.cat && x.id !== p.id).slice(0,4);
-  const fill = related.length < 4 ? PRODUCTS.filter(x=>x.id!==p.id && !related.includes(x)).slice(0, 4-related.length) : [];
+  // A combo's "you may also like" is the two real products it's made
+  // of — showing random catalog items here instead would be confusing
+  // (PRODUCTS never contains combo docs, so the normal same-category
+  // lookup below would just return unrelated items).
+  let related, fill;
+  if(isCombo){
+    related = [p.comboMeta.drinkId, p.comboMeta.pastryId].map(findProduct).filter(Boolean);
+    fill = [];
+  } else {
+    related = PRODUCTS.filter(x => x.cat === p.cat && x.id !== p.id).slice(0,4);
+    fill = related.length < 4 ? PRODUCTS.filter(x=>x.id!==p.id && !related.includes(x)).slice(0, 4-related.length) : [];
+  }
+  $('#relatedHeading').text(isCombo ? "What's in this combo" : 'You might also like');
   $('#relatedGrid').html([...related, ...fill].map(productCard).join(''));
   initReveal();
   loadAndRenderReviews(p.id);
@@ -1734,7 +1888,8 @@ $(document).on('click', '[data-pd-size]:not([disabled])', function(){
   const p = findProduct(currentProductId);
   const unitPrice = getPriceForSize(p, pdSize);
   const oos = isSizeOutOfStock(p, pdSize);
-  $('#pdPriceDisplay').text(peso(unitPrice));
+  $('#pdPriceDisplayValue').text(peso(unitPrice));
+  if(p.comboMeta) $('.combo-price-original-pd').text(comboOriginalPriceForSize(p, pdSize));
   $('#pdAddBtn').prop('disabled', oos).text(oos ? 'Out of Stock' : `Add to Cart · ${peso(unitPrice * pdQty)}`);
 });
 
@@ -1827,7 +1982,7 @@ function renderCart(){
 
   const totalQty = cart.reduce((s,c)=>s+c.qty,0);
   const subtotal = cartTotal();
-  const delivery = subtotal > 0 ? 60 : 0;
+  const delivery = subtotal > 0 ? DELIVERY_FEE : 0;
   const total = subtotal + delivery;
 
   $wrap.html(`
@@ -1950,7 +2105,7 @@ $(document).on('keydown', function(e){
 
 function renderCheckoutSummary(){
   const subtotal = cartTotal();
-  const delivery = fulfillment === 'delivery' && subtotal > 0 ? 60 : 0;
+  const delivery = fulfillment === 'delivery' && subtotal > 0 ? DELIVERY_FEE : 0;
   const total = subtotal + delivery;
   const lines = cart.map(c=>{
     const p = findProduct(c.id);
@@ -1985,7 +2140,7 @@ async function placeOrder(){
   }
 
   const subtotal = cartTotal();
-  const deliveryFee = fulfillment === 'delivery' ? 60 : 0;
+  const deliveryFee = fulfillment === 'delivery' ? DELIVERY_FEE : 0;
   const total = subtotal + deliveryFee;
   const items = cart.map(c => {
     const p = findProduct(c.id);
@@ -2019,9 +2174,22 @@ async function placeOrder(){
     // without a stock field are skipped by decrementStock's caller here).
     // Sized products (Shirts/Caps/Shorts/Socks) carry the size along so
     // the per-size stock count gets decremented instead of the flat total.
-    const stockUpdates = items
-      .filter(it => typeof findProduct(it.id)?.stock === 'number')
-      .map(it => ({ id: it.id, qty: it.qty, size: it.size || null }));
+    // A combo line isn't a real product doc in Firestore — it expands
+    // into its two real component decrements instead (see comboMeta,
+    // set in buildComboProducts): the drink (with its chosen size) and
+    // the pastry (unsized), each decremented exactly like a normal
+    // order for that product would be.
+    const stockUpdates = [];
+    items.forEach(it => {
+      const p = findProduct(it.id);
+      if(!p) return;
+      if(p.comboMeta){
+        stockUpdates.push({ id: p.comboMeta.drinkId, qty: it.qty, size: it.size || null });
+        stockUpdates.push({ id: p.comboMeta.pastryId, qty: it.qty, size: null });
+      } else if(typeof p.stock === 'number'){
+        stockUpdates.push({ id: it.id, qty: it.qty, size: it.size || null });
+      }
+    });
     if(stockUpdates.length){
       window.CCProducts.decrementStock(stockUpdates).catch(err => console.error('Stock decrement failed:', err));
     }
@@ -2603,6 +2771,8 @@ function renderAll(){
   renderBestSellers();
   renderMenuPage();
   renderMerchPage();
+  buildComboProducts();
+  renderFeaturedCombos();
 }
 
 async function loadProductsFromFirestore(){
@@ -2622,6 +2792,15 @@ async function loadProductsFromFirestore(){
   }
 }
 
+async function loadSettingsFromFirestore(){
+  try{
+    const settings = await window.CCSettings.fetchSettings();
+    DELIVERY_FEE = settings.deliveryFee;
+  } catch(err){
+    console.error('Could not load settings from Firestore, using the default delivery fee instead.', err);
+  }
+}
+
 $(async function(){
 
   renderCategories();
@@ -2636,8 +2815,14 @@ $(async function(){
     PRODUCTS = cached;
     renderAll();
   }
+  const cachedSettings = window.CCSettings.getCachedSettings();
+  if(cachedSettings){
+    DELIVERY_FEE = cachedSettings.deliveryFee;
+  }
 
   await loadProductsFromFirestore();
+  await loadSettingsFromFirestore();
+  await loadCombosFromFirestore();
   renderAll();
 });
 /* ================= PROMO LAUNCH BANNER ================= */
