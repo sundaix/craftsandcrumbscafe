@@ -540,6 +540,22 @@
      (.bestseller-tag) — keep the out-of-stock pill from overlapping it. */
   .best-card .oos-badge{ top:10px; left:auto; right:10px; }
 
+  /* ---------- Combo cards ---------- */
+  .combo-discount-badge{
+    position:absolute; top:10px; left:10px; z-index:2;
+    background:var(--cta); color:#fff;
+    font-size:10px; font-weight:700; letter-spacing:0.05em; text-transform:uppercase;
+    padding:5px 10px; border-radius:100px;
+  }
+  .combo-card .wishlist-btn{ top:10px; } /* combo badge takes the left corner, wishlist stays right */
+  .combo-price-group{ display:flex; align-items:baseline; gap:8px; }
+  .combo-price-original{
+    font-family:'Lora',serif; font-size:12.5px; color:var(--text-faint);
+    text-decoration:line-through; text-decoration-color:var(--text-faint);
+  }
+  .combo-price-original-pd{ font-size:16px; margin-right:10px; }
+  #pdPriceDisplay{ display:flex; align-items:baseline; }
+
   /* ---------- Popular this week — auto-scrolling marquee ---------- */
   .best-sellers{
     background:var(--card);
@@ -1549,6 +1565,24 @@
     border-color:var(--sage); box-shadow:var(--ring);
   }
   .form-hint{ font-size:11.5px; color:var(--text-faint); margin-top:8px; }
+
+  /* ---------- Admin image upload field ---------- */
+  .image-upload-field{ display:flex; gap:16px; align-items:flex-start; }
+  .image-upload-preview{
+    width:88px; height:88px; flex-shrink:0; border-radius:10px;
+    background:var(--card); border:1px dashed var(--line-strong);
+    display:flex; align-items:center; justify-content:center; overflow:hidden;
+  }
+  .image-upload-preview img{ width:100%; height:100%; object-fit:cover; }
+  .image-upload-placeholder{ font-size:10.5px; color:var(--text-faint); text-align:center; padding:0 8px; }
+  .image-upload-controls{ flex:1; padding-top:2px; }
+  .image-upload-btn{ display:inline-block; cursor:pointer; }
+  .image-upload-status{ font-size:11.5px; color:var(--sage); margin-top:8px; min-height:14px; }
+  .image-upload-status.image-upload-error{ color:var(--danger); }
+  .form-label-secondary{
+    display:block; font-size:11px; color:var(--text-faint);
+    margin:14px 0 6px; letter-spacing:0.01em;
+  }
 
   .size-stock-rows{ display:flex; flex-direction:column; gap:8px; }
   .size-stock-row{
