@@ -1,9 +1,3 @@
-/* =========================================================
-   Crafts & Crumbs — products-service.js
-   All Firestore reads/writes for the "products" collection
-   live here. script.js calls these instead of touching a
-   hardcoded array.
-========================================================= */
 import { db } from "./firebase-config.js";
 import {
   collection, getDocs, getDoc, doc, setDoc, addDoc, updateDoc, deleteDoc, deleteField, increment
@@ -12,10 +6,6 @@ import {
 const PRODUCTS_COL = "products";
 const CACHE_KEY = "cc_products_cache_v2";
 
-/* Synchronous read of whatever product list was cached from the
-   last successful Firestore fetch. Lets the UI paint immediately
-   on repeat visits instead of waiting on a network round trip.
-   Returns null if nothing has been cached yet (first-ever visit). */
 export function getCachedProducts(){
   try{
     const raw = localStorage.getItem(CACHE_KEY);
@@ -29,17 +19,9 @@ function setCachedProducts(products){
   try{
     localStorage.setItem(CACHE_KEY, JSON.stringify(products));
   } catch(err){
-    // Storage full/unavailable (private browsing, etc.) — safe to ignore,
-    // it just means we skip the fast-path cache next time.
   }
 }
 
-/* Keeps the localStorage cache in sync with individual admin writes
-   (add/update/delete), so the "paint instantly from cache" fast-path
-   on the next page load never shows a price/product that's already
-   been changed in Firestore. Without this, an admin edit was only
-   reflected in the cache after the NEXT full fetchAllProducts() call,
-   which meant an old price could still flash briefly on page reload. */
 function patchCachedProduct(id, fields, fieldsToDelete){
   const cached = getCachedProducts();
   if(!cached) return;
@@ -64,10 +46,6 @@ function removeCachedProduct(id){
   setCachedProducts(cached.filter(p => p.id !== id));
 }
 
-/* Reads every product from Firestore. Returns [] if the
-   collection is empty (e.g. before seeding has been run).
-   Also refreshes the local cache on success so the next page
-   load can render instantly before this fetch even starts. */
 export async function fetchAllProducts(){
   const snap = await getDocs(collection(db, PRODUCTS_COL));
   const products = snap.docs.map(d => ({ id: d.id, ...d.data() }));
@@ -83,41 +61,19 @@ export async function addProduct(product){
   return ref.id;
 }
 
-/* One-time seeder: pushes an array of {id, ...fields} products
-   into Firestore, using the given id as the doc id so it matches
-   the ids already baked into script.js (best-seller list, etc).
-
-   Safe to re-run in the sense that it only ever *fills gaps* — for
-   each product it checks whether that id's doc already exists and,
-   if so, leaves it completely untouched. Previously this used
-   setDoc() unconditionally, which fully overwrites a Firestore doc
-   (not a merge/patch); re-clicking "Seed Starter Catalog" after an
-   admin had already edited a product's image, price, or stock would
-   blow those edits away and replace them with the hardcoded starter
-   values. Skipping existing docs means the button only ever adds
-   products that are missing — e.g. after a fresh Firestore project,
-   or a product that was deleted — and never resets one that's
-   already there. */
 export async function seedProducts(productsArray){
   let added = 0;
   for(const p of productsArray){
     const { id, ...fields } = p;
     const ref = doc(db, PRODUCTS_COL, id);
     const existing = await getDoc(ref);
-    if(existing.exists()) continue; // already in Firestore — don't clobber admin edits
+    if(existing.exists()) continue; 
     await setDoc(ref, fields);
     added++;
   }
   return added;
 }
 
-/* Used by the Admin dashboard's "Edit" action on a product row.
-   fieldsToDelete (optional) removes keys from the doc entirely — e.g.
-   clearing `ingredients`/`allergens` off a product that's being changed
-   to a merch category, or `sizes` off one moving to a flat-price
-   category. updateDoc() only ever touches the keys it's given, so
-   simply leaving a field out of `fields` would NOT remove it; it has
-   to be set to Firestore's deleteField() sentinel explicitly. */
 export async function updateProduct(id, fields, fieldsToDelete){
   const payload = { ...fields };
   if(fieldsToDelete && fieldsToDelete.length){
@@ -135,23 +91,38 @@ export async function deleteProduct(id){
 
 export async function decrementStock(items){
   for(const item of items){
-    await updateDoc(doc(db, PRODUCTS_COL, item.id), { stock: increment(-item.qty) });
+    if(item.size){
+      const ref = doc(db, PRODUCTS_COL, item.id);
+      const snap = await getDoc(ref);
+      if(!snap.exists()) continue;
+      const data = snap.data();
+      const hasPerSizeStock = Array.isArray(data.sizes) &&
+        data.sizes.some(s => typeof s === 'object' && s !== null && typeof s.stock === 'number');
+
+      if(hasPerSizeStock){
+        let touched = false;
+        const newSizes = data.sizes.map(s => {
+          if(typeof s === 'string' || s.size !== item.size || typeof s.stock !== 'number') return s;
+          touched = true;
+          return { ...s, stock: Math.max(0, s.stock - item.qty) };
+        });
+        if(touched){
+          const totalStock = newSizes.reduce((sum, s) =>
+            sum + (typeof s === 'object' && typeof s.stock === 'number' ? s.stock : 0), 0);
+          await updateDoc(ref, { sizes: newSizes, stock: totalStock });
+          patchCachedProduct(item.id, { sizes: newSizes, stock: totalStock });
+          continue;
+        }
+      }
+      // Sized but no per-size stock tracked (drinks) — fall back to
+      // the flat top-level count, same as an unsized product.
+      await updateDoc(ref, { stock: increment(-item.qty) });
+    } else {
+      await updateDoc(doc(db, PRODUCTS_COL, item.id), { stock: increment(-item.qty) });
+    }
   }
 }
 
-/* One-off cleanup for merch products that still carry stray
-   ingredients/allergens fields written before category-aware saving
-   existed (see the comment on updateProduct above). Normally those
-   fields only get deleted when an admin re-saves that specific
-   product through the edit form — this walks every product still in
-   Firestore and deletes the two fields from any doc whose category
-   isn't food, so a merch item nobody has re-saved yet still gets
-   cleaned up.
-
-   foodCategories is passed in from admin.js's FOOD_CATEGORIES rather
-   than duplicated here, so the two lists can't drift apart. Returns
-   the ids of every product that was actually changed, so the caller
-   can report a real count instead of "done" with no detail. */
 export async function cleanupLegacyFoodFields(foodCategories){
   const snap = await getDocs(collection(db, PRODUCTS_COL));
   const cleaned = [];
@@ -171,64 +142,26 @@ export async function cleanupLegacyFoodFields(foodCategories){
   return cleaned;
 }
 
-/* One-time migration for sized merch (Caps, Shorts, Socks) that was
-   seeded/added before per-size pricing existed, or that was seeded
-   before the starter catalog's `sizes` prices were spread out to match
-   the Shirts pattern. seedProducts() only ever ADDS missing docs and
-   never touches ones that already exist, so a product added back when
-   Shorts/Socks/Caps still had one flat price across all sizes stays
-   flat forever unless something like this walks through and fixes it.
-
-   sizedCategories/seedProductsList are passed in from script.js's
-   SIZED_CATEGORIES/SEED_PRODUCTS (same reasoning as
-   cleanupLegacyFoodFields taking foodCategories) so this file doesn't
-   duplicate that list and the two can't drift apart.
-
-   For each sized product that doesn't yet have real per-size pricing:
-   - If its id matches one of the built-in starter-catalog items, it
-     gets that item's exact sizes/prices (same graduated pricing the
-     Shirts already use).
-   - Otherwise (a custom product an admin added) a graduated schedule
-     is derived from its current flat price, on the same "smaller
-     sizes stay at the base price, bigger sizes step up" pattern as
-     the Shirts seed data, so it's not left flat.
-   - A product with only one size (e.g. a Cap's "One Size") is left
-     alone — there's nothing to graduate across a single size, and
-     that's expected, not a bug.
-   - A product that already has two-plus differently-priced sizes is
-     left alone — it's already migrated.
-
-   Returns the ids of every product that was actually changed. */
-export async function applyGraduatedSizePricing(sizedCategories, seedProductsList){
+export async function flattenSizePricing(sizedCategories){
   const snap = await getDocs(collection(db, PRODUCTS_COL));
-  const seedById = {};
-  seedProductsList.forEach(p => { seedById[p.id] = p; });
 
   const updated = [];
   for(const docSnap of snap.docs){
     const data = docSnap.data();
     if(!sizedCategories.includes(data.cat)) continue;
-    if(!data.sizes || data.sizes.length < 2) continue; // no sizes, or only one (e.g. One Size Caps) — nothing to graduate
+    if(!data.sizes || !data.sizes.length) continue;
 
-    const opts = data.sizes.map(s => typeof s === 'string' ? { size: s, price: data.price } : s);
-    const alreadyVaries = new Set(opts.map(o => o.price)).size > 1;
-    if(alreadyVaries) continue; // already has shirt-style per-size pricing
+    const hasLegacyPricing = data.sizes.some(s => typeof s === 'object' && s !== null && typeof s.price === 'number');
+    if(!hasLegacyPricing) continue; // plain strings, or already the {size, stock} shape — nothing to do
 
-    const seed = seedById[docSnap.id];
-    let newSizes;
-    if(seed && seed.cat === data.cat && seed.sizes && seed.sizes.length > 1){
-      newSizes = seed.sizes.map(s => ({ ...s }));
-    } else {
-      const base = opts[0].price;
-      const step = Math.max(10, Math.round((base * 0.07) / 10) * 10); // ~7% of base price per size-tier, rounded to nearest ₱10
-      const midpoint = Math.ceil(opts.length / 2);
-      newSizes = opts.map((o, i) => ({
-        size: o.size,
-        price: base + Math.max(0, i - midpoint + 1) * step
-      }));
-    }
+    const opts = data.sizes.map(s => typeof s === 'string'
+      ? { size: s, price: data.price, stock: null }
+      : { size: s.size, price: typeof s.price === 'number' ? s.price : data.price, stock: typeof s.stock === 'number' ? s.stock : null }
+    );
 
-    const newPrice = Math.min(...newSizes.map(s => s.price));
+    const newPrice = Math.min(...opts.map(o => o.price));
+    const newSizes = opts.map(o => o.stock !== null ? { size: o.size, stock: o.stock } : o.size);
+
     await updateDoc(doc(db, PRODUCTS_COL, docSnap.id), { sizes: newSizes, price: newPrice });
     patchCachedProduct(docSnap.id, { sizes: newSizes, price: newPrice });
     updated.push(docSnap.id);
@@ -236,4 +169,4 @@ export async function applyGraduatedSizePricing(sizedCategories, seedProductsLis
   return updated;
 }
 
-window.CCProducts = { fetchAllProducts, addProduct, updateProduct, deleteProduct, seedProducts, getCachedProducts, decrementStock, cleanupLegacyFoodFields, applyGraduatedSizePricing };
+window.CCProducts = { fetchAllProducts, addProduct, updateProduct, deleteProduct, seedProducts, getCachedProducts, decrementStock, cleanupLegacyFoodFields, flattenSizePricing };
