@@ -1,0 +1,96 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Anyone can browse the catalog; only an admin account can add or
+    // remove products. Any signed-in customer (including guest/anonymous
+    // checkout) can update ONLY the stock field, so checkout can
+    // decrement stock without being able to touch price, name, etc.
+    match /products/{productId} {
+      allow read: if true;
+      allow create, delete: if request.auth != null &&
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin';
+      allow update: if request.auth != null && (
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin' ||
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['stock'])
+      );
+    }
+
+    // Combo/meal sets (a drink + a pastry sold together at a discount).
+    // Same shape as products: public read, admin-only write — nothing
+    // here needs the customer-writable "stock" carve-out products.js
+    // has, since a combo's own stock is derived live from its linked
+    // drink/pastry products, never stored on the combo doc itself.
+    match /combos/{comboId} {
+      allow read: if true;
+      allow write: if request.auth != null &&
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin';
+    }
+
+    // Any signed-in customer can create their own order; only the
+    // order's owner or an admin can read it back.
+    match /orders/{orderId} {
+      allow create: if request.auth != null;
+      allow read: if request.auth != null && (
+        resource.data.userId == request.auth.uid ||
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin'
+      );
+      allow update, delete: if request.auth != null &&
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin';
+    }
+
+    // Users can read/edit only their own profile doc. Registration always
+    // writes role:'customer' (see auth.js), so create requires that too —
+    // nobody can self-register as admin. Update lets an owner touch any of
+    // their own fields (name, phone, the OTP fields auth.js writes during
+    // verification, etc.) EXCEPT role, unless they're already an admin —
+    // otherwise a signed-in customer could just updateDoc their own role
+    // to 'admin' from devtools and unlock the admin dashboard.
+    match /users/{userId} {
+      allow read: if request.auth != null && request.auth.uid == userId;
+      allow create: if request.auth != null && request.auth.uid == userId &&
+        request.resource.data.role == 'customer';
+      allow update: if request.auth != null && request.auth.uid == userId && (
+        !('role' in request.resource.data.diff(resource.data).affectedKeys()) ||
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin'
+      );
+    }
+
+    // A customer's cart doc id is their own uid — only they can read
+    // or write it. This is what lets web and mobile share one cart.
+    match /carts/{cartId} {
+      allow read, write: if request.auth != null && request.auth.uid == cartId;
+    }
+
+    // Same pattern as carts: one doc per user, doc id = their own uid,
+    // holding the full list of saved product ids.
+    match /wishlists/{wishlistId} {
+      allow read, write: if request.auth != null && request.auth.uid == wishlistId;
+    }
+
+    // Reviews are public to read (they're social proof on the product
+    // page) but writes are locked down three ways: (1) the doc id must
+    // be `${productId}_${uid}`, a deterministic composite key rather than
+    // an auto-id — that's what makes "one review per person per product"
+    // automatic, since a second submission just overwrites the first
+    // instead of creating a duplicate; (2) the uid field in the review
+    // must match the writer's own uid, so nobody can post a review that
+    // impersonates someone else; (3) anonymous/guest sessions (used for
+    // guest checkout) can't post at all, since a review should be tied to
+    // a real account. Only the review's own author (or an admin, for
+    // moderation) can delete it.
+    match /reviews/{reviewId} {
+      allow read: if true;
+      allow create, update: if request.auth != null &&
+        request.auth.token.firebase.sign_in_provider != 'anonymous' &&
+        reviewId == (request.resource.data.productId + '_' + request.auth.uid) &&
+        request.resource.data.uid == request.auth.uid &&
+        request.resource.data.rating is int &&
+        request.resource.data.rating >= 1 && request.resource.data.rating <= 5;
+      allow delete: if request.auth != null && (
+        resource.data.uid == request.auth.uid ||
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin'
+      );
+    }
+  }
+}
