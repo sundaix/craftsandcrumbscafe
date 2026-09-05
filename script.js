@@ -642,7 +642,7 @@ function persistWishlist(){
    guest version of this, so signed-out taps just prompt a login. */
 function toggleWishlist(id){
   if(!window.currentUser || window.currentUser.isAnonymous){
-    showToast('Please log in to save favorites.');
+    showToast('Please log in to save favorites.', 'warning');
     navigate('login');
     return;
   }
@@ -659,7 +659,7 @@ function toggleWishlist(id){
   // Confirms the tap actually did something — the heart icon fills in,
   // but that's easy to miss on a quick tap, especially on mobile.
   const label = findProduct(id) ? findProduct(id).name : 'Item';
-  showToast(adding ? `Added to favorites · ${label}` : `Removed from favorites · ${label}`);
+  showToast(adding ? `Added to favorites · ${label}` : `Removed from favorites · ${label}`, 'cart');
 }
 
 /* Called from authStateReady alongside syncCartToAccount. */
@@ -840,12 +840,46 @@ $(document).on('click', '[data-wishlist-toggle]', function(e){
   toggleWishlist($(this).data('wishlist-toggle'));
 });
 
-function showToast(msg){
+/* Centered, temporary notification dialog used across the whole site
+   (customer pages + admin dashboard both call this same function).
+   type controls the icon glyph + accent color:
+     'success' (default) — sage check, completed positive actions
+     'cart'    — caramel cup, added-to-cart/wishlist confirmations
+     'warning' — caramel alert, "please do X" prompts
+     'error'   — red alert, something failed
+     'info'    — dusty-blue info, neutral status updates
+   duration is how long it stays up (ms) before auto-dismissing. */
+const TOAST_ICONS = {
+  success: '<path d="M4 12l5 5L20 6"/>',
+  cart:    '<path d="M17 8h1a4 4 0 1 1 0 8h-1"/><path d="M3 8h14v7a4 4 0 0 1-4 4H7a4 4 0 0 1-4-4z"/>',
+  warning: '<path d="M12 9v4"/><path d="M12 17h.01"/><path d="M10.29 3.86 1.82 18a1.5 1.5 0 0 0 1.3 2.25h17.76a1.5 1.5 0 0 0 1.3-2.25L13.71 3.86a1.5 1.5 0 0 0-2.42 0z"/>',
+  error:   '<circle cx="12" cy="12" r="9"/><path d="M9.5 9.5l5 5"/><path d="M14.5 9.5l-5 5"/>',
+  info:    '<circle cx="12" cy="12" r="9"/><path d="M12 11v5"/><path d="M12 8h.01"/>'
+};
+
+function showToast(msg, type='success', duration=2400){
   const $t = $('#toast');
+  const $veil = $('#toastVeil');
+  const iconType = TOAST_ICONS[type] ? type : 'success';
+
   $('#toastMsg').text(msg);
-  $t.addClass('show');
+  $t.attr('class', 'toast show type-' + iconType);
+  $('#toastIconSvg').html(TOAST_ICONS[iconType]);
+  $veil.addClass('show');
+
+  // Restart the depletion-bar animation from scratch even if a toast
+  // is already showing — without the reflow trick the browser just
+  // keeps the previous run's animation going instead of resetting it.
+  const $bar = $('#toastTimerBar');
+  $bar.css('animation', 'none');
+  $bar[0].offsetHeight;
+  $bar.css('animation', `toastTimerShrink ${duration}ms linear forwards`);
+
   clearTimeout(showToast._t);
-  showToast._t = setTimeout(()=> $t.removeClass('show'), 2200);
+  showToast._t = setTimeout(() => {
+    $t.removeClass('show').addClass('hide');
+    $veil.removeClass('show');
+  }, duration);
 }
 
 function addToCart(id, qty=1, size=null){
@@ -853,7 +887,7 @@ function addToCart(id, qty=1, size=null){
   if(existing){ existing.qty += qty; } else { cart.push({id, qty, size}); }
   updateCartCount();
   const label = findProduct(id).name + (size ? ` (${size})` : '');
-  showToast('Added to cart · ' + label);
+  showToast('Added to cart · ' + label, 'cart');
 }
 
 function updateCartCount(){
@@ -964,7 +998,7 @@ function navigate(pageName){
   $('.header-search').toggleClass('is-hidden', pageName !== 'home');
 
   if(pageName === 'admin' && window.currentRole !== 'admin'){
-    showToast('Admin access only. Please log in as an admin.');
+    showToast('Admin access only. Please log in as an admin.', 'warning');
     $('.page').removeClass('active');
     $('.page[data-page="home"]').addClass('active');
     return;
@@ -973,19 +1007,19 @@ function navigate(pageName){
     renderAdminDashboard();
   }
   if(pageName === 'checkout' && !window.currentUser){
-    showToast('Please log in to check out.');
+    showToast('Please log in to check out.', 'warning');
     $('.page').removeClass('active');
     $('.page[data-page="login"]').addClass('active');
     return;
   }
   if(pageName === 'order-history' && (!window.currentUser || window.currentUser.isAnonymous)){
-    showToast('Please log in to view your orders.');
+    showToast('Please log in to view your orders.', 'warning');
     $('.page').removeClass('active');
     $('.page[data-page="login"]').addClass('active');
     return;
   }
   if(pageName === 'wishlist' && (!window.currentUser || window.currentUser.isAnonymous)){
-    showToast('Please log in to view your favorites.');
+    showToast('Please log in to view your favorites.', 'warning');
     $('.page').removeClass('active');
     $('.page[data-page="login"]').addClass('active');
     return;
@@ -1369,14 +1403,14 @@ $(document).on('click', '[data-quick-add]', function(e){
   const id = $(this).data('quick-add');
   const p = findProduct(id);
   if(isProductOutOfStock(p)){
-    showToast('This item is out of stock.');
+    showToast('This item is out of stock.', 'warning');
     return;
   }
   const opts = getSizeOptions(p);
   if(opts.length > 1){
     currentProductId = id;
     navigate('product');
-    showToast('Please select a size');
+    showToast('Please select a size', 'warning');
     return;
   }
   addToCart(id, 1, opts.length === 1 ? opts[0].size : null);
@@ -1843,7 +1877,7 @@ $(document).on('click', '#submitReviewBtn', async function(){
   const rating = Number($('#reviewStarInput').attr('data-value')) || 0;
   const text = $('#reviewTextInput').val().trim();
   if(!rating){
-    showToast('Please select a star rating.');
+    showToast('Please select a star rating.', 'warning');
     return;
   }
   const $btn = $(this);
@@ -1853,11 +1887,11 @@ $(document).on('click', '#submitReviewBtn', async function(){
     const myExisting = reviewsState.reviews.find(r => r.uid === window.currentUser.uid);
     const verified = reviewsState.purchased || (myExisting ? myExisting.verified : false);
     await window.CCReviews.submitReview(productId, window.currentUser.uid, window.currentUser.displayName || 'Customer', rating, text, verified);
-    showToast('Thanks for the review!');
+    showToast('Thanks for the review!', 'success');
     loadAndRenderReviews(productId);
   } catch(err){
     console.error(err);
-    showToast('Could not save your review. Please try again.');
+    showToast('Could not save your review. Please try again.', 'error');
     $btn.prop('disabled', false).text(originalText);
   }
 });
@@ -1873,11 +1907,11 @@ $(document).on('click', '[data-review-delete]', async function(){
   if(!ok) return;
   try{
     await window.CCReviews.deleteReview(productId, window.currentUser.uid);
-    showToast('Your review was deleted.');
+    showToast('Your review was deleted.', 'success');
     loadAndRenderReviews(productId);
   } catch(err){
     console.error(err);
-    showToast('Could not delete your review. Please try again.');
+    showToast('Could not delete your review. Please try again.', 'error');
   }
 });
 
@@ -1920,15 +1954,15 @@ $(document).on('click', '[data-pd-add]', function(){
   // would catch them — guard with the same product-level check the
   // grid cards and admin dashboard use.
   if(!pdSize && isProductOutOfStock(p)){
-    showToast('This item is out of stock.');
+    showToast('This item is out of stock.', 'warning');
     return;
   }
   if(p.sizes && p.sizes.length > 1 && !pdSize){
-    showToast('Please select a size first');
+    showToast('Please select a size first', 'warning');
     return;
   }
   if(pdSize && isSizeOutOfStock(p, pdSize)){
-    showToast('That size is out of stock.');
+    showToast('That size is out of stock.', 'warning');
     return;
   }
   addToCart(p.id, pdQty, pdSize);
@@ -2135,7 +2169,7 @@ async function placeOrder(){
     address: fulfillment === 'delivery' ? $('#addressGroup input').val().trim() : ''
   };
   if(!customer.name || !customer.phone){
-    showToast('Please fill in your name and phone number.');
+    showToast('Please fill in your name and phone number.', 'warning');
     return;
   }
 
@@ -2196,9 +2230,9 @@ async function placeOrder(){
   } catch(err){
     console.error(err);
     if(String(err.code).includes('admin-restricted-operation') || String(err.code).includes('operation-not-allowed')){
-      showToast('Guest checkout isn\'t enabled yet — turn on "Anonymous" sign-in in the Firebase Console.');
+      showToast('Guest checkout isn\'t enabled yet — turn on "Anonymous" sign-in in the Firebase Console.', 'error');
     } else {
-      showToast('Could not place order. Please try again.');
+      showToast('Could not place order. Please try again.', 'error');
     }
     $btn.prop('disabled', false).text('Place Order');
   }
@@ -2236,7 +2270,7 @@ $('#loginForm').on('submit', async function(e){
   $btn.prop('disabled', true).text('Logging in...');
   try{
     const user = await window.CCAuth.loginUser(email, password);
-    showToast('Welcome back! Logged in successfully.');
+    showToast('Welcome back! Logged in successfully.', 'success');
     const verified = await window.CCAuth.isOtpVerified();
     if(!verified){
       goToVerifyEmail(user.email);
@@ -2244,7 +2278,7 @@ $('#loginForm').on('submit', async function(e){
       navigate('home');
     }
   } catch(err){
-    showToast(friendlyAuthError(err));
+    showToast(friendlyAuthError(err), 'error');
   } finally {
     $btn.prop('disabled', false).text('Login');
   }
@@ -2261,7 +2295,7 @@ $('#registerForm').on('submit', async function(e){
   const confirm = $('#regPasswordConfirm').val();
 
   if(password !== confirm){
-    showToast("Passwords don't match.");
+    showToast("Passwords don't match.", 'warning');
     return;
   }
   $btn.prop('disabled', true).text('Creating account...');
@@ -2269,10 +2303,11 @@ $('#registerForm').on('submit', async function(e){
     const user = await window.CCAuth.registerUser(fullName, email, phone, password);
     showToast(user.otpEmailSent
       ? 'Account created! Check your email for a verification code.'
-      : "Account created — but we couldn't send the verification email just now. Tap \"Resend code\" on the next screen to try again.");
+      : "Account created — but we couldn't send the verification email just now. Tap \"Resend code\" on the next screen to try again.",
+      user.otpEmailSent ? 'success' : 'warning');
     goToVerifyEmail(email, user.otpEmailSent);
   } catch(err){
-    showToast(friendlyAuthError(err));
+    showToast(friendlyAuthError(err), 'error');
   } finally {
     $btn.prop('disabled', false).text('Create Account');
   }
@@ -2363,12 +2398,12 @@ $(document).on('click', '#verifyResendBtn', async function(){
     $('#otpError').hide();
     $('.otp-digit').val('').removeClass('otp-error-state').first().trigger('focus');
     if(emailSent){
-      showToast('New code sent — check your inbox.');
+      showToast('New code sent — check your inbox.', 'success');
       startVerifyResendCooldown(45);
     } else {
       // Be honest: the code was regenerated in Firestore, but the email
       // itself didn't go out, so don't tell them to go check their inbox.
-      showToast("New code generated, but the email didn't go out. Check your connection and tap Resend again in a moment.");
+      showToast("New code generated, but the email didn't go out. Check your connection and tap Resend again in a moment.", 'warning');
       startVerifyResendCooldown(10); // short cooldown, not the usual 45s, since nothing was actually sent
     }
   } catch(err){
@@ -2376,7 +2411,7 @@ $(document).on('click', '#verifyResendBtn', async function(){
     const message = (err && err.message === 'not-signed-in')
       ? 'Your session needs a moment to reconnect — please try again in a few seconds.'
       : 'Could not resend right now. Please try again shortly.';
-    showToast(message);
+    showToast(message, 'error');
     $btn.prop('disabled', false).text('Resend code');
   }
 });
@@ -2393,7 +2428,7 @@ $(document).on('click', '#verifyContinueBtn', async function(){
   try{
     const result = await window.CCAuth.verifyOtp(code);
     if(result.ok){
-      showToast("Email verified — you're all set!");
+      showToast("Email verified — you're all set!", 'success');
       // verifyOtp() only updates Firestore — it doesn't touch the nav
       // dot/dropdown, which only refresh on the auth.js onAuthStateChanged
       // listener (login/logout/page load). Re-firing authRoleReady here
@@ -2408,7 +2443,7 @@ $(document).on('click', '#verifyContinueBtn', async function(){
     }
   } catch(err){
     console.error(err);
-    showToast('Could not verify right now. Please try again.');
+    showToast('Could not verify right now. Please try again.', 'error');
   } finally {
     $btn.prop('disabled', false).text('Verify & Continue');
   }
@@ -2481,7 +2516,7 @@ $(document).on('click', '#accountBtn', function(e){
 $(document).on('click', '#accountLogoutBtn', async function(){
   await window.CCAuth.logoutUser();
   $('#accountDropdownWrap').removeClass('open');
-  showToast('Logged out.');
+  showToast('Logged out.', 'info');
   navigate('home');
 });
 
@@ -2553,11 +2588,11 @@ $(document).on('submit', '#resetPasswordForm', async function(e){
   $btn.prop('disabled', true).text('Sending...');
   try{
     await window.CCAuth.sendResetPasswordEmail(email);
-    showToast("If that email has an account, we've sent a reset link.");
+    showToast("If that email has an account, we've sent a reset link.", 'success');
     closeResetPasswordModal();
   } catch(err){
     console.error(err);
-    showToast('Could not send the reset link right now. Please try again.');
+    showToast('Could not send the reset link right now. Please try again.', 'error');
   } finally {
     $btn.prop('disabled', false).text('Send Link');
   }
@@ -2747,7 +2782,7 @@ $(document).on('submit', '#contactForm', async function(e){
     message: $('#cMessage').val().trim()
   };
   console.log('Contact form submitted:', payload);
-  showToast('Message received — we\'ll get back to you soon.');
+  showToast('Message received — we\'ll get back to you soon.', 'success');
   this.reset();
 });
 
