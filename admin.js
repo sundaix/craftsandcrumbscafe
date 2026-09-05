@@ -189,7 +189,7 @@ $(document).on('click', '[data-admin-duplicate]', function(){
   $('.admin-tab[data-admin-tab="add-product"]').addClass('active');
   $('.admin-panel').removeClass('active');
   $('.admin-panel[data-admin-panel="add-product"]').addClass('active');
-  showToast(`Duplicated "${p.name}" — adjust sizing/price, then Add Product.`);
+  showToast(`Duplicated "${p.name}" — adjust sizing/price, then Add Product.`, 'info');
 });
 
 function resetAdminProductForm(){
@@ -318,10 +318,10 @@ $(document).on('click', '[data-admin-delete]', async function(){
     renderMerchPage();
     buildComboProducts();
     renderFeaturedCombos();
-    showToast(`Deleted "${p.name}".`);
+    showToast(`Deleted "${p.name}".`, 'success');
   } catch(err){
     console.error(err);
-    showToast('Could not delete product. Please try again.');
+    showToast('Could not delete product. Please try again.', 'error');
   }
 });
 
@@ -400,7 +400,7 @@ $(document).on('submit', '#adminAddProductForm', async function(e){
       return { size: $chk.val(), stock: isNaN(stockVal) ? 0 : stockVal };
     }).get().filter(Boolean);
     if(!sizes.length){
-      showToast('Select at least one size.');
+      showToast('Select at least one size.', 'warning');
       return;
     }
     price = Number($('#apPrice').val());
@@ -411,7 +411,7 @@ $(document).on('submit', '#adminAddProductForm', async function(e){
       return { size: $(this).data('size'), price: Number($(this).val()) || 0 };
     }).get();
     if(!sizes.length){
-      showToast('Add a price for at least one size.');
+      showToast('Add a price for at least one size.', 'warning');
       return;
     }
     // The flat top-level `price` mirrors the cheapest size, same as
@@ -462,7 +462,7 @@ $(document).on('submit', '#adminAddProductForm', async function(e){
         fieldsToDelete.forEach(f => delete merged[f]);
         PRODUCTS[idx] = merged;
       }
-      showToast(`Updated "${name}".`);
+      showToast(`Updated "${name}".`, 'success');
       resetAdminProductForm();
       renderAdminProductsTable();
       renderMenuPage();
@@ -475,7 +475,7 @@ $(document).on('submit', '#adminAddProductForm', async function(e){
       $('.admin-panel[data-admin-panel="products"]').addClass('active');
     } catch(err){
       console.error(err);
-      showToast('Could not update product. Please try again.');
+      showToast('Could not update product. Please try again.', 'error');
     } finally {
       $btn.prop('disabled', false).text('Update Product');
     }
@@ -492,7 +492,7 @@ $(document).on('submit', '#adminAddProductForm', async function(e){
   try{
     const newId = await window.CCProducts.addProduct(fields);
     PRODUCTS.push({ id: newId, ...fields });
-    showToast(`Added "${name}" to inventory.`);
+    showToast(`Added "${name}" to inventory.`, 'success');
     resetAdminProductForm();
     renderAdminProductsTable();
     renderAdminOverviewStats();
@@ -502,7 +502,7 @@ $(document).on('submit', '#adminAddProductForm', async function(e){
     renderFeaturedCombos();
   } catch(err){
     console.error(err);
-    showToast('Could not add product. Please try again.');
+    showToast('Could not add product. Please try again.', 'error');
   } finally {
     $btn.prop('disabled', false).text('Add Product');
   }
@@ -647,11 +647,11 @@ $(document).on('change', '[data-order-status]', async function(){
     const order = ADMIN_ORDERS.find(o => o.id === orderId);
     if(order) order.status = newStatus;
     $select.attr('class', `admin-status-select admin-status-${newStatus}`);
-    showToast(`Order #${orderId.slice(0,6).toUpperCase()} marked ${newStatus}.`);
+    showToast(`Order #${orderId.slice(0,6).toUpperCase()} marked ${newStatus}.`, 'success');
     renderAdminOverviewStats();
   } catch(err){
     console.error(err);
-    showToast('Could not update order status. Please try again.');
+    showToast('Could not update order status. Please try again.', 'error');
   } finally {
     $select.prop('disabled', false);
   }
@@ -930,10 +930,10 @@ $(document).on('click', '[data-admin-combo-toggle]', async function(){
     buildComboProducts();
     renderFeaturedCombos();
     renderAdminCombosTable();
-    showToast(`"${c.name}" is now ${c.active ? 'active' : 'inactive'}.`);
+    showToast(`"${c.name}" is now ${c.active ? 'active' : 'inactive'}.`, 'success');
   } catch(err){
     console.error(err);
-    showToast('Could not update that combo. Please try again.');
+    showToast('Could not update that combo. Please try again.', 'error');
   } finally {
     $btn.prop('disabled', false);
   }
@@ -949,11 +949,11 @@ $(document).on('click', '[data-admin-combo-delete]', async function(){
     buildComboProducts();
     renderFeaturedCombos();
     renderAdminCombosTable();
-    showToast(`Deleted "${c.name}".`);
+    showToast(`Deleted "${c.name}".`, 'success');
     if(adminEditingComboId === id) resetAdminComboForm();
   } catch(err){
     console.error(err);
-    showToast('Could not delete that combo. Please try again.');
+    showToast('Could not delete that combo. Please try again.', 'error');
   }
 });
 
@@ -963,7 +963,7 @@ $(document).on('submit', '#adminAddComboForm', async function(e){
   const drinkId = $('#acDrink').val();
   const pastryId = $('#acPastry').val();
   if(!drinkId || !pastryId){
-    showToast('Add at least one drink and one pastry to the catalog first.');
+    showToast('Add at least one drink and one pastry to the catalog first.', 'warning');
     return;
   }
   const drink = PRODUCTS.find(p => p.id === drinkId);
@@ -986,11 +986,11 @@ $(document).on('submit', '#adminAddComboForm', async function(e){
       buildComboProducts();
       renderFeaturedCombos();
       renderAdminCombosTable();
-      showToast(`Updated "${fields.name}".`);
+      showToast(`Updated "${fields.name}".`, 'success');
       resetAdminComboForm();
     } catch(err){
       console.error(err);
-      showToast('Could not update combo. Please try again.');
+      showToast('Could not update combo. Please try again.', 'error');
     } finally {
       $btn.prop('disabled', false).text('Update Combo');
     }
@@ -1004,11 +1004,11 @@ $(document).on('submit', '#adminAddComboForm', async function(e){
     buildComboProducts();
     renderFeaturedCombos();
     renderAdminCombosTable();
-    showToast(`Added "${fields.name}".`);
+    showToast(`Added "${fields.name}".`, 'success');
     resetAdminComboForm();
   } catch(err){
     console.error(err);
-    showToast('Could not add combo. Please try again.');
+    showToast('Could not add combo. Please try again.', 'error');
   } finally {
     $btn.prop('disabled', false).text('Add Combo');
   }
