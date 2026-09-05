@@ -1133,7 +1133,17 @@
   </div>
 </div>
 
-<div class="toast" id="toast"><span class="dot"></span><span id="toastMsg">Added to cart</span></div>
+<div class="toast-veil" id="toastVeil" aria-hidden="true"></div>
+<div class="toast" id="toast" role="status" aria-live="polite">
+  <div class="toast-icon" id="toastIcon">
+    <span class="toast-steam s1"></span>
+    <span class="toast-steam s2"></span>
+    <span class="toast-steam s3"></span>
+    <svg id="toastIconSvg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 8h1a4 4 0 1 1 0 8h-1"/><path d="M3 8h14v7a4 4 0 0 1-4 4H7a4 4 0 0 1-4-4z"/></svg>
+  </div>
+  <span class="toast-msg" id="toastMsg">Added to cart</span>
+  <div class="toast-timer"><div class="toast-timer-bar" id="toastTimerBar"></div></div>
+</div>
 <script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
 
