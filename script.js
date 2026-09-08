@@ -375,12 +375,6 @@ const CATEGORIES = [
   { key:'Wearables', emoji:'🎁', title:'Merchandise', desc:'Shirts, caps, bracelets, and keychains made for regulars.', img:'merchcac.png' },
 ];
 
-const REVIEWS = [
-  { name:'Miguel R.', text:'The iced americano tastes like it was made by someone who actually cares. My mornings are better because of this place.', img:'https://images.unsplash.com/photo-1633332755192-727a05c4013d?w=100&q=80' },
-  { name:'Andrea S.', text:'Their cinnamon roll is the best in the city, hands down. I bring a box home every weekend.', img:'https://images.unsplash.com/photo-1580489944761-15a19d654956?w=100&q=80' },
-  { name:'Kevin T.', text:'Cozy corner, fast wifi, and the tote bags they sell are gorgeous. I bought one for my whole team.', img:'https://images.unsplash.com/photo-1633332755192-727a05c4013d?w=101&q=80' },
-];
-
 /* ================= STATE ================= */
 let cart = []; // {id, qty, size}
 let cartOwnerUid = null; // uid whose cart is currently loaded into `cart` — null while signed out
@@ -447,6 +441,14 @@ let menuSort = 'featured';
 let merchFilter = 'Shirts';
 let merchSearch = '';
 let merchSort = 'featured';
+
+/* Remembers whatever category was selected right before a search
+   started typing, so that clearing the search box (rather than
+   picking a new category) puts the customer back where they were
+   instead of stranding them on "All Items"/"All Merchandise". Reset
+   to null once restored. */
+let menuFilterBeforeSearch = null;
+let merchFilterBeforeSearch = null;
 let fulfillment = 'delivery';
 
 let wishlist = []; // array of product ids
@@ -503,6 +505,119 @@ const CAT_LABELS = {
   'Bracelets': { group:'Merchandise', sub:'Bracelets' },
   'Keychains': { group:'Merchandise', sub:'Keychains' },
 };
+
+/* Flattens a sidebar's groups down to the plain list of category keys
+   it contains — used to tell, given a product's `cat`, whether it
+   belongs to the Menu (food/drinks) or Merchandise side of the
+   catalog, so search can point a customer to the other section when
+   their term only matches over there. Computed on demand (not cached)
+   since admin-added custom categories can append to either sidebar at
+   runtime (see applyCustomCategory below). */
+function flatCats(sidebar){
+  return sidebar.flatMap(g => g.items.map(it => it.cat));
+}
+
+function escapeRegExp(str){
+  return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+/* Product search matching. Plain substring matching (name.includes(q))
+   used to match a query anywhere at all — including mid-word, e.g.
+   "tee" matching inside "sauteed" or "cap" matching inside "escaped".
+   That surfaced completely unrelated products (a pasta dish showing
+   up for a "tee" search because its description says "sauteed
+   mushrooms"). Matching is now anchored to word boundaries instead —
+   a term only counts if it starts a word (so "tee" still matches
+   "Tee"/"Teeshirt", "cook" still matches "Cookie", but neither matches
+   burred inside another word).
+
+   Multi-word queries are split into separate terms, each checked
+   independently against the product's combined name + description,
+   and ALL terms must match (in any order, anywhere across the two
+   fields) — so "chocolate cake" matches a cake named "Dark Chocolate
+   Loaf" whose description mentions "cake" without either word needing
+   to appear together or in that order. */
+function productMatchesQuery(p, query){
+  const terms = query.trim().split(/\s+/).filter(Boolean);
+  if(!terms.length) return true;
+  const haystack = `${p.name} ${p.desc || ''}`;
+  return terms.every(term => new RegExp('\\b' + escapeRegExp(term), 'i').test(haystack));
+}
+
+/* ================= CUSTOM CATEGORIES ================= */
+/* Categories an admin has added at runtime via the "+ Add Category"
+   form (admin.js), on top of the built-in set above. Kept as its own
+   list (rather than only folded into CAT_LABELS) so the admin
+   dashboard can tell "built-in" and "custom" categories apart if it
+   ever needs to (e.g. only custom ones are deletable). */
+let CUSTOM_CATEGORIES = [];
+
+/* Folds one category doc — see categories-service.js for the shape —
+   into every piece of config a category needs to participate in:
+   CAT_LABELS (badge + breadcrumb text), FOOD_CATEGORIES /
+   DRINK_CATEGORIES / SIZED_CATEGORIES / DEFAULT_SIZES_BY_CATEGORY
+   (pricing + stock behavior, all declared in admin.js but shared
+   here since script.js and admin.js are plain scripts in the same
+   global scope), and the Menu/Merchandise sidebar it should appear
+   on. Safe to call more than once with the same category — it just
+   no-ops after the first time (CAT_LABELS[c.id] already set). */
+function applyCustomCategory(c){
+  if(CAT_LABELS[c.id]) return;
+  CAT_LABELS[c.id] = { group: c.group, sub: c.label };
+
+  if(c.pricingType === 'sized-price'){
+    if(!DRINK_CATEGORIES.includes(c.id)) DRINK_CATEGORIES.push(c.id);
+  } else if(c.pricingType === 'sized-stock'){
+    if(!SIZED_CATEGORIES.includes(c.id)) SIZED_CATEGORIES.push(c.id);
+    DEFAULT_SIZES_BY_CATEGORY[c.id] = (c.sizes && c.sizes.length) ? c.sizes : ['One Size'];
+  }
+  if(c.hasFoodFields && !FOOD_CATEGORIES.includes(c.id)) FOOD_CATEGORIES.push(c.id);
+
+  const sidebar = c.page === 'merch' ? MERCH_SIDEBAR : MENU_SIDEBAR;
+  let groupEntry = sidebar.find(g => g.group === c.group);
+  if(!groupEntry){
+    groupEntry = { group: c.group, items: [] };
+    sidebar.push(groupEntry);
+  }
+  if(!groupEntry.items.some(it => it.cat === c.id)){
+    groupEntry.items.push({ label: c.label, cat: c.id });
+  }
+}
+
+function applyCustomCategories(categories){
+  categories.forEach(applyCustomCategory);
+}
+
+/* Reverses applyCustomCategory — unwinds every place a category id
+   was folded into when it was added, so deleting it actually removes
+   it from dropdowns/sidebars instead of leaving stale references
+   behind. Only ever called on entries from CUSTOM_CATEGORIES; built-in
+   categories never go through this. */
+function removeCustomCategoryEffects(c){
+  delete CAT_LABELS[c.id];
+  delete DEFAULT_SIZES_BY_CATEGORY[c.id];
+
+  const di = DRINK_CATEGORIES.indexOf(c.id);
+  if(di > -1) DRINK_CATEGORIES.splice(di, 1);
+  const si = SIZED_CATEGORIES.indexOf(c.id);
+  if(si > -1) SIZED_CATEGORIES.splice(si, 1);
+  const fi = FOOD_CATEGORIES.indexOf(c.id);
+  if(fi > -1) FOOD_CATEGORIES.splice(fi, 1);
+
+  const sidebar = c.page === 'merch' ? MERCH_SIDEBAR : MENU_SIDEBAR;
+  const groupEntry = sidebar.find(g => g.group === c.group);
+  if(groupEntry){
+    groupEntry.items = groupEntry.items.filter(it => it.cat !== c.id);
+    // Drop the whole group heading once it has nothing left under it —
+    // only happens for a group the admin invented from scratch, since
+    // built-in groups (Drinks/Food/Wearables) always keep their
+    // built-in items regardless.
+    if(!groupEntry.items.length){
+      const gi = sidebar.indexOf(groupEntry);
+      if(gi > -1) sidebar.splice(gi, 1);
+    }
+  }
+}
 
 /* ================= HELPERS ================= */
 const peso = n => '₱' + n.toLocaleString('en-PH');
@@ -867,14 +982,6 @@ function showToast(msg, type='success', duration=2400){
   $('#toastIconSvg').html(TOAST_ICONS[iconType]);
   $veil.addClass('show');
 
-  // Restart the depletion-bar animation from scratch even if a toast
-  // is already showing — without the reflow trick the browser just
-  // keeps the previous run's animation going instead of resetting it.
-  const $bar = $('#toastTimerBar');
-  $bar.css('animation', 'none');
-  $bar[0].offsetHeight;
-  $bar.css('animation', `toastTimerShrink ${duration}ms linear forwards`);
-
   clearTimeout(showToast._t);
   showToast._t = setTimeout(() => {
     $t.removeClass('show').addClass('hide');
@@ -980,6 +1087,7 @@ function cartTotal(){
 
 /* ================= NAVIGATION ================= */
 function navigate(pageName){
+  const previousPage = $('.page.active').data('page');
   $('.page').removeClass('active');
   $(`.page[data-page="${pageName}"]`).addClass('active');
 
@@ -992,10 +1100,34 @@ function navigate(pageName){
 
   /* The header search box is only meant for Home — Menu and
      Merchandise already have their own inline "Looking for..."
-     search, and it has no real job on FAQs, Contact, the account
-     pages, or the Admin dashboard, so hide it everywhere except
-     Home. */
+     search right at the top of their grid, so showing the header one
+     too just duplicates it. Hidden everywhere except Home. */
   $('.header-search').toggleClass('is-hidden', pageName !== 'home');
+  if(pageName === 'home' && previousPage !== 'home') $('#headerSearch').val('');
+
+  /* A leftover search term shouldn't silently follow the customer
+     when they switch sections — coming back to Menu later and still
+     seeing last week's "birthday cake" search (with the grid filtered
+     down to match) looks like a bug, not a feature. Clearing happens
+     on arrival at Menu/Merchandise from anywhere else, EXCEPT from
+     Product Detail: clicking a result to view it and then tapping
+     "Back to Menu" is still the same browsing session, so that one
+     path intentionally leaves the search term (and category filter,
+     restored the same way the search box's own × button does it) in
+     place rather than wiping out what they were doing. Sidebar
+     category clicks already clear search themselves (see
+     [data-menu-cat]/[data-merch-cat] below) — this only covers
+     switching all the way out of the section. */
+  if(pageName === 'menu' && previousPage !== 'menu' && previousPage !== 'product' && menuSearch){
+    menuSearch = '';
+    if(menuFilterBeforeSearch){ menuFilter = menuFilterBeforeSearch; menuFilterBeforeSearch = null; }
+    renderMenuPage();
+  }
+  if(pageName === 'merchandise' && previousPage !== 'merchandise' && previousPage !== 'product' && merchSearch){
+    merchSearch = '';
+    if(merchFilterBeforeSearch){ merchFilter = merchFilterBeforeSearch; merchFilterBeforeSearch = null; }
+    renderMerchPage();
+  }
 
   if(pageName === 'admin' && window.currentRole !== 'admin'){
     showToast('Admin access only. Please log in as an admin.', 'warning');
@@ -1139,15 +1271,30 @@ $(document).on('click', '[data-nav]', function(e){
 $('#hamburgerBtn').on('click', ()=> $('#navLinks').toggleClass('open'));
 
 /* ================= HEADER SEARCH ================= */
+/* Only reachable from Home (see navigate() above). Runs against the
+   full catalog — PRODUCTS holds both food/drink and merchandise
+   items together, only the `cat` field tells them apart — by landing
+   on the Menu page with its category filter cleared to "All", which
+   shows every matching product regardless of section. */
 function runHeaderSearch(){
   const q = $('#headerSearch').val();
+  // navigate() first, while the OLD menuSearch is still in place, so
+  // its own "left the section" reset (see navigate() above) clears
+  // any stale term before this new query overwrites it below —
+  // otherwise this fresh search would be wiped out immediately.
+  navigate('menu');
   menuSearch = q;
   menuFilter = 'All';
-  navigate('menu');
+  menuFilterBeforeSearch = null;
   renderMenuPage();
 }
 $('#headerSearchBtn').on('click', runHeaderSearch);
 $('#headerSearch').on('keydown', function(e){ if(e.key === 'Enter'){ e.preventDefault(); runHeaderSearch(); } });
+$('#headerSearchClear').on('click', function(){
+  $('#headerSearch').val('');
+  runHeaderSearch();
+  $('#headerSearch').focus();
+});
 
 /* ================= RENDER: HOME ================= */
 function renderCategories(){
@@ -1169,6 +1316,8 @@ function renderCategories(){
 
 $(document).on('click', '[data-menu-filter]', function(){
   menuFilter = $(this).data('menu-filter');
+  menuSearch = '';
+  menuFilterBeforeSearch = null;
   navigate('menu');
   renderMenuPage();
 });
@@ -1376,22 +1525,6 @@ function initBestSellerCarousel(items){
   document.addEventListener('visibilitychange', ()=>{ lastTime = null; });
 }
 
-function renderReviews(){
-  const html = REVIEWS.map(r => `
-    <div class="review-card">
-      <div class="review-top">
-        <img src="${r.img}" alt="${r.name}">
-        <div>
-          <div class="review-name">${r.name}</div>
-          <div class="stars">★★★★★</div>
-        </div>
-      </div>
-      <p class="review-text">"${r.text}"</p>
-    </div>
-  `).join('');
-  $('#reviewGrid').html(html);
-}
-
 // Delegated product-card interactions (open detail / quick add)
 $(document).on('click', '[data-open-product]', function(){
   currentProductId = $(this).data('open-product');
@@ -1436,16 +1569,32 @@ function renderMenuSidebar(){
 $(document).on('click', '[data-menu-cat]', function(){
   menuFilter = $(this).data('menu-cat');
   menuSearch = '';
+  menuFilterBeforeSearch = null;
   renderMenuPage();
 });
+
+/* Shows/hides the "Also found N in Merchandise" banner under the
+   Menu search box. Counts matches against the FULL catalog (not
+   filtered to the Menu's own categories) so a search for e.g. "tote"
+   while on Menu still tells the customer merchandise has hits, even
+   though nothing here does. */
+function renderMenuCrossHint(){
+  const q = menuSearch.trim();
+  const $hint = $('#menuCrossHint');
+  if(!q){ $hint.removeClass('is-visible').empty(); return; }
+  const merchCats = flatCats(MERCH_SIDEBAR);
+  const count = PRODUCTS.filter(p => merchCats.includes(p.cat) && productMatchesQuery(p, q)).length;
+  if(!count){ $hint.removeClass('is-visible').empty(); return; }
+  $hint.html(`Also found <strong>${count}</strong> matching item${count > 1 ? 's' : ''} in <strong>Merchandise</strong> — <button type="button" class="search-cross-link" data-cross-nav="merchandise">View them</button>`).addClass('is-visible');
+}
 
 function renderMenuGrid(){
   let items = PRODUCTS.filter(p => menuFilter === 'All' || p.cat === menuFilter);
   if(menuSearch.trim()){
-    const q = menuSearch.trim().toLowerCase();
-    items = items.filter(p => p.name.toLowerCase().includes(q) || p.desc.toLowerCase().includes(q));
+    items = items.filter(p => productMatchesQuery(p, menuSearch));
   }
   items = sortProducts(items, menuSort);
+  renderMenuCrossHint();
   const $grid = $('#menuGrid');
   if(items.length === 0){
     $grid.html(`<div class="empty-state" style="grid-column:1/-1;">No items here yet. Try another category or search term.</div>`);
@@ -1455,8 +1604,7 @@ function renderMenuGrid(){
   initReveal();
 }
 
-function renderMenuPage(){
-  renderMenuSidebar();
+function renderMenuHeading(){
   if(menuFilter === 'All'){
     $('#menuBreadcrumb').text('Search');
     $('#menuHeading').text(menuSearch ? `Results for "${menuSearch}"` : 'All Items');
@@ -1465,14 +1613,67 @@ function renderMenuPage(){
     $('#menuBreadcrumb').text(label.sub ? `${label.group} / ${label.sub}` : label.group);
     $('#menuHeading').text(label.sub || label.group);
   }
+}
+
+function renderMenuPage(){
+  renderMenuSidebar();
+  renderMenuHeading();
   renderMenuGrid();
   $('#menuSearch').val(menuSearch);
   $('#menuSort').val(menuSort);
 }
 
+/* Typing a search term used to only filter WITHIN whatever category
+   the sidebar already had selected (e.g. stuck on "Caffeine"),
+   making it look like search only worked for that one category. A
+   query now always clears the category filter to "All" so it runs
+   against everything on this page, and the category it came from is
+   remembered so clearing the box restores it instead of leaving the
+   customer on "All Items". */
 $(document).on('input', '#menuSearch', function(){
   menuSearch = $(this).val();
+  if(menuSearch.trim()){
+    if(menuFilter !== 'All'){
+      menuFilterBeforeSearch = menuFilter;
+      menuFilter = 'All';
+      renderMenuSidebar();
+    }
+  } else if(menuFilterBeforeSearch){
+    menuFilter = menuFilterBeforeSearch;
+    menuFilterBeforeSearch = null;
+    renderMenuSidebar();
+  }
+  renderMenuHeading();
   renderMenuGrid();
+});
+
+$(document).on('click', '#menuSearchClear', function(){
+  $('#menuSearch').val('').trigger('input').focus();
+});
+
+/* "View them" link in the cross-catalog hint — carries the current
+   search term over to the other section (Menu <-> Merchandise) and
+   runs it there, so a term that only half-matched on this page
+   doesn't dead-end the customer. */
+$(document).on('click', '[data-cross-nav]', function(){
+  const target = $(this).data('cross-nav');
+  const term = target === 'menu' ? merchSearch : menuSearch;
+  // navigate() first (see runHeaderSearch above for why) so its
+  // section-switch reset clears the old term before this carried-over
+  // one is applied.
+  if(target === 'menu'){
+    navigate('menu');
+    menuSearch = term;
+    menuFilter = 'All';
+    menuFilterBeforeSearch = null;
+    renderMenuPage();
+  } else {
+    navigate('merchandise');
+    merchSearch = term;
+    merchFilter = 'All';
+    merchFilterBeforeSearch = null;
+    renderMerchPage();
+  }
 });
 
 $(document).on('change', '#menuSort', function(){
@@ -1496,16 +1697,30 @@ function renderMerchSidebar(){
 $(document).on('click', '[data-merch-cat]', function(){
   merchFilter = $(this).data('merch-cat');
   merchSearch = '';
+  merchFilterBeforeSearch = null;
   renderMerchPage();
 });
+
+/* Mirror of renderMenuCrossHint() for the Merchandise search box —
+   points a customer to the Menu when their term only matches food or
+   drink items. */
+function renderMerchCrossHint(){
+  const q = merchSearch.trim();
+  const $hint = $('#merchCrossHint');
+  if(!q){ $hint.removeClass('is-visible').empty(); return; }
+  const menuCats = flatCats(MENU_SIDEBAR);
+  const count = PRODUCTS.filter(p => menuCats.includes(p.cat) && productMatchesQuery(p, q)).length;
+  if(!count){ $hint.removeClass('is-visible').empty(); return; }
+  $hint.html(`Also found <strong>${count}</strong> matching item${count > 1 ? 's' : ''} in the <strong>Menu</strong> — <button type="button" class="search-cross-link" data-cross-nav="menu">View them</button>`).addClass('is-visible');
+}
 
 function renderMerchGrid(){
   let items = PRODUCTS.filter(p => merchFilter === 'All' || p.cat === merchFilter);
   if(merchSearch.trim()){
-    const q = merchSearch.trim().toLowerCase();
-    items = items.filter(p => p.name.toLowerCase().includes(q) || p.desc.toLowerCase().includes(q));
+    items = items.filter(p => productMatchesQuery(p, merchSearch));
   }
   items = sortProducts(items, merchSort);
+  renderMerchCrossHint();
   const $grid = $('#merchGrid');
   if(items.length === 0){
     $grid.html(`<div class="empty-state" style="grid-column:1/-1;">No items here yet. Try another category or search term.</div>`);
@@ -1515,8 +1730,7 @@ function renderMerchGrid(){
   initReveal();
 }
 
-function renderMerchPage(){
-  renderMerchSidebar();
+function renderMerchHeading(){
   if(merchFilter === 'All'){
     $('#merchBreadcrumb').text('Search');
     $('#merchHeading').text(merchSearch ? `Results for "${merchSearch}"` : 'All Merchandise');
@@ -1525,14 +1739,40 @@ function renderMerchPage(){
     $('#merchBreadcrumb').text(label.sub ? `${label.group} / ${label.sub}` : label.group);
     $('#merchHeading').text(label.sub || label.group);
   }
+}
+
+function renderMerchPage(){
+  renderMerchSidebar();
+  renderMerchHeading();
   renderMerchGrid();
   $('#merchSearch').val(merchSearch);
   $('#merchSort').val(merchSort);
 }
 
+/* Same fix as the Menu search box above: a query clears the sidebar
+   category filter to "All" instead of only ever matching within
+   whatever category was last clicked, and remembers that category so
+   clearing the box restores it. This was the main "search only works
+   inside the current category" bug on the Merchandise page. */
 $(document).on('input', '#merchSearch', function(){
   merchSearch = $(this).val();
+  if(merchSearch.trim()){
+    if(merchFilter !== 'All'){
+      merchFilterBeforeSearch = merchFilter;
+      merchFilter = 'All';
+      renderMerchSidebar();
+    }
+  } else if(merchFilterBeforeSearch){
+    merchFilter = merchFilterBeforeSearch;
+    merchFilterBeforeSearch = null;
+    renderMerchSidebar();
+  }
+  renderMerchHeading();
   renderMerchGrid();
+});
+
+$(document).on('click', '#merchSearchClear', function(){
+  $('#merchSearch').val('').trigger('input').focus();
 });
 
 $(document).on('change', '#merchSort', function(){
@@ -2836,10 +3076,19 @@ async function loadSettingsFromFirestore(){
   }
 }
 
+async function loadCategoriesFromFirestore(){
+  try{
+    const categories = await window.CCCategories.fetchAllCategories();
+    CUSTOM_CATEGORIES = categories;
+    applyCustomCategories(categories);
+  } catch(err){
+    console.error('Could not load custom categories from Firestore — falling back to the built-in category list.', err);
+  }
+}
+
 $(async function(){
 
   renderCategories();
-  renderReviews();
   updateCartCount();
   initReveal();
   initScrollProgress();
@@ -2854,7 +3103,13 @@ $(async function(){
   if(cachedSettings){
     DELIVERY_FEE = cachedSettings.deliveryFee;
   }
+  const cachedCategories = window.CCCategories.getCachedCategories();
+  if(cachedCategories && cachedCategories.length){
+    CUSTOM_CATEGORIES = cachedCategories;
+    applyCustomCategories(cachedCategories);
+  }
 
+  await loadCategoriesFromFirestore();
   await loadProductsFromFirestore();
   await loadSettingsFromFirestore();
   await loadCombosFromFirestore();

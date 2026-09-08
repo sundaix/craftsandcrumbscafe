@@ -1029,6 +1029,33 @@
     padding:11px 18px; flex:1; max-width:340px;
   }
   .search-box input{ border:none; outline:none; flex:1; font-size:13.5px; background:transparent; }
+  .search-box .search-clear{
+    display:none; align-items:center; justify-content:center;
+    width:18px; height:18px; border-radius:50%; border:none; flex-shrink:0;
+    background:var(--card); color:var(--text-soft); font-size:14px; line-height:1; cursor:pointer;
+    transition:background 0.15s ease, color 0.15s ease;
+  }
+  .search-box .search-clear:hover{ background:var(--text-soft); color:#fff; }
+  .search-box input:not(:placeholder-shown) ~ .search-clear{ display:flex; }
+
+  /* ---------- Cross-catalog search hint (Menu <-> Merchandise) ----------
+     Shown when a search term on one page also (or only) matches items
+     on the other, so a customer searching "tote" from the Menu page
+     isn't left thinking there's nothing here — they're pointed
+     straight to Merchandise instead. */
+  .search-cross-hint{
+    display:none; align-items:center; gap:6px; flex-wrap:wrap;
+    font-size:13px; color:var(--text-soft);
+    background:var(--card); border:1px solid var(--line); border-radius:12px;
+    padding:10px 14px; margin:-6px 0 18px;
+  }
+  .search-cross-hint.is-visible{ display:flex; animation:fadeIn 0.3s ease; }
+  .search-cross-hint strong{ color:var(--text); }
+  .search-cross-hint .search-cross-link{
+    background:none; border:none; padding:0; font:inherit; font-weight:700;
+    color:var(--cta-dark); cursor:pointer; text-decoration:underline; text-underline-offset:2px;
+  }
+  .search-cross-hint .search-cross-link:hover{ color:var(--sage); }
   .filter-pills{ display:flex; gap:10px; flex-wrap:wrap; }
   .pill{
     padding:9px 18px; border-radius:100px; font-size:13px; font-weight:500;
@@ -1209,7 +1236,30 @@
   .admin-main{ min-width:0; }
 
   .admin-panel{ display:none; }
-  .admin-panel.active{ display:block; animation:fadeIn 0.35s ease; }
+  .admin-panel.active{ display:block; animation:sectionFadeIn 0.5s var(--ease-premium); }
+
+  /* Inner "Catalog / Add Product / Combos" pill nav inside the
+     Products tab — same segmented-pill look as .legal-tabs, just
+     unconstrained by that component's fixed-width modal context. */
+  .admin-subtabs{
+    display:inline-flex; gap:4px; padding:4px; margin-bottom:22px;
+    background:var(--card); border-radius:100px;
+  }
+  .admin-subtab{
+    border:none; background:none; padding:9px 20px; border-radius:100px;
+    font-size:12.5px; font-weight:600; color:var(--text-soft); cursor:pointer;
+    white-space:nowrap;
+    transition:background 0.25s var(--ease-premium), color 0.25s ease, box-shadow 0.25s ease;
+  }
+  .admin-subtab:hover{ color:var(--text); }
+  .admin-subtab.active{ background:#fff; color:var(--ink); box-shadow:var(--shadow-sm); }
+
+  .admin-subpanel{ display:none; }
+  .admin-subpanel.active{ display:block; animation:sectionFadeIn 0.45s var(--ease-premium); }
+
+  @media (max-width:600px){
+    .admin-subtabs{ display:flex; overflow-x:auto; max-width:100%; }
+  }
 
   .admin-stats{ display:grid; grid-template-columns:repeat(4,1fr); gap:16px; margin-bottom:26px; }
   .admin-stat-card{
@@ -1282,6 +1332,17 @@
 
   .admin-empty-row{ text-align:center; padding:40px 20px !important; color:var(--text-soft); }
 
+  .cc-existing-wrap{ margin-bottom:18px; padding-bottom:16px; border-bottom:1px solid var(--line); }
+  .cc-existing-title{ font-size:12px; font-weight:600; letter-spacing:0.4px; color:var(--text-soft); text-transform:uppercase; margin-bottom:8px; }
+  .cc-existing-list{ display:flex; flex-direction:column; gap:6px; max-height:180px; overflow-y:auto; }
+  .cc-existing-row{
+    display:flex; align-items:center; justify-content:space-between; gap:10px;
+    padding:8px 10px; border-radius:8px; background:var(--card);
+  }
+  .cc-existing-row-info{ display:flex; align-items:center; gap:8px; min-width:0; }
+  .cc-existing-row-name{ font-weight:600; font-size:13.5px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .cc-existing-row-count{ font-size:11.5px; color:var(--text-soft); flex-shrink:0; }
+
   .admin-status-select{
     padding:8px 12px; border-radius:20px; border:1px solid transparent;
     font-size:12px; font-weight:600; outline:none; cursor:pointer;
@@ -1300,6 +1361,37 @@
     transition:color 0.18s ease;
   }
   .admin-customer-link:hover{ color:var(--cta-dark); text-decoration:underline; text-underline-offset:3px; }
+
+  /* ---------- Orders: status filter pills ---------- */
+  .order-status-filters{ display:flex; gap:8px; flex-wrap:wrap; margin-bottom:18px; }
+  .order-filter-pill{
+    display:inline-flex; align-items:center; gap:7px;
+    padding:8px 14px; border-radius:100px; border:1px solid var(--line);
+    background:#fff; font-size:12.5px; font-weight:600; color:var(--text-soft);
+    cursor:pointer; transition:border-color 0.2s ease, color 0.2s ease, background 0.2s ease;
+  }
+  .order-filter-pill:hover{ color:var(--text); border-color:var(--text-soft); }
+  .order-filter-pill .order-filter-count{
+    display:inline-flex; align-items:center; justify-content:center;
+    min-width:20px; height:20px; padding:0 6px; border-radius:100px;
+    background:var(--card); color:var(--text-soft); font-size:11px; font-weight:700;
+  }
+  .order-filter-pill.active{ border-color:transparent; color:#fff; }
+  .order-filter-pill.active .order-filter-count{ background:rgba(255,255,255,0.28); color:#fff; }
+  .order-filter-pill[data-order-filter="all"].active{ background:var(--ink); }
+  .order-filter-pill[data-order-filter="pending"].active{ background:var(--cta-dark); }
+  .order-filter-pill[data-order-filter="preparing"].active{ background:#4d6b82; }
+  .order-filter-pill[data-order-filter="ready"].active{ background:#4f6c57; }
+  .order-filter-pill[data-order-filter="completed"].active{ background:#57534a; }
+  .order-filter-pill[data-order-filter="cancelled"].active{ background:var(--danger); }
+
+  .admin-order-placed{ white-space:nowrap; font-size:12.5px; color:var(--text-soft); }
+  .admin-order-stale-flag{
+    display:inline-block; margin-left:6px; color:var(--danger-dark);
+    font-size:11px; font-weight:700;
+  }
+  tr.admin-order-row-stale{ background:rgba(178,58,46,0.05); }
+  tr.admin-order-row-stale:hover{ background:rgba(178,58,46,0.09); }
 
   /* ---------- Order detail modal (reuses .legal-overlay/.legal-modal chrome) ---------- */
   .order-detail-modal{ max-width:560px; }
@@ -1762,39 +1854,47 @@
   .auth-switch{ text-align:center; font-size:13.5px; color:var(--text-soft); margin-top:22px; }
 
   /* ---------- Toast (centered, premium, cafe-themed) ---------- */
-  --ease-pop: cubic-bezier(0.34, 1.56, 0.64, 1);
+  --ease-toast: cubic-bezier(0.16, 1, 0.3, 1);
 
   .toast-veil{
     position:fixed; inset:0; z-index:499; pointer-events:none;
-    background:radial-gradient(circle at 50% 46%, rgba(33,28,22,0.16), rgba(33,28,22,0) 62%);
+    background:radial-gradient(circle at 50% 46%, rgba(33,28,22,0.13), rgba(33,28,22,0) 62%);
     opacity:0;
-    transition:opacity 0.5s var(--ease-premium);
+    transition:opacity 0.5s var(--ease-toast);
   }
   .toast-veil.show{ opacity:1; }
 
   .toast{
     position:fixed; top:50%; left:50%; z-index:500;
-    transform:translate(-50%,-50%) scale(0.86) translateY(6px);
-    opacity:0; filter:blur(3px);
+    transform:translate(-50%,-50%) scale(0.94) translateY(4px);
+    opacity:0;
     pointer-events:none;
     background:linear-gradient(180deg, #FFFDFA, var(--bg));
-    color:var(--ink); padding:22px 30px 18px; border-radius:var(--radius-lg);
+    color:var(--ink); padding:24px 32px; border-radius:var(--radius-lg);
     font-size:14px; font-weight:600; letter-spacing:0.01em;
     min-width:220px; max-width:min(84vw, 360px);
     box-shadow:var(--shadow-lift), 0 0 0 1px rgba(33,28,22,0.05);
     display:flex; flex-direction:column; align-items:center; text-align:center; gap:12px;
-    transition:transform 0.55s var(--ease-pop), opacity 0.4s ease, filter 0.4s ease;
+    transition:transform 0.45s var(--ease-toast), opacity 0.3s ease;
     overflow:hidden;
   }
   .toast.show{
     transform:translate(-50%,-50%) scale(1) translateY(0);
-    opacity:1; filter:blur(0);
-    transition:transform 0.6s var(--ease-pop), opacity 0.35s ease, filter 0.35s ease;
+    opacity:1;
+    transition:transform 0.5s var(--ease-toast), opacity 0.32s ease;
   }
   .toast.hide{
-    transform:translate(-50%,-50%) scale(0.92) translateY(-4px);
-    opacity:0; filter:blur(2px);
-    transition:transform 0.35s var(--ease-premium), opacity 0.3s ease, filter 0.3s ease;
+    transform:translate(-50%,-50%) scale(0.97) translateY(-3px);
+    opacity:0;
+    transition:transform 0.3s ease, opacity 0.25s ease;
+  }
+
+  /* Static brand-colored stripe along the top edge, in place of the
+     old depleting countdown bar — reads as a deliberate design detail
+     rather than a piece of UI that's counting down at you. */
+  .toast-accent-bar{
+    position:absolute; top:0; left:0; right:0; height:3px;
+    background:var(--sage);
   }
 
   .toast-icon{
@@ -1810,47 +1910,36 @@
     position:absolute; bottom:60%; left:50%; width:3px; height:3px; border-radius:2px;
     background:currentColor; opacity:0; transform:translateX(-50%);
   }
-  .toast.show .toast-steam{ animation:toastSteamRise 1.8s ease-in-out infinite; }
+  .toast.show .toast-steam{ animation:toastSteamRise 2.2s ease-out infinite; }
   .toast.show .toast-steam.s1{ left:38%; animation-delay:0s; }
-  .toast.show .toast-steam.s2{ left:50%; animation-delay:0.35s; }
-  .toast.show .toast-steam.s3{ left:62%; animation-delay:0.7s; }
+  .toast.show .toast-steam.s2{ left:50%; animation-delay:0.4s; }
+  .toast.show .toast-steam.s3{ left:62%; animation-delay:0.8s; }
   @keyframes toastSteamRise{
     0%{ opacity:0; height:3px; transform:translateX(-50%) translateY(0) scaleX(1); }
-    30%{ opacity:0.55; }
+    25%{ opacity:0.45; }
     100%{ opacity:0; height:16px; transform:translateX(-50%) translateY(-16px) scaleX(0.4); }
   }
 
   .toast-msg{ line-height:1.5; }
 
-  .toast-timer{
-    width:100%; height:3px; border-radius:100px; background:var(--line);
-    margin-top:2px; overflow:hidden;
-  }
-  .toast-timer-bar{
-    height:100%; width:100%; border-radius:100px; background:var(--sage);
-    transform-origin:left center; transform:scaleX(1);
-  }
-  .toast.show .toast-timer-bar{ animation:toastTimerShrink linear forwards; }
-  @keyframes toastTimerShrink{ from{ transform:scaleX(1); } to{ transform:scaleX(0); } }
-
   /* type accents */
   .toast.type-success .toast-icon{ background:rgba(124,152,133,0.14); color:var(--sage); }
-  .toast.type-success .toast-timer-bar{ background:var(--sage); }
+  .toast.type-success .toast-accent-bar{ background:var(--sage); }
 
   .toast.type-cart .toast-icon{ background:rgba(192,133,82,0.14); color:var(--cta); }
-  .toast.type-cart .toast-timer-bar{ background:var(--cta); }
+  .toast.type-cart .toast-accent-bar{ background:var(--cta); }
 
   .toast.type-warning .toast-icon{ background:rgba(192,133,82,0.14); color:var(--cta-dark); }
-  .toast.type-warning .toast-timer-bar{ background:var(--cta); }
+  .toast.type-warning .toast-accent-bar{ background:var(--cta); }
 
   .toast.type-error .toast-icon{ background:var(--danger-tint); color:var(--danger); }
-  .toast.type-error .toast-timer-bar{ background:var(--danger); }
+  .toast.type-error .toast-accent-bar{ background:var(--danger); }
 
   .toast.type-info .toast-icon{ background:rgba(124,147,166,0.16); color:var(--dusk); }
-  .toast.type-info .toast-timer-bar{ background:var(--dusk); }
+  .toast.type-info .toast-accent-bar{ background:var(--dusk); }
 
   @media (max-width:480px){
-    .toast{ padding:20px 22px 16px; min-width:0; width:min(86vw, 320px); }
+    .toast{ padding:22px 24px; min-width:0; width:min(86vw, 320px); }
   }
 
   /* ---------- Dialogs & overlays (Legal modal + Confirm dialog) ---------- */
@@ -1951,12 +2040,16 @@
   .btn-danger:active{ transform:translateY(0); box-shadow:var(--shadow-sm); }
 
   @media (prefers-reduced-motion: reduce){
-    .toast, .toast-veil, .toast-steam, .toast-timer-bar, .legal-modal, .confirm-dialog, .legal-overlay, .confirm-overlay, .qr-modal, .qr-overlay{ transition:none; animation:none; }
+    .toast, .toast-veil, .toast-steam, .legal-modal, .confirm-dialog, .legal-overlay, .confirm-overlay, .qr-modal, .qr-overlay{ transition:none; animation:none; }
   }
 
   .page{ display:none; }
-  .page.active{ display:block; animation:fadeIn 0.4s ease; }
+  .page.active{ display:block; animation:sectionFadeIn 0.55s var(--ease-premium); }
   @keyframes fadeIn{ from{opacity:0; transform:translateY(6px);} to{opacity:1; transform:translateY(0);} }
+  @keyframes sectionFadeIn{
+    from{ opacity:0; transform:translateY(14px) scale(0.99); }
+    to{ opacity:1; transform:translateY(0) scale(1); }
+  }
 
   /* ============ RESPONSIVE ============ */
   @media (max-width: 980px){

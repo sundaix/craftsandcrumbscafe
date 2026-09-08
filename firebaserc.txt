@@ -1,5 +1,0 @@
-{
-  "projects": {
-    "default": "crafts-and-crumbs"
-  }
-}
