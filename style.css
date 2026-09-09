@@ -476,9 +476,10 @@
   .wishlist-btn:hover{ transform:scale(1.08); background:#fff; }
   .wishlist-btn.active{ color:var(--danger); }
   .pd-wishlist-btn{
-    position:static; width:44px; height:44px; flex-shrink:0;
-    background:transparent; border:1px solid var(--line-strong);
+    position:static; width:46px; height:46px; flex-shrink:0;
+    background:#fff; border:1px solid var(--line-strong);
   }
+  .pd-wishlist-btn:hover{ border-color:var(--danger); background:var(--danger-tint); }
 
   .menu-heading-row{ display:flex; align-items:center; justify-content:space-between; gap:16px; flex-wrap:wrap; }
   .menu-heading-row h1{ margin:0; }
@@ -1066,17 +1067,83 @@
 
   /* qty selector */
   .qty-select{ display:flex; align-items:center; border:1px solid var(--line); border-radius:100px; overflow:hidden; }
-  .qty-select button{ background:none; width:30px; height:30px; font-size:16px; color:var(--text); }
+  .qty-select button{ background:none; width:30px; height:30px; font-size:16px; color:var(--text); transition:background 0.2s ease, color 0.2s ease; }
   .qty-select button:hover{ background:var(--card); }
   .qty-select span{ width:26px; text-align:center; font-size:13.5px; font-weight:600; }
+  /* On the product page the stepper sits next to two full-height
+     buttons and a wishlist icon — bump it up to match their footprint
+     so the row reads as one consistent height instead of a small pill
+     floating next to taller neighbors. */
+  .pd-actions .qty-select{ height:46px; background:#fff; border-color:var(--line-strong); flex-shrink:0; }
+  .pd-actions .qty-select button{ width:40px; height:100%; font-size:17px; }
+  .pd-actions .qty-select button:hover{ background:var(--bg); color:var(--cta-dark); }
+  .pd-actions .qty-select span{ width:30px; font-size:14.5px; }
 
   /* ---------- Product Detail ---------- */
   .pd-grid{ display:grid; grid-template-columns:1fr 1fr; gap:56px; padding:30px 0 60px; }
-  .pd-main-img{ border-radius:var(--radius); overflow:hidden; box-shadow:var(--shadow); aspect-ratio:1/1; margin-bottom:14px; }
+  .pd-main-img{ border-radius:var(--radius); overflow:hidden; box-shadow:var(--shadow); aspect-ratio:1/1; margin-bottom:14px; transition:box-shadow 0.35s var(--ease-premium); }
   .pd-main-img img{ width:100%; height:100%; object-fit:cover; }
   .pd-thumbs{ display:flex; gap:12px; }
   .pd-thumbs img{ width:74px; height:74px; object-fit:cover; border-radius:10px; cursor:pointer; opacity:0.6; transition:0.2s; border:2px solid transparent; }
   .pd-thumbs img:hover, .pd-thumbs img.active{ opacity:1; border-color:var(--sage); }
+  /* Desktop only: pin the gallery (image + thumbs) in place while the
+     info column scrolls past it. This is the column worth keeping in
+     view — it's short, fixed-height, and doesn't compete with
+     anything else for the same screen space, unlike the old sticky
+     actions bar, which lived inside the taller column and kept
+     visibly re-chasing its shifting bottom edge as you scrolled.
+     .pd-gallery-col is the actual grid item and stretches to the full
+     row height (same height as the info column) by grid's normal
+     default — that's what gives .pd-gallery room to travel and then
+     unstick right as both columns run out at the same time, instead
+     of sticking forever. .pd-gallery-sentinel is a 1px marker sitting
+     just above it in normal (non-sticky) flow; script.js watches it
+     with an IntersectionObserver to know the exact moment the gallery
+     transitions into its pinned state, which drives the shadow change
+     below. Single-column mobile layouts stack normally, so all of
+     this is desktop-only. */
+  @media (min-width:981px){
+    .pd-gallery{ position:sticky; top:var(--pd-sticky-top, 88px); }
+  }
+  .pd-gallery-sentinel{ height:1px; }
+  /* Once the gallery is actually pinned, the main image gets a
+     slightly deeper shadow — a small cue that it's now "floating"
+     above the page rather than sitting in the normal flow, instead of
+     the stick just happening silently. */
+  .pd-gallery.is-stuck .pd-main-img{ box-shadow:var(--shadow-hover); }
+
+  /* Fills the empty space that opens up below a pinned gallery on
+     tall product pages (lots of size/option/nutrition content in the
+     other column) with two small, genuinely useful things instead of
+     leaving dead air: a quiet trust strip, and a rating teaser that
+     jumps down to the real reviews. Both use the same card language
+     as the rest of the page (cream card / soft border / --radius-lg)
+     so they read as part of the design, not bolted on. */
+  .pd-gallery-extra{ margin-top:18px; display:flex; flex-direction:column; gap:12px; }
+  .pd-trust-row{
+    display:flex; background:var(--card); border:1px solid var(--line);
+    border-radius:var(--radius-lg); padding:16px 8px;
+  }
+  .pd-trust-item{
+    flex:1; display:flex; flex-direction:column; align-items:center; text-align:center;
+    gap:7px; padding:0 6px; color:var(--sage);
+  }
+  .pd-trust-item:not(:first-child){ border-left:1px solid var(--line-strong); }
+  .pd-trust-item span{
+    font-size:10.5px; font-weight:600; letter-spacing:0.01em; line-height:1.3; color:var(--text-soft);
+  }
+  .pd-rating-mini{
+    display:flex; align-items:center; gap:10px; padding:14px 16px;
+    background:#fff; border:1px solid var(--line-strong); border-radius:var(--radius-lg);
+    text-decoration:none; color:var(--text); cursor:pointer;
+    transition:border-color 0.25s ease, box-shadow 0.25s var(--ease-premium), transform 0.25s var(--ease-premium);
+  }
+  .pd-rating-mini:hover{ border-color:var(--sage); box-shadow:var(--shadow); transform:translateY(-1px); }
+  .pd-rating-mini-score{ font-family:'Lora',serif; font-weight:700; font-size:16px; color:var(--ink); }
+  .pd-rating-mini .stars{ font-size:12px; }
+  .pd-rating-mini-count{ font-size:12px; color:var(--text-faint); flex:1; }
+  .pd-rating-mini-arrow{ color:var(--text-faint); flex-shrink:0; transition:transform 0.25s var(--ease-premium); }
+  .pd-rating-mini:hover .pd-rating-mini-arrow{ transform:translateX(3px); color:var(--sage); }
   .pd-price{ font-family:'Lora',serif; font-size:28px; font-weight:700; color:var(--cta); margin:14px 0; }
   /* Quick-glance "16oz • ~120 kcal" line under the product name —
      drinks only, updates live as size/options change. Empty (non-drink
@@ -1119,12 +1186,30 @@
   @media (max-width:520px){
     .pd-info-grid{ grid-template-columns:1fr; }
   }
-  .pd-actions{ display:flex; align-items:center; gap:16px; margin-bottom:10px; flex-wrap:wrap; }
+  .pd-actions{ display:flex; align-items:center; gap:18px; margin-bottom:0; flex-wrap:wrap; }
   /* Buy Now (outline) + Add to Cart (filled) share the remaining space
      as a pair, so the qty stepper and wishlist heart keep their own
-     fixed width instead of getting squeezed. */
-  .pd-actions-btns{ display:flex; gap:10px; flex:1 1 220px; min-width:0; }
-  .pd-actions-btns .btn{ flex:1; white-space:nowrap; }
+     fixed width instead of getting squeezed. Add to Cart gets a larger
+     share of the row than Buy Now so it visually reads as the primary
+     action — same idea as the color contrast (filled vs outline), just
+     reinforced with size too. */
+  .pd-actions-btns{ display:flex; gap:12px; flex:1 1 240px; min-width:0; }
+  .pd-actions-btns .btn{ white-space:nowrap; }
+  .pd-actions-btns .btn-primary{ flex:1.4; }
+  .pd-actions-btns .btn-outline{ flex:1; }
+  /* Buy Now stays a quiet secondary action, but warms toward the brand
+     accent on hover/focus instead of the generic ink-outline treatment
+     every other outline button gets — small differentiation that helps
+     it still read as "for sale" rather than a neutral utility button. */
+  .pd-actions-btns .btn-outline:hover:not(:disabled){
+    border-color:var(--cta); color:var(--cta-dark); background:rgba(192,133,82,0.06);
+  }
+  /* Add to Cart is the one action we want a shopper's eye to land on
+     first — same lift/shadow language as every other primary button,
+     just a touch stronger since this is the highest-stakes button on
+     the page. */
+  .pd-actions-btns .btn-primary:hover:not(:disabled){ box-shadow:var(--shadow-lift); }
+  .pd-actions-btns .btn svg{ flex-shrink:0; }
   @media (max-width:480px){
     .pd-actions-btns{ order:3; flex-basis:100%; }
   }
@@ -1222,22 +1307,28 @@
     white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
   }
 
-  /* The actions row (qty/Add to Cart/wishlist) pins to the bottom of
-     the screen while scrolling through the rest of the product info,
-     instead of scrolling away — matching the reference app's sticky
-     footer bar. Applies on desktop and mobile alike; it only sticks
-     within the product-info column, so it stops pinning once you
-     scroll past it into "You might also like"/reviews below. On
-     narrow viewports it also bleeds edge-to-edge like the reference's
-     full-width footer. */
+  /* The actions row (qty/Add to Cart/wishlist) used to pin to the
+     bottom of the viewport via position:sticky. Because it sat inside
+     a column that's a different height than the image column next to
+     it, the sticky bar would visibly hunt/jump as you scrolled — it
+     kept "catching up" to wherever the shorter column's bottom edge
+     currently was. Now it's a normal card sitting in the page flow
+     right after the description/options, so scrolling feels calm and
+     predictable, and it gets a bit of framing (background, border,
+     shadow) so it still reads as a distinct, important zone rather
+     than blending into the rest of the copy. */
   .pd-actions-wrap{
-    position:sticky; bottom:0; z-index:20; margin-top:16px; padding:12px 0;
-    background:#fff; border-top:1px solid var(--line); box-shadow:0 -6px 18px rgba(33,28,22,0.08);
+    margin:22px 0 28px; padding:20px 22px;
+    background:var(--card); border:1px solid var(--line-strong); border-radius:var(--radius-lg);
+    box-shadow:var(--shadow);
+    animation:pdActionsIn 0.5s var(--ease-premium) both;
   }
-  @media (max-width:980px){
-    .pd-actions-wrap{
-      margin-left:-32px; margin-right:-32px; padding-left:32px; padding-right:32px;
-    }
+  @keyframes pdActionsIn{
+    from{ opacity:0; transform:translateY(10px); }
+    to{ opacity:1; transform:translateY(0); }
+  }
+  @media (max-width:520px){
+    .pd-actions-wrap{ padding:18px; }
   }
 
   /* ---- Selected-options line shown under a customized cart line, on
