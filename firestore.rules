@@ -27,6 +27,27 @@ service cloud.firestore {
         get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin';
     }
 
+    // Product categories (built by the admin's "Add Category" form —
+    // see categories-service.js). Same public-read/admin-write shape
+    // as products/combos: everyone needs to read these to build the
+    // Menu/Merchandise sidebars, only an admin can define new ones.
+    match /categories/{categoryId} {
+      allow read: if true;
+      allow write: if request.auth != null &&
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin';
+    }
+
+    // NOTE: settings-service.js reads/writes settings/general (the
+    // delivery fee) but this collection had no rule at all, which
+    // means Firestore's default-deny was silently blocking
+    // updateDeliveryFee() for every admin. Same public-read/admin-write
+    // shape as everything else configuration-like above.
+    match /settings/{settingId} {
+      allow read: if true;
+      allow write: if request.auth != null &&
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin';
+    }
+
     // Any signed-in customer can create their own order; only the
     // order's owner or an admin can read it back.
     match /orders/{orderId} {
