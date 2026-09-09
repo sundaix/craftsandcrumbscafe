@@ -47,8 +47,12 @@
     outline-offset:3px;
     border-radius:4px;
   }
+  html{ height:100%; }
   body{
     margin:0;
+    min-height:100vh;
+    display:flex;
+    flex-direction:column;
     background:var(--bg);
     color:var(--text);
     font-family:'Poppins', sans-serif;
@@ -58,6 +62,16 @@
     -webkit-font-smoothing:antialiased;
     -moz-osx-font-smoothing:grayscale;
   }
+  /* The whole reason the footer used to jump around between pages:
+     with no rule pinning it, its vertical position was just whatever
+     the active page's content height happened to leave behind — high
+     and cramped on a short page (login, an empty cart), fine on a
+     tall one. #app absorbing the leftover viewport height (and the
+     footer refusing to shrink) means the footer now always sits at
+     the bottom of the viewport on short pages and directly below
+     content on tall ones — consistent everywhere, no per-page jump. */
+  #app{ flex:1 0 auto; }
+  .footer-new{ flex-shrink:0; }
   h1,h2,h3,h4{
     font-family:'Lora', serif;
     font-weight:600;
@@ -603,7 +617,16 @@
 
   .best-card{ position:relative; }
   .best-card .product-img{ height:230px; border-radius:var(--radius-lg) var(--radius-lg) 0 0; }
-  .best-card .product-img img{ transition:transform 0.9s var(--ease-premium, ease); }
+  .best-card .product-img img{
+    transition:transform 0.9s var(--ease-premium, ease);
+    animation:bestImgBreathe 7s ease-in-out infinite;
+    animation-delay:calc(var(--i, 0) * 0.4s);
+  }
+  @keyframes bestImgBreathe{
+    0%, 100%{ transform:scale(1); }
+    50%{ transform:scale(1.045); }
+  }
+  .best-card:hover .product-img img{ animation-play-state:paused; transform:scale(1.08); }
   .best-card-shade{
     position:absolute; inset:0;
     background:linear-gradient(180deg, rgba(46,43,39,0) 50%, rgba(33,28,22,0.5) 100%);
@@ -624,7 +647,23 @@
     transition:transform 0.4s var(--ease-premium, ease), box-shadow 0.4s ease;
   }
   .best-card:hover .bestseller-tag{ transform:translateY(-2px) scale(1.05); box-shadow:0 8px 20px rgba(33,28,22,0.34); }
-  .best-card .product-desc{ display:none; }
+  /* Rank #1 gets a distinct ribbon instead of the plain numbered circle,
+     so the row reads as curated rather than a uniform repeating grid. */
+  .bestseller-tag.tag-top{
+    width:auto; height:auto; padding:7px 13px; border-radius:100px;
+    background:linear-gradient(120deg,#e9c589,var(--cta-dark));
+    font-family:'Poppins',sans-serif; font-weight:700; font-style:normal; font-size:9.5px;
+    letter-spacing:0.09em; text-transform:uppercase; color:#fff; border:none;
+  }
+  .best-card .product-desc{
+    display:block; max-height:0; opacity:0; overflow:hidden; margin-top:0;
+    transition:max-height 0.4s var(--ease-premium, ease), opacity 0.3s ease, margin-top 0.4s ease;
+  }
+  .best-card:hover .product-desc{ max-height:64px; opacity:1; margin-top:6px; }
+  .best-card-rating{
+    display:none; align-items:center; gap:6px; margin-top:6px; font-size:11px; color:var(--text-faint);
+  }
+  .best-card-rating.show{ display:flex; }
   .best-card .eyebrow.best-eyebrow{ font-size:10px; letter-spacing:0.14em; color:var(--sage); }
   .best-card .product-info{ padding:22px 22px 24px; }
   .best-card .product-name{ transition:color 0.25s ease; }
@@ -680,6 +719,7 @@
   @media (prefers-reduced-motion: reduce){
     .carousel-track .product-card{ opacity:1; transform:none; animation:none; }
     .best-card .product-img::after{ display:none; }
+    .best-card .product-img img{ animation:none; }
   }
 
   .carousel-arrow{
@@ -815,24 +855,53 @@
     align-items:start;
   }
 
-  /* Summary card: big score, stars, distribution bars — sits sticky
-     alongside the list so it stays visible while scanning reviews. */
+  /* Star rating — gradient-fill overlay technique. Two stacked identical
+     star rows: a muted track underneath, and a gold-gradient row on top
+     clipped to a percentage width, giving smooth fractional ratings
+     (e.g. 4.3 stars) without per-star SVG math. */
+  .star-rating{ position:relative; display:inline-block; line-height:1; white-space:nowrap; font-size:12px; letter-spacing:2px; }
+  .star-rating-track, .star-rating-fill{ display:block; }
+  .star-rating-track{ color:var(--line-strong); }
+  .star-rating-fill{
+    position:absolute; top:0; left:0; overflow:hidden; white-space:nowrap;
+    background:linear-gradient(120deg,#e9c589 10%,var(--cta-dark) 85%);
+    -webkit-background-clip:text; background-clip:text; color:transparent;
+  }
+  .star-rating.stars-lg{ font-size:22px; letter-spacing:4px; margin-top:10px; }
+  .star-rating.stars-sm{ font-size:11px; letter-spacing:1.5px; }
+
+  /* Summary card: big score, qualitative badge, stars, distribution bars —
+     sits alongside the list so it stays visible while scanning reviews. */
   .reviews-summary-card{
-    background:var(--card); border-radius:var(--radius); padding:26px 24px;
+    background:linear-gradient(165deg,#fff,var(--card)); border:1px solid var(--line);
+    border-radius:var(--radius-lg); padding:28px 24px; box-shadow:var(--shadow-sm);
     display:flex; flex-direction:column; align-items:flex-start;
   }
-  .review-summary-score{ font-family:'Lora',serif; font-size:44px; font-weight:600; color:var(--ink); line-height:1; }
-  .stars-lg{ font-size:15px; margin-top:8px; }
-  .review-summary-count{ font-size:12px; color:var(--text-faint); margin-top:6px; letter-spacing:0.02em; }
-  .rating-bars{ width:100%; margin-top:22px; padding-top:20px; border-top:1px solid var(--line); display:flex; flex-direction:column; gap:7px; }
+  .reviews-summary-card-empty{
+    align-items:center; text-align:center; padding:34px 20px; gap:2px;
+  }
+  .reviews-summary-card-empty svg{ margin-bottom:10px; }
+  .review-summary-empty-title{ font-family:'Lora',serif; font-size:15px; font-weight:600; color:var(--ink); }
+  .review-summary-empty-sub{ font-size:11.5px; color:var(--text-faint); margin-top:4px; max-width:150px; line-height:1.5; }
+  .review-summary-badge{
+    font-size:10px; font-weight:700; letter-spacing:0.06em; text-transform:uppercase;
+    color:var(--cta-dark); background:rgba(168,111,65,0.12); padding:4px 10px;
+    border-radius:100px; margin-bottom:14px;
+  }
+  .review-summary-score{ font-family:'Lora',serif; font-size:48px; font-weight:600; color:var(--ink); line-height:1; }
+  .review-summary-count{ font-size:12px; color:var(--text-faint); margin-top:8px; letter-spacing:0.02em; }
+  .rating-bars{ width:100%; margin-top:22px; padding-top:20px; border-top:1px solid var(--line); display:flex; flex-direction:column; gap:8px; }
   .rating-bar-row{ display:flex; align-items:center; gap:8px; }
   .rating-bar-label{
     font-size:11px; font-weight:600; color:var(--text-soft); width:14px; flex:none;
     display:flex; align-items:center; gap:1px;
   }
   .rating-bar-star{ color:var(--cta-dark); font-size:9px; }
-  .rating-bar-track{ flex:1; height:5px; border-radius:100px; background:var(--line-strong); overflow:hidden; }
-  .rating-bar-fill{ height:100%; background:var(--cta-dark); border-radius:100px; transition:width 0.6s var(--ease-premium); }
+  .rating-bar-track{ flex:1; height:6px; border-radius:100px; background:var(--line-strong); overflow:hidden; }
+  .rating-bar-fill{
+    height:100%; border-radius:100px; transition:width 0.7s var(--ease-premium);
+    background:linear-gradient(90deg,#e9c589,var(--cta-dark));
+  }
   .rating-bar-pct{ font-size:10.5px; color:var(--text-faint); width:30px; text-align:right; flex:none; }
 
   /* Main column: sort control, list, form */
@@ -841,14 +910,19 @@
   .reviews-sort-wrap{ padding:3px 12px 3px 14px; }
 
   .review-list{ display:flex; flex-direction:column; }
-  .real-review{ border:none; padding:22px 0 !important; border-top:1px solid var(--line); margin:0; background:transparent; box-shadow:none; }
-  .real-review:hover{ transform:none; box-shadow:none; }
+  .real-review{
+    border:none; padding:22px 18px !important; border-top:1px solid var(--line); margin:0 -18px;
+    background:transparent; box-shadow:none; border-radius:var(--radius);
+    transition:background 0.25s ease, box-shadow 0.25s var(--ease-premium);
+  }
+  .real-review:hover{ transform:none; background:rgba(255,255,255,0.55); box-shadow:var(--shadow-sm); }
   .real-review:first-child{ border-top:none; padding-top:14px !important; }
   .real-review .review-top{ align-items:flex-start; gap:12px; margin-bottom:10px; }
   .review-avatar{
-    flex:none; width:36px; height:36px; border-radius:50%;
+    flex:none; width:38px; height:38px; border-radius:50%;
     display:flex; align-items:center; justify-content:center;
     color:#fff; font-family:'Lora',serif; font-weight:600; font-size:13px; letter-spacing:0.02em;
+    box-shadow:0 0 0 3px #fff, 0 0 0 4px var(--line);
   }
   .review-meta{ flex:1; min-width:0; }
   .review-name-row{ display:flex; align-items:center; gap:9px; flex-wrap:wrap; }
@@ -870,21 +944,40 @@
   .review-delete-btn:hover{ color:var(--danger); }
   .real-review .review-text{
     font-size:14px; font-style:normal; font-family:'Poppins',sans-serif; font-weight:300;
-    color:var(--text-soft); line-height:1.65; margin-left:48px; max-width:560px;
+    color:var(--text-soft); line-height:1.65; margin-left:50px; max-width:560px;
   }
 
   .reviews-empty, .reviews-loading{
-    color:var(--text-soft); font-size:13.5px; padding:36px 0;
-    display:flex; flex-direction:column; align-items:center; gap:12px; text-align:center;
+    color:var(--text-soft); font-size:13.5px; padding:44px 0 34px;
+    display:flex; flex-direction:column; align-items:center; text-align:center;
   }
+  .reviews-empty-icon-wrap{
+    width:56px; height:56px; border-radius:50%; margin-bottom:14px;
+    background:linear-gradient(165deg,#fff,var(--card)); border:1px solid var(--line);
+    display:flex; align-items:center; justify-content:center; box-shadow:var(--shadow-sm);
+  }
+  .reviews-empty-title{ font-family:'Lora',serif; font-size:15px; font-weight:600; color:var(--ink); margin:0; }
+  .reviews-empty-sub{ font-size:12.5px; color:var(--text-faint); margin:5px 0 0; max-width:280px; line-height:1.55; }
   .reviews-loading{ padding:24px 0; display:block; }
 
-  .review-form{ margin-top:20px; padding:24px; background:var(--card); border-radius:var(--radius); max-width:520px; }
-  .review-form h4{ font-size:14px; margin-bottom:14px; }
-  .review-star-input{ display:flex; gap:6px; font-size:26px; line-height:1; color:var(--line-strong); margin-bottom:14px; cursor:pointer; }
-  .review-star-input span{ transition:color 0.15s ease, transform 0.2s var(--ease-premium); display:inline-block; }
-  .review-star-input span:hover, .review-star-input span.active{ color:var(--cta-dark); }
-  .review-star-input span:hover{ transform:scale(1.12); }
+  .review-form{
+    margin-top:20px; padding:26px; background:linear-gradient(165deg,#fff,var(--card));
+    border:1px solid var(--line); border-radius:var(--radius-lg); box-shadow:var(--shadow-sm); max-width:520px;
+  }
+  .review-form h4{ font-size:14px; margin-bottom:16px; }
+  .review-star-input-row{ display:flex; align-items:center; gap:14px; margin-bottom:16px; flex-wrap:wrap; }
+  .review-star-input{ display:flex; gap:6px; font-size:28px; line-height:1; color:var(--line-strong); cursor:pointer; }
+  .review-star-input span{
+    transition:transform 0.2s var(--ease-premium), opacity 0.2s ease; display:inline-block;
+    background:linear-gradient(120deg,#e9c589,var(--cta-dark)); -webkit-background-clip:text; background-clip:text;
+    -webkit-text-fill-color:transparent; color:var(--line-strong); opacity:0.35;
+  }
+  .review-star-input span.hover, .review-star-input span.active{ opacity:1; }
+  .review-star-input span:hover{ transform:scale(1.15); }
+  .review-star-input-label{
+    font-size:11.5px; font-weight:600; color:var(--cta-dark); letter-spacing:0.02em;
+    background:rgba(168,111,65,0.1); padding:4px 10px; border-radius:100px;
+  }
   .review-form textarea{
     width:100%; min-height:84px; resize:vertical; padding:12px 14px; border:1px solid var(--line-strong);
     border-radius:var(--radius-sm); font-size:13px; margin-bottom:14px; font-family:'Poppins',sans-serif;
@@ -899,8 +992,11 @@
 
   @media (max-width:900px){
     .reviews-panel{ grid-template-columns:1fr; gap:28px; }
-    .reviews-summary-card{ position:static; flex-direction:row; flex-wrap:wrap; align-items:center; gap:0 22px; }
+    .reviews-summary-card{ position:static; flex-direction:row; flex-wrap:wrap; align-items:center; gap:10px 22px; }
+    .review-summary-badge{ order:-1; width:100%; margin-bottom:0; }
+    .reviews-summary-card-empty{ flex-direction:column; }
     .rating-bars{ margin-top:18px; }
+    .real-review{ margin:0; padding:22px 0 !important; }
     .real-review .review-text{ margin-left:0; }
   }
   @media (max-width:980px){
@@ -910,13 +1006,26 @@
   }
 
   /* ---------- Footer ---------- */
-  .footer-new{ background:var(--ink); color:rgba(247,245,241,0.7); padding:90px 0 34px; margin-top:0; border-top:none; }
+  .footer-new{
+    position:relative;
+    background:var(--ink); color:rgba(247,245,241,0.7);
+    padding:clamp(56px, 8vw, 90px) 0 34px; margin-top:0; border-top:none;
+  }
+  /* Same quiet signature the scroll-progress bar and .eyebrow rule use
+     elsewhere — a thin "pour" of the brand gradient, here marking the
+     handoff from content to footer instead of a hard flat line. */
+  .footer-new::before{
+    content:''; position:absolute; top:0; left:0; right:0; height:2px;
+    background:linear-gradient(90deg, var(--cta), var(--sage), var(--dusk));
+    opacity:0.55;
+  }
   .ftr-top{
     display:grid;
     grid-template-columns: 1.5fr 1fr 1fr 1fr;
     gap:40px;
     padding-bottom:52px;
   }
+  .ftr-brand{ padding-top:2px; }
   .ftr-logo{
     height:auto; width:auto; max-width:220px;
     filter:brightness(0) invert(1);
@@ -929,15 +1038,15 @@
   }
   .ftr-col ul{ display:flex; flex-direction:column; gap:14px; }
   .ftr-col li{ font-size:14px; color:rgba(247,245,241,0.75); font-weight:300; }
-  .ftr-col a{ color:rgba(247,245,241,0.75); cursor:pointer; transition:color 0.2s ease; }
+  .ftr-col a{ color:rgba(247,245,241,0.75); cursor:pointer; transition:color 0.25s var(--ease-premium); }
   .ftr-col a:hover{ color:#fff; }
   .ftr-social{ display:inline-flex; align-items:center; gap:9px; color:rgba(247,245,241,0.75) !important; font-weight:400; }
   .ftr-social-icon{
     width:24px; height:24px; border-radius:50%; border:1px solid rgba(247,245,241,0.25);
     display:flex; align-items:center; justify-content:center; color:rgba(247,245,241,0.85);
-    transition:background 0.25s ease, color 0.25s ease, border-color 0.25s ease;
+    transition:background 0.25s var(--ease-premium), color 0.25s var(--ease-premium), border-color 0.25s var(--ease-premium), transform 0.25s var(--ease-premium);
   }
-  .ftr-social:hover .ftr-social-icon{ background:#fff; border-color:#fff; color:var(--ink); }
+  .ftr-social:hover .ftr-social-icon{ background:#fff; border-color:#fff; color:var(--ink); transform:translateY(-2px); }
   .ftr-bottom{
     border-top:1px solid rgba(247,245,241,0.14); padding-top:24px;
     text-align:center; font-size:11.5px; color:rgba(247,245,241,0.4); line-height:1.8;
@@ -1134,13 +1243,13 @@
   }
   .pd-rating-mini{
     display:flex; align-items:center; gap:10px; padding:14px 16px;
-    background:#fff; border:1px solid var(--line-strong); border-radius:var(--radius-lg);
+    background:linear-gradient(165deg,#fff,var(--card)); border:1px solid var(--line-strong); border-radius:var(--radius-lg);
     text-decoration:none; color:var(--text); cursor:pointer;
     transition:border-color 0.25s ease, box-shadow 0.25s var(--ease-premium), transform 0.25s var(--ease-premium);
   }
   .pd-rating-mini:hover{ border-color:var(--sage); box-shadow:var(--shadow); transform:translateY(-1px); }
   .pd-rating-mini-score{ font-family:'Lora',serif; font-weight:700; font-size:16px; color:var(--ink); }
-  .pd-rating-mini .stars{ font-size:12px; }
+  .pd-rating-mini .star-rating{ font-size:12px; letter-spacing:2px; }
   .pd-rating-mini-count{ font-size:12px; color:var(--text-faint); flex:1; }
   .pd-rating-mini-arrow{ color:var(--text-faint); flex-shrink:0; transition:transform 0.25s var(--ease-premium); }
   .pd-rating-mini:hover .pd-rating-mini-arrow{ transform:translateX(3px); color:var(--sage); }
@@ -1539,6 +1648,40 @@
   .cc-existing-row-info{ display:flex; align-items:center; gap:8px; min-width:0; }
   .cc-existing-row-name{ font-weight:600; font-size:13.5px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
   .cc-existing-row-count{ font-size:11.5px; color:var(--text-soft); flex-shrink:0; }
+
+  /* ---------- Admin: launch-popup product picker ---------- */
+  .promo-pick-selected{ display:flex; flex-wrap:wrap; gap:6px; margin-bottom:8px; }
+  .promo-pick-selected:empty{ display:none; }
+  .promo-pick-chip{
+    display:inline-flex; align-items:center; gap:7px;
+    padding:5px 6px 5px 12px; border-radius:100px;
+    background:var(--sage); color:#fff; font-size:12px; font-weight:600;
+    max-width:220px;
+  }
+  .promo-pick-chip-name{ overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .promo-pick-chip button{
+    display:flex; align-items:center; justify-content:center; flex-shrink:0;
+    width:17px; height:17px; border-radius:50%; background:rgba(255,255,255,0.25);
+    color:#fff; font-size:13px; line-height:1; transition:background 0.15s ease;
+  }
+  .promo-pick-chip button:hover{ background:rgba(255,255,255,0.45); }
+
+  .promo-pick-search{ width:100%; margin-bottom:8px; }
+
+  .promo-pick-list{
+    display:flex; flex-direction:column; gap:4px; max-height:180px; overflow-y:auto;
+    border:1px solid var(--line); border-radius:10px; padding:8px; background:#fff;
+  }
+  .promo-pick-row{
+    display:flex; align-items:center; gap:10px; padding:7px 8px; border-radius:8px;
+    cursor:pointer; transition:background 0.15s ease, opacity 0.2s ease;
+  }
+  .promo-pick-row:hover{ background:var(--card); }
+  .promo-pick-row.disabled{ opacity:0.4; pointer-events:none; }
+  .promo-pick-row input[type="checkbox"]{ width:16px; height:16px; accent-color:var(--sage); cursor:pointer; flex-shrink:0; }
+  .promo-pick-row img{ width:32px; height:32px; border-radius:6px; object-fit:cover; flex-shrink:0; background:var(--card); }
+  .promo-pick-row-name{ flex:1; font-size:13px; font-weight:600; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .promo-pick-row-price{ font-size:12px; color:var(--text-soft); flex-shrink:0; }
 
   .admin-status-select{
     padding:8px 30px 8px 12px; border-radius:20px; border:1px solid transparent;
@@ -2475,8 +2618,7 @@
     .cat-grid{ grid-template-columns:repeat(2,1fr); }
     .product-grid, .menu-grid{ grid-template-columns:repeat(2,1fr); }
     .review-grid{ grid-template-columns:1fr; }
-    .footer-grid{ grid-template-columns:1fr 1fr; row-gap:30px; }
-    .ftr-top{ grid-template-columns:1fr 1fr; row-gap:30px; }
+    .ftr-top{ grid-template-columns:1fr 1fr; row-gap:36px; }
     .ftr-brand{ grid-column:1/-1; }
     .pd-grid{ grid-template-columns:1fr; gap:30px; }
     .menu-layout{ grid-template-columns:1fr; gap:24px; }
@@ -2505,7 +2647,8 @@
     .hero{ padding:80px 0 90px; }
     .hero h1{ font-size:32px; }
     .cat-grid, .product-grid, .menu-grid{ grid-template-columns:1fr; }
-    .footer-grid{ grid-template-columns:1fr; }
+    .ftr-top{ grid-template-columns:1fr; row-gap:32px; padding-bottom:40px; }
+    .ftr-brand{ grid-column:auto; }
     .form-row{ grid-template-columns:1fr; }
     .section-head{ flex-direction:column; align-items:flex-start; }
     .admin-stats{ grid-template-columns:1fr; }
@@ -2568,12 +2711,12 @@
 
 .promo-modal{
   position:relative;
-  width:100%; max-width:440px;
+  width:100%; max-width:480px;
   background:linear-gradient(160deg, var(--card) 0%, var(--bg) 100%);
   border:1px solid var(--line);
   border-radius:var(--radius-lg);
   box-shadow:var(--shadow-lift);
-  padding:44px 38px 36px;
+  padding:40px 38px 36px;
   text-align:center;
   overflow:hidden;
   transform:translateY(28px) scale(0.94);
@@ -2626,6 +2769,15 @@
 }
 .promo-modal-close:hover{ background:var(--ink); color:#fff; transform:rotate(90deg); }
 
+/* Admin-only preview flag — makes it unmistakable this isn't the real
+   popup a visitor would see, in case it's ever screenshotted/shared. */
+.promo-preview-flag{
+  position:absolute; top:16px; left:16px; z-index:2;
+  padding:5px 11px; border-radius:100px;
+  background:var(--ink); color:var(--bg);
+  font-size:10.5px; font-weight:700; letter-spacing:0.04em; text-transform:uppercase;
+}
+
 .promo-badge{
   position:relative; z-index:1;
   width:76px; height:76px;
@@ -2657,6 +2809,90 @@
   letter-spacing:0.08em;
   color:#fff;
   text-transform:uppercase;
+}
+
+/* ---------- Promo 3D product showcase (the tilted card stack) ---------- */
+/* A little "fan of photos" — perspective on the outer stage, each
+   card individually rotated/pushed back in Z based on its distance
+   from center (--depth), so it reads as a real stack rather than
+   flat overlapping rectangles. Center card sits forward and upright;
+   side cards lean away and sit slightly behind. */
+.promo-stage{
+  position:relative; z-index:1;
+  height:186px; margin:6px auto 2px;
+  perspective:1100px;
+}
+.promo-stage-cards{
+  position:relative; width:100%; height:100%;
+  transform-style:preserve-3d;
+}
+.promo-stage-card{
+  position:absolute; top:0; left:50%;
+  width:128px; height:168px;
+  background:#fff; border-radius:16px;
+  box-shadow:0 18px 38px rgba(33,28,22,0.22), 0 2px 8px rgba(33,28,22,0.08);
+  overflow:hidden;
+  opacity:0;
+  transform:
+    translate(calc(-50% + (var(--offsetx, 0) * 1px)), 16px)
+    translateZ(calc(var(--depth, 0) * -46px))
+    rotateY(calc(var(--angle, 0) * 1deg))
+    rotate(calc(var(--tilt, 0) * 1deg))
+    scale(calc(1 - (var(--depth, 0) * 0.09)));
+  animation:promoCardIn 0.75s var(--ease-premium) forwards;
+  animation-delay:calc(0.5s + (var(--i, 0) * 0.14s));
+  transition:transform 0.45s var(--ease-premium), box-shadow 0.3s ease;
+  cursor:default;
+}
+.promo-stage-card:hover{
+  transform:
+    translate(calc(-50% + (var(--offsetx, 0) * 1px)), 4px)
+    translateZ(30px)
+    rotateY(0deg) rotate(0deg)
+    scale(1.06) !important;
+  box-shadow:0 24px 48px rgba(33,28,22,0.3);
+  z-index:20 !important;
+}
+@keyframes promoCardIn{
+  from{
+    opacity:0;
+    transform:
+      translate(calc(-50% + (var(--offsetx, 0) * 1px)), 60px)
+      translateZ(-90px)
+      rotateY(0deg) rotate(0deg)
+      scale(0.7);
+  }
+  to{ opacity:1; }
+}
+
+/* Gentle continuous bob lives on a CHILD element rather than the card
+   itself, so it composes with (instead of fighting) the card's own
+   fan-position transform above — two elements, two independent
+   transforms, no keyframe conflict. */
+.promo-stage-card-float{
+  width:100%; height:100%;
+  animation:promoCardFloat 3.4s ease-in-out infinite;
+}
+@keyframes promoCardFloat{
+  0%, 100%{ transform:translateY(0); }
+  50%{ transform:translateY(-5px); }
+}
+
+.promo-stage-card-img{ width:100%; height:112px; background:var(--card); }
+.promo-stage-card-img img{ width:100%; height:100%; object-fit:cover; display:block; }
+.promo-stage-card-info{ padding:8px 10px; text-align:left; }
+.promo-stage-card-name{
+  display:block; font-size:11.5px; font-weight:600; color:var(--ink);
+  overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
+}
+.promo-stage-card-price{
+  display:block; font-size:11px; font-weight:600; color:var(--cta-dark);
+  font-family:'Lora', serif; margin-top:2px;
+}
+
+@media (max-width:520px){
+  .promo-stage{ height:164px; }
+  .promo-stage-cards{ transform:scale(0.85); transform-origin:center top; }
 }
 
 .promo-eyebrow{
@@ -2701,8 +2937,12 @@
 @media (prefers-reduced-motion: reduce){
   .promo-overlay, .promo-modal, .promo-badge, .promo-badge-ring,
   .promo-eyebrow, .promo-modal h3, .promo-modal-copy, .promo-modal-actions,
-  .promo-modal-glow, .promo-modal-sparkles span{
+  .promo-modal-glow, .promo-modal-sparkles span, .promo-stage-card-float{
     animation:none !important; transition:opacity 0.2s linear !important;
     opacity:1; transform:none;
   }
+  /* Cards keep their resting fan-position transform (it's not part of
+     the animation, just the element's normal style) — only the
+     fly-in motion and continuous bob are switched off above. */
+  .promo-stage-card{ animation:none !important; opacity:1; }
 }
