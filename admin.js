@@ -22,7 +22,7 @@ const DEFAULT_SIZES_BY_CATEGORY = {
 };
 
 const DRINK_CATEGORIES = ['Coffee', 'Non-Coffee', 'Tea'];
-const DRINK_SIZES = ['12oz', '16oz', '20oz'];
+const DRINK_SIZES = ['16oz', '20oz', '24oz'];
 
 const ADMIN_CATEGORY_BADGE_CLASS = {
   'Drinks': 'drinks',
@@ -1268,6 +1268,67 @@ $(document).on('click', '#adminGraduatePricingBtn', async function(){
     $status.text('Something went wrong while updating. Check the console for details.');
   } finally {
     $btn.prop('disabled', false).text('Flatten Per-Size Pricing');
+  }
+});
+
+/* ================= NORMALIZE DRINK SIZES ================= */
+/* Rewrites every Coffee/Non-Coffee/Tea product onto exactly three
+   selectable sizes — 16oz, 20oz, 24oz — so the size selector on the
+   product page always has something real to show, no matter what
+   state that drink's `sizes` array was previously in. See
+   CCProducts.normalizeDrinkSizes for how the new prices are derived
+   from whatever the drink was already charging. */
+$(document).on('click', '#adminNormalizeSizesBtn', async function(){
+  const $btn = $(this);
+  const $status = $('#adminNormalizeSizesStatus');
+  $btn.prop('disabled', true).text('Fixing...');
+  $status.text('Scanning Coffee/Non-Coffee/Tea drinks for their size options...');
+  try{
+    const updatedIds = await window.CCProducts.normalizeDrinkSizes(DRINK_CATEGORIES);
+    await loadProductsFromFirestore();
+    renderMenuPage();
+    renderAdminProductsTable();
+    renderAdminOverviewStats();
+    $status.text(updatedIds.length
+      ? `Done — fixed sizes on ${updatedIds.length} drink${updatedIds.length === 1 ? '' : 's'}: ${updatedIds.join(', ')}.`
+      : 'Done — every drink already has 16oz/20oz/24oz sizes.');
+  } catch(err){
+    console.error(err);
+    $status.text('Something went wrong while fixing sizes. Check the console for details.');
+  } finally {
+    $btn.prop('disabled', false).text('Fix Drink Sizes (16/20/24oz)');
+  }
+});
+
+/* ================= FILL IN DRINK CUSTOMIZATIONS ================= */
+/* Fills in whatever Coffee/Non-Coffee/Tea drink is still missing its
+   option groups (Sweetness Level, Ice Level, and Milk Type when the
+   drink contains milk), calories, about text, or nutrition — without
+   touching any of those fields on a drink that already has them. See
+   CCProducts.fillMissingDrinkDetails for exactly what gets generated
+   and why nothing already-filled-in is ever overwritten. Everything
+   it adds shows up as normal, editable fields on that drink's Edit
+   form afterward (the Option Groups Builder, and the Calories/About/
+   Nutrition inputs) — this is just a starting point, not a lock-in. */
+$(document).on('click', '#adminFillDrinkDetailsBtn', async function(){
+  const $btn = $(this);
+  const $status = $('#adminFillDrinkDetailsStatus');
+  $btn.prop('disabled', true).text('Filling...');
+  $status.text('Scanning Coffee/Non-Coffee/Tea drinks for missing customization details...');
+  try{
+    const updatedIds = await window.CCProducts.fillMissingDrinkDetails(DRINK_CATEGORIES);
+    await loadProductsFromFirestore();
+    renderMenuPage();
+    renderAdminProductsTable();
+    renderAdminOverviewStats();
+    $status.text(updatedIds.length
+      ? `Done — filled in details on ${updatedIds.length} drink${updatedIds.length === 1 ? '' : 's'}: ${updatedIds.join(', ')}. Open any of them with Edit to adjust.`
+      : 'Done — every drink already has its customization details filled in.');
+  } catch(err){
+    console.error(err);
+    $status.text('Something went wrong while filling in details. Check the console for details.');
+  } finally {
+    $btn.prop('disabled', false).text('Fill In Drink Customizations');
   }
 });
 
