@@ -261,4 +261,123 @@ export async function flattenSizePricing(sizedCategories){
   return updated;
 }
 
-window.CCProducts = { fetchAllProducts, addProduct, updateProduct, deleteProduct, seedProducts, getCachedProducts, decrementStock, cleanupLegacyFoodFields, flattenSizePricing };
+/* =========================================================
+   AUTO-FILL DRINK CUSTOMIZATIONS
+   Walks every existing drink product (Coffee/Non-Coffee/Tea) and
+   fills in whatever customization/detail fields it's still missing —
+   option groups (Sweetness Level, Ice Level, and Milk Type when the
+   drink actually contains milk), calories, an "about" blurb, and a
+   nutrition breakdown — WITHOUT touching a field that's already
+   there. An admin who already customized one drink's option groups,
+   or already wrote their own calories/about text, keeps exactly what
+   they wrote; this only ever fills the gaps, the same spirit as
+   cleanupLegacyFoodFields/flattenSizePricing above. Every field this
+   adds is fully editable afterward from the regular Edit form (the
+   Option Groups Builder, Calories/About/Nutrition fields). */
+
+function ddSlug(str){
+  return String(str).toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
+}
+
+function buildDefaultOptionGroups(product){
+  const hasMilk = /\bmilk\b/i.test(product.ingredients || '') || /\bmilk\b/i.test(product.name || '');
+  const slug = ddSlug(product.id);
+  const groups = [
+    {
+      id: `group-sweetness-${slug}`,
+      label: 'Sweetness Level',
+      type: 'single',
+      max: null,
+      choices: ['100% Sweet', '75% Sweet', '50% Sweet', '25% Sweet', 'No Sugar'].map((label, i) => ({
+        id: `choice-sweet-${i}-${slug}`, label, price: 0, kcal: null, available: true, default: i === 0
+      }))
+    },
+    {
+      id: `group-ice-${slug}`,
+      label: 'Ice Level',
+      type: 'single',
+      max: null,
+      choices: ['Regular Ice', 'Less Ice', 'No Ice'].map((label, i) => ({
+        id: `choice-ice-${i}-${slug}`, label, price: 0, kcal: null, available: true, default: i === 0
+      }))
+    }
+  ];
+  if(hasMilk){
+    groups.push({
+      id: `group-milk-${slug}`,
+      label: 'Milk Type',
+      type: 'single',
+      max: null,
+      choices: [
+        { id: `choice-milk-0-${slug}`, label: 'Whole Milk', price: 0, kcal: null, available: true, default: true },
+        { id: `choice-milk-1-${slug}`, label: 'Oat Milk', price: 20, kcal: null, available: true, default: false },
+        { id: `choice-milk-2-${slug}`, label: 'Soy Milk', price: 20, kcal: null, available: true, default: false },
+        { id: `choice-milk-3-${slug}`, label: 'Almond Milk', price: 25, kcal: null, available: true, default: false }
+      ]
+    });
+  }
+  return groups;
+}
+
+function estimateDrinkCalories(product){
+  const hasMilk = /\bmilk\b/i.test(product.ingredients || '') || /\bmilk\b/i.test(product.name || '');
+  if(product.cat === 'Tea') return hasMilk ? 190 : 90;
+  if(product.cat === 'Non-Coffee') return hasMilk ? 190 : 100;
+  return hasMilk ? 170 : 90; // Coffee
+}
+
+function estimateDrinkNutrition(product, calories){
+  const hasMilk = /\bmilk\b/i.test(product.ingredients || '') || /\bmilk\b/i.test(product.name || '');
+  const opts = Array.isArray(product.sizes) ? product.sizes.map(s => typeof s === 'string' ? s : s.size) : [];
+  return {
+    servingSize: opts[1] || opts[0] || '16oz',
+    carbs: Math.round(calories / 8),
+    sugar: Math.round(calories / 9),
+    protein: hasMilk ? 4 : 0,
+    fat: hasMilk ? 4 : 0,
+    sodium: hasMilk ? 70 : 15
+  };
+}
+
+function buildDefaultAboutText(product){
+  const base = product.desc ? product.desc.trim().replace(/\.$/, '') : product.name;
+  return `${base}. Adjust the sweetness, ice, and milk to your liking using the options above.`;
+}
+
+/* drinkCategories is passed in from admin.js's DRINK_CATEGORIES, same
+   reasoning as cleanupLegacyFoodFields taking foodCategories, so the
+   two lists can't drift apart. Returns the ids of every drink that
+   was actually changed (a drink that already has every field is
+   left completely untouched and doesn't count). */
+export async function fillMissingDrinkDetails(drinkCategories){
+  const snap = await getDocs(collection(db, PRODUCTS_COL));
+  const updated = [];
+  for(const docSnap of snap.docs){
+    const data = docSnap.data();
+    if(!drinkCategories.includes(data.cat)) continue;
+    const product = { id: docSnap.id, ...data };
+
+    const fields = {};
+    if(!Array.isArray(data.optionGroups) || !data.optionGroups.length){
+      fields.optionGroups = buildDefaultOptionGroups(product);
+    }
+    if(typeof data.calories !== 'number'){
+      fields.calories = estimateDrinkCalories(product);
+    }
+    if(!data.aboutText){
+      fields.aboutText = buildDefaultAboutText(product);
+    }
+    if(!data.nutrition || !Object.keys(data.nutrition).length){
+      fields.nutrition = estimateDrinkNutrition(product, fields.calories !== undefined ? fields.calories : data.calories);
+    }
+
+    if(!Object.keys(fields).length) continue; // already fully filled in
+
+    await updateDoc(doc(db, PRODUCTS_COL, docSnap.id), fields);
+    patchCachedProduct(docSnap.id, fields);
+    updated.push(docSnap.id);
+  }
+  return updated;
+}
+
+window.CCProducts = { fetchAllProducts, addProduct, updateProduct, deleteProduct, seedProducts, getCachedProducts, decrementStock, cleanupLegacyFoodFields, flattenSizePricing, fillMissingDrinkDetails };
