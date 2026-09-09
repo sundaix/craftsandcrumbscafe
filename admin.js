@@ -3,17 +3,10 @@ let adminEditingId = null; // set while editing an existing product, null when a
 let adminProductSearch = '';    // current text in the Products search box
 let adminCategoryFilter = 'All'; // current selection in the category filter dropdown
 
-/* Mirrors the product being added/edited's optionGroups field while the
-   form is open — see renderOptionGroupsBuilder() below for the shape
-   and the whole "OPTION GROUPS BUILDER" section for how it's edited. */
 let apOptionGroups = [];
 
 const FOOD_CATEGORIES = ['Coffee', 'Non-Coffee', 'Tea', 'Pastries', 'Sandwiches', 'Cakes'];
 
-/* Default size list offered for each sized category when adding a new
-   product, or when switching an existing product to one of these
-   categories. Editing a product that already has its own size list
-   keeps that list instead (see renderSizePriceRows). */
 const DEFAULT_SIZES_BY_CATEGORY = {
   Shirts: ['XS','S','M','L','XL','XXL'],
   Shorts: ['XS','S','M','L','XL','XXL'],
@@ -53,12 +46,6 @@ function closeCategoryModal(){
   $('#categoryModalOverlay').removeClass('open');
 }
 
-/* Lists categories the admin has actually created (CUSTOM_CATEGORIES),
-   each with a delete button — built-in categories (Coffee, Shirts,
-   etc.) aren't shown here since they're hardcoded in script.js and
-   were never meant to be removable. Shows how many products currently
-   sit in each category so an admin isn't surprised by an orphaned
-   product after deleting one. */
 function renderExistingCategoriesList(){
   const $wrap = $('#ccExistingWrap');
   if(!CUSTOM_CATEGORIES.length){
@@ -83,12 +70,6 @@ function renderExistingCategoriesList(){
   $wrap.show();
 }
 
-/* Deletes a custom category: confirms (with a stronger warning if
-   products still use it, since those products won't be reassigned
-   automatically), removes it from Firestore, unwinds every place it
-   was folded into (CAT_LABELS, sidebars, pricing rules — see
-   removeCustomCategoryEffects in script.js), and refreshes every
-   piece of UI that reads category data. */
 $(document).on('click', '[data-admin-category-delete]', async function(){
   const id = $(this).data('admin-category-delete');
   const c = CUSTOM_CATEGORIES.find(x => x.id === id);
@@ -133,19 +114,10 @@ $(document).on('change', '#ccPricing', function(){
   $('#ccSizesField').toggle($(this).val() === 'sized-stock');
 });
 
-/* Turns a free-typed label into a doc-id-safe key in the same style
-   as the built-in categories ('Non-Coffee', 'ToteBags') — letters and
-   numbers only, no spaces. Falls back to a timestamp if the label is
-   somehow left with nothing usable (e.g. all punctuation). */
 function slugifyCategoryLabel(label){
   return label.trim().replace(/[^a-zA-Z0-9]+/g, '') || ('Category' + Date.now());
 }
 
-/* Guarantees the id doesn't collide with a built-in or previously
-   added category — appends 2, 3, 4... until it finds a free one.
-   Collisions should be rare (two categories with very similar names)
-   but silently overwriting an existing category would be much worse
-   than a slightly-suffixed id. */
 function uniqueCategoryId(base){
   if(!CAT_LABELS[base]) return base;
   let n = 2;
