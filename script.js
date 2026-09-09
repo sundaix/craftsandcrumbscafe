@@ -25,15 +25,7 @@ function blankPlaceholder(id, cat){
   return 'data:image/svg+xml;utf8,' + encodeURIComponent(svg);
 }
 
-/* ================= DATA =================
-   SEED_PRODUCTS is only used to seed Firestore once (via the
-   Admin page's "Seed Starter Catalog" button). The live catalog
-   that the site actually renders from is the mutable PRODUCTS
-   array below, populated from Firestore at startup. */
 let PRODUCTS = [];
-// Flat delivery fee, admin-configurable (Admin > Settings). Starts at the
-// same value that used to be hardcoded here, and is overwritten by the
-// cached/live value from settings-service.js during init below.
 let DELIVERY_FEE = 60;
 const SEED_PRODUCTS = [
   /* ---- Pastries: All-day Bakery ---- */
@@ -375,22 +367,10 @@ const CATEGORIES = [
   { key:'Wearables', emoji:'🎁', title:'Merchandise', desc:'Shirts, caps, bracelets, and keychains made for regulars.', img:'merchcac.png' },
 ];
 
-const REVIEWS = [
-  { name:'Miguel R.', text:'The iced americano tastes like it was made by someone who actually cares. My mornings are better because of this place.', img:'https://images.unsplash.com/photo-1633332755192-727a05c4013d?w=100&q=80' },
-  { name:'Andrea S.', text:'Their cinnamon roll is the best in the city, hands down. I bring a box home every weekend.', img:'https://images.unsplash.com/photo-1580489944761-15a19d654956?w=100&q=80' },
-  { name:'Kevin T.', text:'Cozy corner, fast wifi, and the tote bags they sell are gorgeous. I bought one for my whole team.', img:'https://images.unsplash.com/photo-1633332755192-727a05c4013d?w=101&q=80' },
-];
-
 /* ================= STATE ================= */
 let cart = []; // {id, qty, size}
 let cartOwnerUid = null; // uid whose cart is currently loaded into `cart` — null while signed out
 
-/* Raw combo records from Firestore (name, desc, img, drinkId, pastryId,
-   discountPercent, active) and the "product-shaped" versions derived
-   from them — see buildComboProducts() further down. Kept as separate
-   arrays from PRODUCTS/PRODUCTS-derived state rather than merged in,
-   so the Menu/Merch grids and the admin Products table never
-   accidentally pick up a combo as if it were a real catalog item. */
 let COMBOS = [];
 let COMBO_PRODUCTS = [];
 
@@ -414,9 +394,6 @@ function rerenderActiveCartPage(){
   if(activePage === 'checkout') renderCheckoutSummary();
 }
 
-/* Called from authStateReady on every login/logout/page load. Cart
-   now lives in Firestore (cart-service.js) instead of localStorage,
-   so the same cart shows up on web and mobile. */
 async function syncCartToAccount(realUser){
   if(realUser){
     if(cartOwnerUid === realUser.uid) return; // already this account's cart, nothing to do
@@ -428,10 +405,6 @@ async function syncCartToAccount(realUser){
     rerenderActiveCartPage();
     return;
   }
-  // No real (non-anonymous) user right now. Only clear the cart if an
-  // account was actually just signed OUT of — guest checkout also
-  // triggers this listener via ensureSignedIn()'s anonymous sign-in,
-  // and that must NOT wipe items a guest already added.
   if(cartOwnerUid === null) return;
   cartOwnerUid = null;
   cart = [];
@@ -441,12 +414,16 @@ async function syncCartToAccount(realUser){
 let currentProductId = SEED_PRODUCTS[0].id;
 let pdQty = 1;
 let pdSize = null;
+let pdOptions = {};
 let menuFilter = 'Coffee';
 let menuSearch = '';
 let menuSort = 'featured';
 let merchFilter = 'Shirts';
 let merchSearch = '';
 let merchSort = 'featured';
+
+let menuFilterBeforeSearch = null;
+let merchFilterBeforeSearch = null;
 let fulfillment = 'delivery';
 
 let wishlist = []; // array of product ids
@@ -481,12 +458,6 @@ const MERCH_SIDEBAR = [
   ]},
 ];
 
-/* Wearable categories that price flat but track stock per size (see
-   the seed data above, where each has a `sizes: ['XS','S',...]`
-   array). Used by the admin Add/Edit form's stock-per-size UI and by
-   the "Flatten Size Pricing" legacy cleanup tool — it does NOT include
-   Coffee/Non-Coffee/Tea, which intentionally DO price per size
-   (12oz/16oz/20oz) and must never be "flattened" back to one price. */
 const SIZED_CATEGORIES = ['Shirts', 'Caps', 'Shorts', 'Socks'];
 const CAT_LABELS = {
   'Coffee': { group:'Drinks', sub:'Caffeine' },
@@ -504,20 +475,78 @@ const CAT_LABELS = {
   'Keychains': { group:'Merchandise', sub:'Keychains' },
 };
 
+function flatCats(sidebar){
+  return sidebar.flatMap(g => g.items.map(it => it.cat));
+}
+
+function escapeRegExp(str){
+  return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+function productMatchesQuery(p, query){
+  const terms = query.trim().split(/\s+/).filter(Boolean);
+  if(!terms.length) return true;
+  const haystack = `${p.name} ${p.desc || ''}`;
+  return terms.every(term => new RegExp('\\b' + escapeRegExp(term), 'i').test(haystack));
+}
+
+let CUSTOM_CATEGORIES = [];
+
+function applyCustomCategory(c){
+  if(CAT_LABELS[c.id]) return;
+  CAT_LABELS[c.id] = { group: c.group, sub: c.label };
+
+  if(c.pricingType === 'sized-price'){
+    if(!DRINK_CATEGORIES.includes(c.id)) DRINK_CATEGORIES.push(c.id);
+  } else if(c.pricingType === 'sized-stock'){
+    if(!SIZED_CATEGORIES.includes(c.id)) SIZED_CATEGORIES.push(c.id);
+    DEFAULT_SIZES_BY_CATEGORY[c.id] = (c.sizes && c.sizes.length) ? c.sizes : ['One Size'];
+  }
+  if(c.hasFoodFields && !FOOD_CATEGORIES.includes(c.id)) FOOD_CATEGORIES.push(c.id);
+
+  const sidebar = c.page === 'merch' ? MERCH_SIDEBAR : MENU_SIDEBAR;
+  let groupEntry = sidebar.find(g => g.group === c.group);
+  if(!groupEntry){
+    groupEntry = { group: c.group, items: [] };
+    sidebar.push(groupEntry);
+  }
+  if(!groupEntry.items.some(it => it.cat === c.id)){
+    groupEntry.items.push({ label: c.label, cat: c.id });
+  }
+}
+
+function applyCustomCategories(categories){
+  categories.forEach(applyCustomCategory);
+}
+
+   categories never go through this. */
+function removeCustomCategoryEffects(c){
+  delete CAT_LABELS[c.id];
+  delete DEFAULT_SIZES_BY_CATEGORY[c.id];
+
+  const di = DRINK_CATEGORIES.indexOf(c.id);
+  if(di > -1) DRINK_CATEGORIES.splice(di, 1);
+  const si = SIZED_CATEGORIES.indexOf(c.id);
+  if(si > -1) SIZED_CATEGORIES.splice(si, 1);
+  const fi = FOOD_CATEGORIES.indexOf(c.id);
+  if(fi > -1) FOOD_CATEGORIES.splice(fi, 1);
+
+  const sidebar = c.page === 'merch' ? MERCH_SIDEBAR : MENU_SIDEBAR;
+  const groupEntry = sidebar.find(g => g.group === c.group);
+  if(groupEntry){
+    groupEntry.items = groupEntry.items.filter(it => it.cat !== c.id);
+    if(!groupEntry.items.length){
+      const gi = sidebar.indexOf(groupEntry);
+      if(gi > -1) sidebar.splice(gi, 1);
+    }
+  }
+}
+
 /* ================= HELPERS ================= */
 const peso = n => '₱' + n.toLocaleString('en-PH');
 const findProduct = id => PRODUCTS.find(p => p.id === id) || COMBO_PRODUCTS.find(p => p.id === id);
 const escapeHtml = str => $('<div>').text(str == null ? '' : str).html();
 
-/* Normalizes a product's `sizes` field to `[{size, price, stock}, ...]`
-   no matter which shape it's actually in:
-   - plain string ('S') — legacy/seed data, flat price, no stock tracked
-   - {size, price} — drinks (Coffee/Non-Coffee/Tea): 12oz/16oz/20oz each
-     priced independently; stock isn't tracked per size for these
-   - {size, stock} — wearables (Shirts/Caps/Shorts/Socks): one flat
-     price, stock tracked per size
-   `stock: null` means stock isn't tracked for that size at all, which
-   the storefront treats as always available (never crossed out). */
 function getSizeOptions(p){
   if(!p.sizes) return [];
   return p.sizes.map(s => {
@@ -530,29 +559,12 @@ function getSizeOptions(p){
   });
 }
 
-/* True when a specific size is out of stock — only ever true when
-   that size actually has stock tracked (stock isn't null) and it's
-   down to zero or below. A size with no stock tracking at all is
-   always treated as available. */
 function isSizeOutOfStock(p, sizeLabel){
   const opts = getSizeOptions(p);
   const match = opts.find(o => o.size === sizeLabel);
   return !!match && match.stock !== null && match.stock <= 0;
 }
 
-/* Single source of truth for "is this product out of stock", shared by
-   every customer-facing surface (grid cards, quick add, product detail
-   page) so they always agree with each other AND with the admin
-   dashboard's stock badge (admin.js), which is built from these same
-   two stock shapes:
-   - Per-size tracked (wearables — Shirts/Caps/Shorts/Socks): out of
-     stock only once every size that actually tracks stock is at 0 or
-     below. Sizes with stock:null (untracked) don't count either way.
-   - Flat top-level stock (drinks, food, ToteBags/Bracelets/Keychains):
-     out of stock when p.stock is a tracked number <= 0.
-   A product with no stock tracked anywhere (p.stock is null/undefined
-   and no sizes track stock) is always treated as available — same as
-   the admin table's "—" badge. */
 function isProductOutOfStock(p){
   const trackedSizes = getSizeOptions(p).filter(o => o.stock !== null);
   if(trackedSizes.length) return trackedSizes.every(o => o.stock <= 0);
@@ -574,14 +586,109 @@ function getDisplayPrice(p){
   return Math.min(...opts.map(o => o.price));
 }
 
-/* True when at least two sizes are actually priced differently — true
-   for every drink (12oz/16oz/20oz each cost more) and false for
-   wearables (one flat price regardless of size), which is what
-   decides whether each size chip needs its own price shown. */
 function hasVariablePricing(p){
   const opts = getSizeOptions(p);
   if(opts.length < 2) return false;
   return new Set(opts.map(o => o.price)).size > 1;
+}
+
+function getOptionGroups(p){
+  return Array.isArray(p.optionGroups) ? p.optionGroups : [];
+}
+
+function defaultPdOptions(p){
+  const out = {};
+  getOptionGroups(p).forEach(g => {
+    const avail = g.choices.filter(c => c.available !== false);
+    if(g.type === 'multi'){
+      out[g.id] = avail.filter(c => c.default).map(c => c.id);
+    } else {
+      const def = avail.find(c => c.default) || avail[0];
+      out[g.id] = def ? [def.id] : [];
+    }
+  });
+  return out;
+}
+
+function optionsPriceDelta(p, options){
+  let delta = 0;
+  getOptionGroups(p).forEach(g => {
+    (options[g.id] || []).forEach(cid => {
+      const choice = g.choices.find(c => c.id === cid);
+      if(choice) delta += (choice.price || 0);
+    });
+  });
+  return delta;
+}
+
+function computePdUnitPrice(p, size, options){
+  const base = size ? getPriceForSize(p, size) : getDisplayPrice(p);
+  return base + optionsPriceDelta(p, options || {});
+}
+
+function optionsSummaryText(p, options){
+  if(!options) return '';
+  const parts = [];
+  getOptionGroups(p).forEach(g => {
+    const ids = options[g.id] || [];
+    const labels = ids.map(cid => {
+      const choice = g.choices.find(c => c.id === cid);
+      return choice ? choice.label : null;
+    }).filter(Boolean);
+    if(labels.length) parts.push(labels.join(' + '));
+  });
+  return parts.join(', ');
+}
+
+function optionsKey(options){
+  if(!options) return '';
+  return Object.keys(options).sort()
+    .map(k => k + ':' + [...(options[k] || [])].sort().join('+'))
+    .join('|');
+}
+
+function renderPdOptionGroups(p, options){
+  const groups = getOptionGroups(p);
+  if(!groups.length) return '';
+  return `
+    <div class="pd-options">
+      ${groups.map(g => {
+        const selected = options[g.id] || [];
+        return `
+          <div class="pd-opt-group" data-opt-group="${g.id}">
+            <div class="pd-opt-head">
+              <h4>${g.label}</h4>
+              <span class="pd-opt-tag">${g.type === 'multi' ? `Select up to ${g.max || g.choices.length}` : '* Pick 1'}</span>
+            </div>
+            <div class="pd-opt-choice-row">
+              ${g.choices.map(c => {
+                const avail = c.available !== false;
+                const isSel = selected.includes(c.id);
+                return `
+                  <button type="button" class="pd-opt-chip${isSel ? ' active' : ''}${!avail ? ' pd-opt-chip-disabled' : ''}"
+                    data-opt-choice data-group="${g.id}" data-choice="${c.id}" ${!avail ? 'disabled' : ''}>
+                    <span class="pd-opt-chip-label">${c.label}</span>
+                    ${c.price ? `<span class="pd-opt-chip-price">(+${peso(c.price)})</span>` : ''}
+                    ${c.kcal ? `<span class="pd-opt-chip-kcal">~ ${c.kcal} kcal</span>` : ''}
+                    ${!avail ? '<span class="pd-opt-chip-oos">Unavailable</span>' : ''}
+                  </button>
+                `;
+              }).join('')}
+            </div>
+          </div>
+        `;
+      }).join('')}
+    </div>
+  `;
+}
+
+function refreshPdPricing(p){
+  const unit = computePdUnitPrice(p, pdSize, pdOptions);
+  const oos = pdSize ? isSizeOutOfStock(p, pdSize) : isProductOutOfStock(p);
+  $('#pdPriceDisplayValue').text(peso(unit));
+  if(p.comboMeta && pdSize) $('.combo-price-original-pd').text(comboOriginalPriceForSize(p, pdSize));
+  $('#pdAddBtn').prop('disabled', oos).text(oos ? 'Out of Stock' : `Add to Cart · ${peso(unit * pdQty)}`);
+  $('#pdOptSummary').text(optionsSummaryText(p, pdOptions));
 }
 
 /* Drinks show a range across their three sizes (e.g. "₱139–₱179");
@@ -597,12 +704,6 @@ function priceLabel(p){
   return peso(getDisplayPrice(p));
 }
 
-/* Shared by the Menu and Merchandise grids. "Featured" keeps the
-   catalog's natural order but pulls best sellers to the front — it's
-   the closest thing this app has to a popularity signal without a real
-   sales-analytics pipeline behind it. "Newest" relies on createdAt,
-   which only admin-added products have (see products-services.js /
-   admin.js) — older seed products fall back to the end of that sort. */
 function sortProducts(items, sortValue){
   const list = [...items];
   const toMs = (val) => {
@@ -702,6 +803,344 @@ function renderWishlistPage(){
   $grid.html(items.map(p => p.comboMeta ? comboCard(p) : productCard(p)).join(''));
   initReveal();
 }
+
+/* ================= SAVED ADDRESSES ================= */
+/* Same account-scoped caching pattern as wishlist above: myAddresses
+   holds the signed-in customer's saved delivery addresses, kept in
+   sync with whoever's actually logged in via addressesOwnerUid so a
+   log-out/log-in (or switching accounts) never leaks one customer's
+   addresses into another's view. */
+let myAddresses = [];
+let addressesOwnerUid = null;
+let editingAddressId = null;      // set while the address form is editing an existing one
+let addressFormContext = 'page';  // 'page' (My Addresses) or 'checkout' — where to return focus after saving
+let addressFormMap = null;        // Leaflet map instance, created once and reused across opens
+let addressFormMarker = null;
+
+// Quezon City — sensible default center since that's where the shop is.
+const ADDRESS_MAP_DEFAULT = { lat: 14.6760, lng: 121.0437 };
+
+/* Called from authStateReady alongside syncCartToAccount/syncWishlistToAccount. */
+async function syncAddressesToAccount(realUser){
+  if(realUser){
+    if(addressesOwnerUid === realUser.uid) return;
+    myAddresses = await window.CCAddresses.fetchAddresses(realUser.uid);
+    addressesOwnerUid = realUser.uid;
+    if($('.page[data-page="addresses"]').hasClass('active')) renderAddressesPage();
+    if($('.page[data-page="checkout"]').hasClass('active')) renderCheckoutAddressPicker();
+    return;
+  }
+  if(addressesOwnerUid === null) return;
+  addressesOwnerUid = null;
+  myAddresses = [];
+}
+
+async function reloadMyAddresses(){
+  if(!window.currentUser || window.currentUser.isAnonymous) return;
+  myAddresses = await window.CCAddresses.fetchAddresses(window.currentUser.uid);
+  if($('.page[data-page="addresses"]').hasClass('active')) renderAddressesPage();
+  if($('.page[data-page="checkout"]').hasClass('active')) renderCheckoutAddressPicker();
+}
+
+function renderAddressesPage(){
+  const $list = $('#addressesList');
+  if(!myAddresses.length){
+    $list.html(`
+      <div class="empty-favorites">
+        <div class="empty-favorites-icon">
+          <svg width="26" height="26" viewBox="0 0 24 24" fill="none"><path d="M12 21s-5.5-6-5.5-10.5A5.5 5.5 0 0 1 12 5a5.5 5.5 0 0 1 5.5 5.5C17.5 15 12 21 12 21z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/><circle cx="12" cy="10.5" r="2" stroke="currentColor" stroke-width="1.5"/></svg>
+        </div>
+        <h3>No saved addresses yet</h3>
+        <p>Add one now so checkout only takes a tap next time.</p>
+        <div class="empty-favorites-actions">
+          <button class="btn btn-primary" id="emptyAddAddressBtn">Add Your First Address</button>
+        </div>
+      </div>
+    `);
+    return;
+  }
+  $list.html(myAddresses.map(addressCard).join(''));
+}
+
+function addressCard(a){
+  return `
+    <div class="address-card${a.isDefault ? ' is-default' : ''}" data-address-id="${a.id}">
+      <div class="address-card-main">
+        <div class="address-card-label-row">
+          <span class="address-card-label">${a.label || 'Address'}</span>
+          ${a.isDefault ? '<span class="address-default-badge">Default</span>' : ''}
+        </div>
+        <p class="address-card-text">${a.address}</p>
+      </div>
+      <div class="address-card-actions">
+        ${!a.isDefault ? `<button type="button" class="link-btn" data-address-set-default="${a.id}">Set as default</button>` : ''}
+        <button type="button" class="link-btn" data-address-edit="${a.id}">Edit</button>
+        <button type="button" class="link-btn link-btn-danger" data-address-delete="${a.id}">Delete</button>
+      </div>
+    </div>
+  `;
+}
+
+$(document).on('click', '#addAddressBtn, #emptyAddAddressBtn', function(){
+  openAddressForm({ editing: null, context: 'page' });
+});
+
+$(document).on('click', '[data-address-edit]', function(){
+  const a = myAddresses.find(x => x.id === $(this).data('address-edit'));
+  if(a) openAddressForm({ editing: a, context: 'page' });
+});
+
+$(document).on('click', '[data-address-set-default]', async function(){
+  const id = $(this).data('address-set-default');
+  try{
+    await window.CCAddresses.setDefaultAddress(window.currentUser.uid, id);
+    await reloadMyAddresses();
+    showToast('Default address updated.', 'success');
+  } catch(err){
+    console.error(err);
+    showToast('Could not update your default address. Please try again.', 'error');
+  }
+});
+
+$(document).on('click', '[data-address-delete]', async function(){
+  const id = $(this).data('address-delete');
+  const a = myAddresses.find(x => x.id === id);
+  const ok = await showConfirm({
+    title: 'Delete this address?',
+    message: `"${a ? a.label || a.address : 'This address'}" will be removed from your account.`,
+    confirmText: 'Delete',
+    danger: true
+  });
+  if(!ok) return;
+  try{
+    await window.CCAddresses.deleteAddress(window.currentUser.uid, id);
+    await reloadMyAddresses();
+    showToast('Address deleted.', 'success');
+  } catch(err){
+    console.error(err);
+    showToast('Could not delete that address. Please try again.', 'error');
+  }
+});
+
+/* ---------- Address form modal (map + fields, shared by My Addresses & Checkout) ---------- */
+
+function openAddressForm({ editing, context }){
+  editingAddressId = editing ? editing.id : null;
+  addressFormContext = context;
+  $('#addressFormTitle').text(editing ? 'Edit Address' : 'Add Address');
+  $('#afLabel').val(editing ? (editing.label || '') : '');
+  $('#afAddress').val(editing ? (editing.address || '') : '');
+  $('#afIsDefault').prop('checked', editing ? !!editing.isDefault : myAddresses.length === 0);
+  $('#addressFormOverlay').addClass('open');
+
+  const startLat = editing && editing.lat ? editing.lat : ADDRESS_MAP_DEFAULT.lat;
+  const startLng = editing && editing.lng ? editing.lng : ADDRESS_MAP_DEFAULT.lng;
+
+  // The overlay needs to actually be visible (display != none, full
+  // size) before Leaflet can measure its container, or the map tiles
+  // render into a collapsed 0x0 box — a short delay covers the CSS
+  // transition that fades/scales the modal in.
+  setTimeout(() => initOrResetAddressMap(startLat, startLng), 60);
+}
+
+function closeAddressForm(){
+  $('#addressFormOverlay').removeClass('open');
+  editingAddressId = null;
+}
+
+function initOrResetAddressMap(lat, lng){
+  if(!addressFormMap){
+    addressFormMap = L.map('addressMap').setView([lat, lng], 14);
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      maxZoom: 19,
+      attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+    }).addTo(addressFormMap);
+    addressFormMarker = L.marker([lat, lng], { draggable: true }).addTo(addressFormMap);
+
+    // Dragging the pin is the "map drives the address field" half of
+    // the sync — only fires once per drag (not continuously), which
+    // keeps this comfortably within Nominatim's fair-use rate limit.
+    addressFormMarker.on('dragend', function(){
+      const pos = addressFormMarker.getLatLng();
+      reverseGeocodeToField(pos.lat, pos.lng);
+    });
+    // Clicking anywhere else on the map moves the pin there too.
+    addressFormMap.on('click', function(e){
+      addressFormMarker.setLatLng(e.latlng);
+      reverseGeocodeToField(e.latlng.lat, e.latlng.lng);
+    });
+  } else {
+    addressFormMap.setView([lat, lng], 14);
+    addressFormMarker.setLatLng([lat, lng]);
+  }
+  addressFormMap.invalidateSize();
+}
+
+/* OpenStreetMap's free Nominatim service, used for both directions of
+   the address<->pin sync. No API key. Its usage policy asks for no
+   more than ~1 request/second and no automated bulk use — both
+   comfortably satisfied here since every call is a single customer's
+   own deliberate action (a drag-end, a location-search tap, or the
+   "use my current location" button), never a loop or a keystroke
+   handler. */
+async function reverseGeocodeToField(lat, lng){
+  $('#afAddress').attr('placeholder', 'Looking up address...');
+  try{
+    const res = await fetch(`https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${lat}&lon=${lng}`);
+    const data = await res.json();
+    if(data && data.display_name) $('#afAddress').val(data.display_name);
+  } catch(err){
+    console.warn('Reverse geocoding failed — leaving the address field as-is.', err);
+  } finally {
+    $('#afAddress').attr('placeholder', 'Street, Barangay, City');
+  }
+}
+
+async function forwardGeocodeFromField(){
+  const query = $('#afAddress').val().trim();
+  if(!query) return;
+  const $btn = $('#afSearchBtn');
+  $btn.prop('disabled', true).text('Searching...');
+  try{
+    const res = await fetch(`https://nominatim.openstreetmap.org/search?format=jsonv2&limit=1&q=${encodeURIComponent(query)}`);
+    const results = await res.json();
+    if(!results.length){
+      showToast('Could not find that address on the map. You can still drag the pin manually.', 'warning');
+      return;
+    }
+    const { lat, lon } = results[0];
+    addressFormMarker.setLatLng([lat, lon]);
+    addressFormMap.setView([lat, lon], 15);
+  } catch(err){
+    console.error(err);
+    showToast('Address search failed. Please try again.', 'error');
+  } finally {
+    $btn.prop('disabled', false).text('Search');
+  }
+}
+
+$(document).on('click', '#afSearchBtn', forwardGeocodeFromField);
+$(document).on('keydown', '#afAddress', function(e){
+  if(e.key === 'Enter'){ e.preventDefault(); forwardGeocodeFromField(); }
+});
+
+$(document).on('click', '#afUseCurrentLocationBtn', function(){
+  if(!navigator.geolocation){
+    showToast('Your browser does not support location access.', 'warning');
+    return;
+  }
+  const $btn = $(this);
+  $btn.prop('disabled', true).text('Locating...');
+  navigator.geolocation.getCurrentPosition(
+    (pos) => {
+      const { latitude, longitude } = pos.coords;
+      addressFormMarker.setLatLng([latitude, longitude]);
+      addressFormMap.setView([latitude, longitude], 16);
+      reverseGeocodeToField(latitude, longitude);
+      $btn.prop('disabled', false).text('Use my current location');
+    },
+    () => {
+      showToast('Could not access your location. You can still drop the pin manually.', 'warning');
+      $btn.prop('disabled', false).text('Use my current location');
+    }
+  );
+});
+
+$(document).on('click', '#addressFormClose, #addressFormCancel', closeAddressForm);
+$(document).on('click', '#addressFormOverlay', function(e){
+  if(e.target.id === 'addressFormOverlay') closeAddressForm();
+});
+
+$(document).on('submit', '#addressForm', async function(e){
+  e.preventDefault();
+  if(!window.currentUser || window.currentUser.isAnonymous){
+    showToast('Please log in to save an address.', 'warning');
+    return;
+  }
+  const address = $('#afAddress').val().trim();
+  if(!address){
+    showToast('Enter a delivery address first.', 'warning');
+    return;
+  }
+  const pos = addressFormMarker.getLatLng();
+  const fields = {
+    label: $('#afLabel').val().trim(),
+    address,
+    lat: pos.lat,
+    lng: pos.lng,
+    isDefault: $('#afIsDefault').is(':checked')
+  };
+
+  const $btn = $('#addressFormSubmit');
+  $btn.prop('disabled', true).text('Saving...');
+  try{
+    const uid = window.currentUser.uid;
+    let savedId;
+    if(editingAddressId){
+      await window.CCAddresses.updateAddress(uid, editingAddressId, fields);
+      savedId = editingAddressId;
+    } else {
+      savedId = await window.CCAddresses.addAddress(uid, fields);
+    }
+    await reloadMyAddresses();
+    closeAddressForm();
+    showToast(editingAddressId ? 'Address updated.' : 'Address saved.', 'success');
+    // Opened from checkout's "+ Add new address" chip — select the
+    // address that was just saved instead of leaving the picker on
+    // whatever was chosen before.
+    if(addressFormContext === 'checkout') selectCheckoutAddress(savedId);
+  } catch(err){
+    console.error(err);
+    showToast('Could not save that address. Please try again.', 'error');
+  } finally {
+    $btn.prop('disabled', false).text('Save Address');
+  }
+});
+
+/* ---------- Checkout's saved-address picker ---------- */
+
+let checkoutSelectedAddressId = null;
+
+function renderCheckoutAddressPicker(){
+  const $picker = $('#coSavedAddressPicker');
+  const loggedIn = window.currentUser && !window.currentUser.isAnonymous;
+  if(!loggedIn){
+    $picker.hide().html('');
+    return;
+  }
+  $picker.show().html(`
+    ${myAddresses.map(a => `
+      <button type="button" class="address-chip${a.id === checkoutSelectedAddressId ? ' active' : ''}" data-checkout-address="${a.id}">
+        <span class="address-chip-label">${a.label || 'Address'}</span>
+        <span class="address-chip-text">${a.address}</span>
+      </button>
+    `).join('')}
+    <button type="button" class="address-chip address-chip-add" data-checkout-address-new="1">+ Add new address</button>
+  `);
+  // Nothing picked yet this session — default to the customer's
+  // default address so returning customers don't have to tap at all.
+  if(!checkoutSelectedAddressId){
+    const def = myAddresses.find(a => a.isDefault);
+    if(def) selectCheckoutAddress(def.id);
+  }
+}
+
+function selectCheckoutAddress(id){
+  const a = myAddresses.find(x => x.id === id);
+  if(!a) return;
+  checkoutSelectedAddressId = id;
+  $('#coAddress').val(a.address);
+  $('#coSavedAddressPicker .address-chip').removeClass('active');
+  $(`#coSavedAddressPicker [data-checkout-address="${id}"]`).addClass('active');
+}
+
+$(document).on('click', '[data-checkout-address]', function(){
+  selectCheckoutAddress($(this).data('checkout-address'));
+});
+
+$(document).on('click', '[data-checkout-address-new]', function(){
+  openAddressForm({ editing: null, context: 'checkout' });
+});
 
 /* ================= COMBOS ================= */
 /* Turns each raw combo doc (name, desc, img, drinkId, pastryId,
@@ -848,7 +1287,15 @@ $(document).on('click', '[data-wishlist-toggle]', function(e){
      'warning' — caramel alert, "please do X" prompts
      'error'   — red alert, something failed
      'info'    — dusty-blue info, neutral status updates
-   duration is how long it stays up (ms) before auto-dismissing. */
+
+   Calls are QUEUED, not clobbered: if the admin (or a customer) fires
+   several actions in quick succession — e.g. deleting a few products,
+   or updating two order statuses back to back — each message gets its
+   own full, uninterrupted turn on screen instead of the newest one
+   silently overwriting/cutting off the previous one mid-animation.
+   duration is how long that toast stays up (ms) before the next one
+   in the queue takes over; error/warning default longer than routine
+   success/info messages since they need more time to actually read. */
 const TOAST_ICONS = {
   success: '<path d="M4 12l5 5L20 6"/>',
   cart:    '<path d="M17 8h1a4 4 0 1 1 0 8h-1"/><path d="M3 8h14v7a4 4 0 0 1-4 4H7a4 4 0 0 1-4-4z"/>',
@@ -856,37 +1303,77 @@ const TOAST_ICONS = {
   error:   '<circle cx="12" cy="12" r="9"/><path d="M9.5 9.5l5 5"/><path d="M14.5 9.5l-5 5"/>',
   info:    '<circle cx="12" cy="12" r="9"/><path d="M12 11v5"/><path d="M12 8h.01"/>'
 };
+const TOAST_DEFAULT_DURATIONS = { success:2400, cart:2400, info:2600, warning:3200, error:3800 };
 
-function showToast(msg, type='success', duration=2400){
-  const $t = $('#toast');
-  const $veil = $('#toastVeil');
+const _toastQueue = [];
+let _toastActive = false;
+let _toastHideTimer = null;
+
+function showToast(msg, type='success', duration){
   const iconType = TOAST_ICONS[type] ? type : 'success';
+  const ms = duration || TOAST_DEFAULT_DURATIONS[iconType] || 2400;
 
-  $('#toastMsg').text(msg);
-  $t.attr('class', 'toast show type-' + iconType);
-  $('#toastIconSvg').html(TOAST_ICONS[iconType]);
-  $veil.addClass('show');
+  // Collapse an exact repeat that's still waiting in line (e.g. a
+  // double-click firing the same handler twice) instead of showing
+  // the identical message back to back.
+  const last = _toastQueue[_toastQueue.length - 1];
+  if(last && last.msg === msg && last.type === iconType) return;
 
-  // Restart the depletion-bar animation from scratch even if a toast
-  // is already showing — without the reflow trick the browser just
-  // keeps the previous run's animation going instead of resetting it.
-  const $bar = $('#toastTimerBar');
-  $bar.css('animation', 'none');
-  $bar[0].offsetHeight;
-  $bar.css('animation', `toastTimerShrink ${duration}ms linear forwards`);
-
-  clearTimeout(showToast._t);
-  showToast._t = setTimeout(() => {
-    $t.removeClass('show').addClass('hide');
-    $veil.removeClass('show');
-  }, duration);
+  _toastQueue.push({ msg, type: iconType, ms });
+  if(!_toastActive) _advanceToastQueue();
 }
 
-function addToCart(id, qty=1, size=null){
-  const existing = cart.find(c => c.id === id && c.size === size);
-  if(existing){ existing.qty += qty; } else { cart.push({id, qty, size}); }
+function _advanceToastQueue(){
+  const next = _toastQueue.shift();
+  if(!next){ _toastActive = false; return; }
+  _toastActive = true;
+
+  const $t = $('#toast');
+  const $veil = $('#toastVeil');
+
+  clearTimeout(_toastHideTimer);
+  // If a toast is still visibly mid-exit, let it finish its own
+  // transition before the next one pops in, so they never visually
+  // collide — but never leave the admin waiting more than a beat.
+  const wasShowing = $t.hasClass('show');
+  $t.removeClass('show hide');
+
+  const present = () => {
+    $('#toastMsg').text(next.msg);
+    $t.attr('class', 'toast show type-' + next.type);
+    $t.attr('aria-live', next.type === 'error' ? 'assertive' : 'polite');
+    $('#toastIconSvg').html(TOAST_ICONS[next.type]);
+    $veil.addClass('show');
+
+    _toastHideTimer = setTimeout(() => {
+      $t.removeClass('show').addClass('hide');
+      $veil.removeClass('show');
+      // give the exit animation room to finish before the next toast
+      setTimeout(_advanceToastQueue, 260);
+    }, next.ms);
+  };
+
+  if(wasShowing) requestAnimationFrame(() => requestAnimationFrame(present));
+  else present();
+}
+
+function addToCart(id, qty=1, size=null, options=null, unitPrice=null){
+  const p = findProduct(id);
+  const finalUnitPrice = unitPrice != null ? unitPrice : (size ? getPriceForSize(p, size) : getDisplayPrice(p));
+  const key = optionsKey(options);
+  const existing = cart.find(c => c.id === id && c.size === size && optionsKey(c.options) === key);
+  if(existing){
+    existing.qty += qty;
+  } else {
+    cart.push({
+      id, qty, size,
+      options: options || null,
+      unitPrice: finalUnitPrice,
+      optionsSummary: options ? optionsSummaryText(p, options) : null
+    });
+  }
   updateCartCount();
-  const label = findProduct(id).name + (size ? ` (${size})` : '');
+  const label = p.name + (size ? ` (${size})` : '');
   showToast('Added to cart · ' + label, 'cart');
 }
 
@@ -918,18 +1405,20 @@ function renderCartDropdown(){
     return;
   }
 
-  $items.html(cart.map(c => {
+  $items.html(cart.filter(c => findProduct(c.id)).map(c => {
     const p = findProduct(c.id);
-    const lineKey = `${c.id}::${c.size || ''}`;
+    const lineKey = cartLineKey(c);
+    const unit = typeof c.unitPrice === 'number' ? c.unitPrice : getPriceForSize(p, c.size);
     return `
       <div class="cart-dd-item">
         <img src="${p.img}" alt="${p.name}">
         <div>
           <div class="cart-dd-name">${p.name}${c.size ? ` <span class="cart-dd-size">(${c.size})</span>` : ''}</div>
+          ${c.optionsSummary ? `<div class="cart-dd-item-opts">${c.optionsSummary}</div>` : ''}
           <div class="cart-dd-meta">
-            <span>${c.qty} × ${peso(getPriceForSize(p, c.size))}</span>
+            <span>${c.qty} × ${peso(unit)}</span>
             <span style="display:flex; align-items:center; gap:8px;">
-              ${peso(getPriceForSize(p, c.size)*c.qty)}
+              ${peso(unit*c.qty)}
               <button class="cart-dd-remove" data-cart-remove="${lineKey}" aria-label="Remove item">
                 <svg width="13" height="13" viewBox="0 0 24 24" fill="none"><path d="M6 6l12 12M18 6L6 18" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
               </button>
@@ -975,11 +1464,16 @@ $(document).on('keydown', function(e){
 });
 
 function cartTotal(){
-  return cart.reduce((s,c)=> s + getPriceForSize(findProduct(c.id), c.size) * c.qty, 0);
+  return cart.reduce((s,c)=> {
+    if(typeof c.unitPrice === 'number') return s + c.unitPrice * c.qty;
+    const p = findProduct(c.id);
+    return p ? s + getPriceForSize(p, c.size) * c.qty : s;
+  }, 0);
 }
 
 /* ================= NAVIGATION ================= */
 function navigate(pageName){
+  const previousPage = $('.page.active').data('page');
   $('.page').removeClass('active');
   $(`.page[data-page="${pageName}"]`).addClass('active');
 
@@ -992,10 +1486,34 @@ function navigate(pageName){
 
   /* The header search box is only meant for Home — Menu and
      Merchandise already have their own inline "Looking for..."
-     search, and it has no real job on FAQs, Contact, the account
-     pages, or the Admin dashboard, so hide it everywhere except
-     Home. */
+     search right at the top of their grid, so showing the header one
+     too just duplicates it. Hidden everywhere except Home. */
   $('.header-search').toggleClass('is-hidden', pageName !== 'home');
+  if(pageName === 'home' && previousPage !== 'home') $('#headerSearch').val('');
+
+  /* A leftover search term shouldn't silently follow the customer
+     when they switch sections — coming back to Menu later and still
+     seeing last week's "birthday cake" search (with the grid filtered
+     down to match) looks like a bug, not a feature. Clearing happens
+     on arrival at Menu/Merchandise from anywhere else, EXCEPT from
+     Product Detail: clicking a result to view it and then tapping
+     "Back to Menu" is still the same browsing session, so that one
+     path intentionally leaves the search term (and category filter,
+     restored the same way the search box's own × button does it) in
+     place rather than wiping out what they were doing. Sidebar
+     category clicks already clear search themselves (see
+     [data-menu-cat]/[data-merch-cat] below) — this only covers
+     switching all the way out of the section. */
+  if(pageName === 'menu' && previousPage !== 'menu' && previousPage !== 'product' && menuSearch){
+    menuSearch = '';
+    if(menuFilterBeforeSearch){ menuFilter = menuFilterBeforeSearch; menuFilterBeforeSearch = null; }
+    renderMenuPage();
+  }
+  if(pageName === 'merchandise' && previousPage !== 'merchandise' && previousPage !== 'product' && merchSearch){
+    merchSearch = '';
+    if(merchFilterBeforeSearch){ merchFilter = merchFilterBeforeSearch; merchFilterBeforeSearch = null; }
+    renderMerchPage();
+  }
 
   if(pageName === 'admin' && window.currentRole !== 'admin'){
     showToast('Admin access only. Please log in as an admin.', 'warning');
@@ -1024,11 +1542,19 @@ function navigate(pageName){
     $('.page[data-page="login"]').addClass('active');
     return;
   }
+  if(pageName === 'addresses' && (!window.currentUser || window.currentUser.isAnonymous)){
+    showToast('Please log in to manage your addresses.', 'warning');
+    $('.page').removeClass('active');
+    $('.page[data-page="login"]').addClass('active');
+    return;
+  }
   if(pageName === 'product') renderProductDetail();
   if(pageName === 'cart') renderCart();
   if(pageName === 'checkout') renderCheckoutSummary();
+  if(pageName === 'checkout') renderCheckoutAddressPicker();
   if(pageName === 'order-history') renderOrderHistory();
   if(pageName === 'wishlist') renderWishlistPage();
+  if(pageName === 'addresses') renderAddressesPage();
   if(pageName === 'about'){
     navigate('home');
     setTimeout(()=> $('.about-split')[0]?.scrollIntoView({behavior:'smooth'}), 50);
@@ -1139,15 +1665,30 @@ $(document).on('click', '[data-nav]', function(e){
 $('#hamburgerBtn').on('click', ()=> $('#navLinks').toggleClass('open'));
 
 /* ================= HEADER SEARCH ================= */
+/* Only reachable from Home (see navigate() above). Runs against the
+   full catalog — PRODUCTS holds both food/drink and merchandise
+   items together, only the `cat` field tells them apart — by landing
+   on the Menu page with its category filter cleared to "All", which
+   shows every matching product regardless of section. */
 function runHeaderSearch(){
   const q = $('#headerSearch').val();
+  // navigate() first, while the OLD menuSearch is still in place, so
+  // its own "left the section" reset (see navigate() above) clears
+  // any stale term before this new query overwrites it below —
+  // otherwise this fresh search would be wiped out immediately.
+  navigate('menu');
   menuSearch = q;
   menuFilter = 'All';
-  navigate('menu');
+  menuFilterBeforeSearch = null;
   renderMenuPage();
 }
 $('#headerSearchBtn').on('click', runHeaderSearch);
 $('#headerSearch').on('keydown', function(e){ if(e.key === 'Enter'){ e.preventDefault(); runHeaderSearch(); } });
+$('#headerSearchClear').on('click', function(){
+  $('#headerSearch').val('');
+  runHeaderSearch();
+  $('#headerSearch').focus();
+});
 
 /* ================= RENDER: HOME ================= */
 function renderCategories(){
@@ -1169,6 +1710,8 @@ function renderCategories(){
 
 $(document).on('click', '[data-menu-filter]', function(){
   menuFilter = $(this).data('menu-filter');
+  menuSearch = '';
+  menuFilterBeforeSearch = null;
   navigate('menu');
   renderMenuPage();
 });
@@ -1376,22 +1919,6 @@ function initBestSellerCarousel(items){
   document.addEventListener('visibilitychange', ()=>{ lastTime = null; });
 }
 
-function renderReviews(){
-  const html = REVIEWS.map(r => `
-    <div class="review-card">
-      <div class="review-top">
-        <img src="${r.img}" alt="${r.name}">
-        <div>
-          <div class="review-name">${r.name}</div>
-          <div class="stars">★★★★★</div>
-        </div>
-      </div>
-      <p class="review-text">"${r.text}"</p>
-    </div>
-  `).join('');
-  $('#reviewGrid').html(html);
-}
-
 // Delegated product-card interactions (open detail / quick add)
 $(document).on('click', '[data-open-product]', function(){
   currentProductId = $(this).data('open-product');
@@ -1436,16 +1963,32 @@ function renderMenuSidebar(){
 $(document).on('click', '[data-menu-cat]', function(){
   menuFilter = $(this).data('menu-cat');
   menuSearch = '';
+  menuFilterBeforeSearch = null;
   renderMenuPage();
 });
+
+/* Shows/hides the "Also found N in Merchandise" banner under the
+   Menu search box. Counts matches against the FULL catalog (not
+   filtered to the Menu's own categories) so a search for e.g. "tote"
+   while on Menu still tells the customer merchandise has hits, even
+   though nothing here does. */
+function renderMenuCrossHint(){
+  const q = menuSearch.trim();
+  const $hint = $('#menuCrossHint');
+  if(!q){ $hint.removeClass('is-visible').empty(); return; }
+  const merchCats = flatCats(MERCH_SIDEBAR);
+  const count = PRODUCTS.filter(p => merchCats.includes(p.cat) && productMatchesQuery(p, q)).length;
+  if(!count){ $hint.removeClass('is-visible').empty(); return; }
+  $hint.html(`Also found <strong>${count}</strong> matching item${count > 1 ? 's' : ''} in <strong>Merchandise</strong> — <button type="button" class="search-cross-link" data-cross-nav="merchandise">View them</button>`).addClass('is-visible');
+}
 
 function renderMenuGrid(){
   let items = PRODUCTS.filter(p => menuFilter === 'All' || p.cat === menuFilter);
   if(menuSearch.trim()){
-    const q = menuSearch.trim().toLowerCase();
-    items = items.filter(p => p.name.toLowerCase().includes(q) || p.desc.toLowerCase().includes(q));
+    items = items.filter(p => productMatchesQuery(p, menuSearch));
   }
   items = sortProducts(items, menuSort);
+  renderMenuCrossHint();
   const $grid = $('#menuGrid');
   if(items.length === 0){
     $grid.html(`<div class="empty-state" style="grid-column:1/-1;">No items here yet. Try another category or search term.</div>`);
@@ -1455,8 +1998,7 @@ function renderMenuGrid(){
   initReveal();
 }
 
-function renderMenuPage(){
-  renderMenuSidebar();
+function renderMenuHeading(){
   if(menuFilter === 'All'){
     $('#menuBreadcrumb').text('Search');
     $('#menuHeading').text(menuSearch ? `Results for "${menuSearch}"` : 'All Items');
@@ -1465,14 +2007,67 @@ function renderMenuPage(){
     $('#menuBreadcrumb').text(label.sub ? `${label.group} / ${label.sub}` : label.group);
     $('#menuHeading').text(label.sub || label.group);
   }
+}
+
+function renderMenuPage(){
+  renderMenuSidebar();
+  renderMenuHeading();
   renderMenuGrid();
   $('#menuSearch').val(menuSearch);
   $('#menuSort').val(menuSort);
 }
 
+/* Typing a search term used to only filter WITHIN whatever category
+   the sidebar already had selected (e.g. stuck on "Caffeine"),
+   making it look like search only worked for that one category. A
+   query now always clears the category filter to "All" so it runs
+   against everything on this page, and the category it came from is
+   remembered so clearing the box restores it instead of leaving the
+   customer on "All Items". */
 $(document).on('input', '#menuSearch', function(){
   menuSearch = $(this).val();
+  if(menuSearch.trim()){
+    if(menuFilter !== 'All'){
+      menuFilterBeforeSearch = menuFilter;
+      menuFilter = 'All';
+      renderMenuSidebar();
+    }
+  } else if(menuFilterBeforeSearch){
+    menuFilter = menuFilterBeforeSearch;
+    menuFilterBeforeSearch = null;
+    renderMenuSidebar();
+  }
+  renderMenuHeading();
   renderMenuGrid();
+});
+
+$(document).on('click', '#menuSearchClear', function(){
+  $('#menuSearch').val('').trigger('input').focus();
+});
+
+/* "View them" link in the cross-catalog hint — carries the current
+   search term over to the other section (Menu <-> Merchandise) and
+   runs it there, so a term that only half-matched on this page
+   doesn't dead-end the customer. */
+$(document).on('click', '[data-cross-nav]', function(){
+  const target = $(this).data('cross-nav');
+  const term = target === 'menu' ? merchSearch : menuSearch;
+  // navigate() first (see runHeaderSearch above for why) so its
+  // section-switch reset clears the old term before this carried-over
+  // one is applied.
+  if(target === 'menu'){
+    navigate('menu');
+    menuSearch = term;
+    menuFilter = 'All';
+    menuFilterBeforeSearch = null;
+    renderMenuPage();
+  } else {
+    navigate('merchandise');
+    merchSearch = term;
+    merchFilter = 'All';
+    merchFilterBeforeSearch = null;
+    renderMerchPage();
+  }
 });
 
 $(document).on('change', '#menuSort', function(){
@@ -1496,16 +2091,30 @@ function renderMerchSidebar(){
 $(document).on('click', '[data-merch-cat]', function(){
   merchFilter = $(this).data('merch-cat');
   merchSearch = '';
+  merchFilterBeforeSearch = null;
   renderMerchPage();
 });
+
+/* Mirror of renderMenuCrossHint() for the Merchandise search box —
+   points a customer to the Menu when their term only matches food or
+   drink items. */
+function renderMerchCrossHint(){
+  const q = merchSearch.trim();
+  const $hint = $('#merchCrossHint');
+  if(!q){ $hint.removeClass('is-visible').empty(); return; }
+  const menuCats = flatCats(MENU_SIDEBAR);
+  const count = PRODUCTS.filter(p => menuCats.includes(p.cat) && productMatchesQuery(p, q)).length;
+  if(!count){ $hint.removeClass('is-visible').empty(); return; }
+  $hint.html(`Also found <strong>${count}</strong> matching item${count > 1 ? 's' : ''} in the <strong>Menu</strong> — <button type="button" class="search-cross-link" data-cross-nav="menu">View them</button>`).addClass('is-visible');
+}
 
 function renderMerchGrid(){
   let items = PRODUCTS.filter(p => merchFilter === 'All' || p.cat === merchFilter);
   if(merchSearch.trim()){
-    const q = merchSearch.trim().toLowerCase();
-    items = items.filter(p => p.name.toLowerCase().includes(q) || p.desc.toLowerCase().includes(q));
+    items = items.filter(p => productMatchesQuery(p, merchSearch));
   }
   items = sortProducts(items, merchSort);
+  renderMerchCrossHint();
   const $grid = $('#merchGrid');
   if(items.length === 0){
     $grid.html(`<div class="empty-state" style="grid-column:1/-1;">No items here yet. Try another category or search term.</div>`);
@@ -1515,8 +2124,7 @@ function renderMerchGrid(){
   initReveal();
 }
 
-function renderMerchPage(){
-  renderMerchSidebar();
+function renderMerchHeading(){
   if(merchFilter === 'All'){
     $('#merchBreadcrumb').text('Search');
     $('#merchHeading').text(merchSearch ? `Results for "${merchSearch}"` : 'All Merchandise');
@@ -1525,14 +2133,40 @@ function renderMerchPage(){
     $('#merchBreadcrumb').text(label.sub ? `${label.group} / ${label.sub}` : label.group);
     $('#merchHeading').text(label.sub || label.group);
   }
+}
+
+function renderMerchPage(){
+  renderMerchSidebar();
+  renderMerchHeading();
   renderMerchGrid();
   $('#merchSearch').val(merchSearch);
   $('#merchSort').val(merchSort);
 }
 
+/* Same fix as the Menu search box above: a query clears the sidebar
+   category filter to "All" instead of only ever matching within
+   whatever category was last clicked, and remembers that category so
+   clearing the box restores it. This was the main "search only works
+   inside the current category" bug on the Merchandise page. */
 $(document).on('input', '#merchSearch', function(){
   merchSearch = $(this).val();
+  if(merchSearch.trim()){
+    if(merchFilter !== 'All'){
+      merchFilterBeforeSearch = merchFilter;
+      merchFilter = 'All';
+      renderMerchSidebar();
+    }
+  } else if(merchFilterBeforeSearch){
+    merchFilter = merchFilterBeforeSearch;
+    merchFilterBeforeSearch = null;
+    renderMerchSidebar();
+  }
+  renderMerchHeading();
   renderMerchGrid();
+});
+
+$(document).on('click', '#merchSearchClear', function(){
+  $('#merchSearch').val('').trigger('input').focus();
 });
 
 $(document).on('change', '#merchSort', function(){
@@ -1547,7 +2181,7 @@ $(document).on('change', '#merchSort', function(){
    product with `ingredients` — food AND drinks), or both together for
    a sized drink. Other merch (totes, bracelets, keychains) gets
    neither. */
-function renderPdSecondary(p){
+function renderPdSecondary(p, options){
   const chart = SIZE_CHARTS[p.cat];
   let sizingHtml = '';
   if(p.sizes && p.sizes.length){
@@ -1592,6 +2226,7 @@ function renderPdSecondary(p){
       </div>
     `;
   }
+  const optionsHtml = renderPdOptionGroups(p, options || {});
   let infoHtml = '';
   if(p.ingredients){
     infoHtml = `
@@ -1607,7 +2242,7 @@ function renderPdSecondary(p){
       </div>
     `;
   }
-  return sizingHtml + infoHtml;
+  return sizingHtml + optionsHtml + infoHtml;
 }
 
 function renderProductDetail(){
@@ -1615,18 +2250,20 @@ function renderProductDetail(){
   pdQty = 1;
   const pdOpts = getSizeOptions(p);
   pdSize = pdOpts.length === 1 ? pdOpts[0].size : null;
+  pdOptions = defaultPdOptions(p);
   $('#pdCrumb').text(p.name);
   const isMerch = ['Shirts','Caps','Shorts','Socks','ToteBags','Bracelets','Keychains'].includes(p.cat);
   const isCombo = p.cat === 'Combo';
   $('#pdSectionLink').text(isCombo ? 'Home' : isMerch ? 'Merchandise' : 'Menu')
     .attr('data-nav', isCombo ? 'home' : isMerch ? 'merchandise' : 'menu')
     .data('nav', isCombo ? 'home' : isMerch ? 'merchandise' : 'menu');
-  const startPrice = pdSize ? getPriceForSize(p, pdSize) : getDisplayPrice(p);
+  const startPrice = computePdUnitPrice(p, pdSize, pdOptions);
   // Sized products: judge the currently-selected size. Unsized products,
   // and sized products where every size is out of stock (so nothing was
   // pre-selected), fall back to isProductOutOfStock — same check the
   // grid cards and admin dashboard use, so this page never disagrees.
   const startOos = pdSize ? isSizeOutOfStock(p, pdSize) : isProductOutOfStock(p);
+  const hasOptions = getOptionGroups(p).length > 0;
   $('#pdContent').html(`
     <div>
       <div class="pd-main-img"><img id="pdMainImg" src="${p.imgs[0]}" alt="${p.name}"></div>
@@ -1642,17 +2279,20 @@ function renderProductDetail(){
         <span id="pdPriceDisplayValue">${peso(startPrice)}</span>
       </div>
       <p class="pd-desc">${p.desc}${p.ingredients ? ' Made in small batches at our counter, using seasonal ingredients whenever we can.' : ''}</p>
-      ${renderPdSecondary(p)}
-      <div class="pd-actions">
-        <div class="qty-select" id="pdQtySelect">
-          <button data-qty-action="minus">−</button>
-          <span id="pdQtyVal">1</span>
-          <button data-qty-action="plus">+</button>
+      ${renderPdSecondary(p, pdOptions)}
+      <div class="pd-actions-wrap" id="pdActionsWrap">
+        ${hasOptions ? `<div class="pd-opt-summary" id="pdOptSummary">${optionsSummaryText(p, pdOptions)}</div>` : ''}
+        <div class="pd-actions">
+          <div class="qty-select" id="pdQtySelect">
+            <button data-qty-action="minus">−</button>
+            <span id="pdQtyVal">1</span>
+            <button data-qty-action="plus">+</button>
+          </div>
+          <button class="btn btn-primary" id="pdAddBtn" data-pd-add="${p.id}" ${startOos ? 'disabled' : ''}>${startOos ? 'Out of Stock' : `Add to Cart · ${peso(startPrice)}`}</button>
+          <button type="button" class="wishlist-btn pd-wishlist-btn ${isWishlisted(p.id) ? 'active' : ''}" data-wishlist-toggle="${p.id}" aria-label="Save to favorites">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="${isWishlisted(p.id) ? 'currentColor' : 'none'}"><path d="M12 21s-7.5-4.6-10-9.3C.6 8.1 2.4 4.5 6 4c2-.3 3.7.7 6 3 2.3-2.3 4-3.3 6-3 3.6.5 5.4 4.1 4 7.7C19.5 16.4 12 21 12 21z" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/></svg>
+          </button>
         </div>
-        <button class="btn btn-primary" id="pdAddBtn" data-pd-add="${p.id}" ${startOos ? 'disabled' : ''}>${startOos ? 'Out of Stock' : `Add to Cart · ${peso(startPrice)}`}</button>
-        <button type="button" class="wishlist-btn pd-wishlist-btn ${isWishlisted(p.id) ? 'active' : ''}" data-wishlist-toggle="${p.id}" aria-label="Save to favorites">
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="${isWishlisted(p.id) ? 'currentColor' : 'none'}"><path d="M12 21s-7.5-4.6-10-9.3C.6 8.1 2.4 4.5 6 4c2-.3 3.7.7 6 3 2.3-2.3 4-3.3 6-3 3.6.5 5.4 4.1 4 7.7C19.5 16.4 12 21 12 21z" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/></svg>
-        </button>
       </div>
     </div>
   `);
@@ -1920,11 +2560,7 @@ $(document).on('click', '[data-pd-size]:not([disabled])', function(){
   $('#pdSizeRow .size-chip').removeClass('active');
   $(this).addClass('active');
   const p = findProduct(currentProductId);
-  const unitPrice = getPriceForSize(p, pdSize);
-  const oos = isSizeOutOfStock(p, pdSize);
-  $('#pdPriceDisplayValue').text(peso(unitPrice));
-  if(p.comboMeta) $('.combo-price-original-pd').text(comboOriginalPriceForSize(p, pdSize));
-  $('#pdAddBtn').prop('disabled', oos).text(oos ? 'Out of Stock' : `Add to Cart · ${peso(unitPrice * pdQty)}`);
+  refreshPdPricing(p);
 });
 
 $(document).on('click', '#pdSizeGuideToggle', function(){
@@ -1942,9 +2578,41 @@ $(document).on('click', '[data-qty-action]', function(){
   if($(this).data('qty-action') === 'plus') pdQty++;
   else pdQty = Math.max(1, pdQty - 1);
   $('#pdQtyVal').text(pdQty);
-  const unitPrice = pdSize ? getPriceForSize(p, pdSize) : getDisplayPrice(p);
-  const oos = pdSize ? isSizeOutOfStock(p, pdSize) : false;
-  if(!oos) $('#pdAddBtn').text(`Add to Cart · ${peso(unitPrice * pdQty)}`);
+  refreshPdPricing(p);
+});
+
+/* Single-select groups swap the one active choice; multi-select groups
+   toggle on/off, capped at the group's `max` (default: unlimited). */
+$(document).on('click', '[data-opt-choice]:not([disabled])', function(){
+  const p = findProduct(currentProductId);
+  const groupId = $(this).data('group');
+  const choiceId = $(this).data('choice');
+  const group = getOptionGroups(p).find(g => g.id === groupId);
+  if(!group) return;
+
+  if(group.type === 'multi'){
+    const sel = pdOptions[groupId] ? pdOptions[groupId].slice() : [];
+    const idx = sel.indexOf(choiceId);
+    if(idx > -1){
+      sel.splice(idx, 1);
+    } else {
+      const max = group.max || Infinity;
+      if(sel.length >= max){
+        showToast(`You can only select up to ${max} for ${group.label}.`, 'warning');
+        return;
+      }
+      sel.push(choiceId);
+    }
+    pdOptions[groupId] = sel;
+  } else {
+    pdOptions[groupId] = [choiceId];
+  }
+
+  $(`.pd-opt-group[data-opt-group="${groupId}"] .pd-opt-chip`).removeClass('active');
+  (pdOptions[groupId] || []).forEach(cid => {
+    $(`.pd-opt-group[data-opt-group="${groupId}"] [data-choice="${cid}"]`).addClass('active');
+  });
+  refreshPdPricing(p);
 });
 
 $(document).on('click', '[data-pd-add]', function(){
@@ -1965,7 +2633,9 @@ $(document).on('click', '[data-pd-add]', function(){
     showToast('That size is out of stock.', 'warning');
     return;
   }
-  addToCart(p.id, pdQty, pdSize);
+  const unit = computePdUnitPrice(p, pdSize, pdOptions);
+  const opts = getOptionGroups(p).length ? pdOptions : null;
+  addToCart(p.id, pdQty, pdSize, opts, unit);
   const mainImg = document.getElementById('pdMainImg');
   if(mainImg) flyToCart(mainImg);
 });
@@ -1989,15 +2659,17 @@ function renderCart(){
     return;
   }
 
-  const itemsHtml = cart.map(c => {
+  const itemsHtml = cart.filter(c => findProduct(c.id)).map(c => {
     const p = findProduct(c.id);
-    const lineKey = `${c.id}::${c.size || ''}`;
+    const lineKey = cartLineKey(c);
+    const unit = typeof c.unitPrice === 'number' ? c.unitPrice : getPriceForSize(p, c.size);
     return `
       <div class="cart-item">
         <img src="${p.img}" alt="${p.name}">
         <div>
           <div class="cart-item-name">${p.name}</div>
-          <div class="cart-item-meta">${p.cat}${c.size ? ` · Size: ${c.size}` : ''} · ${peso(getPriceForSize(p, c.size))} each</div>
+          <div class="cart-item-meta">${p.cat}${c.size ? ` · Size: ${c.size}` : ''} · ${peso(unit)} each</div>
+          ${c.optionsSummary ? `<div class="cart-item-opts">${c.optionsSummary}</div>` : ''}
         </div>
         <div class="qty-select" data-cart-qty="${lineKey}">
           <button data-cart-action="minus">−</button>
@@ -2005,7 +2677,7 @@ function renderCart(){
           <button data-cart-action="plus">+</button>
         </div>
         <div style="display:flex; align-items:center; gap:14px;">
-          <span class="price cart-item-price">${peso(getPriceForSize(p, c.size)*c.qty)}</span>
+          <span class="price cart-item-price">${peso(unit*c.qty)}</span>
           <button class="remove-btn" data-cart-remove="${lineKey}" aria-label="Remove item">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M6 6l12 12M18 6L6 18" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
           </button>
@@ -2043,14 +2715,18 @@ function renderCart(){
   `);
 }
 
+function cartLineKey(c){
+  return `${c.id}::${c.size || ''}::${encodeURIComponent(optionsKey(c.options))}`;
+}
+
 function parseLineKey(key){
-  const [id, size] = String(key).split('::');
-  return { id, size: size || null };
+  const [id, size, optsEnc] = String(key).split('::');
+  return { id, size: size || null, optsKey: optsEnc ? decodeURIComponent(optsEnc) : '' };
 }
 
 $(document).on('click', '[data-cart-action]', function(){
-  const { id, size } = parseLineKey($(this).closest('[data-cart-qty]').data('cart-qty'));
-  const item = cart.find(c => c.id === id && c.size === size);
+  const { id, size, optsKey } = parseLineKey($(this).closest('[data-cart-qty]').data('cart-qty'));
+  const item = cart.find(c => c.id === id && c.size === size && optionsKey(c.options) === optsKey);
   if(!item) return;
   if($(this).data('cart-action') === 'plus') item.qty++;
   else item.qty = Math.max(1, item.qty - 1);
@@ -2060,8 +2736,8 @@ $(document).on('click', '[data-cart-action]', function(){
 });
 
 $(document).on('click', '[data-cart-remove]', function(){
-  const { id, size } = parseLineKey($(this).data('cart-remove'));
-  cart = cart.filter(c => !(c.id === id && c.size === size));
+  const { id, size, optsKey } = parseLineKey($(this).data('cart-remove'));
+  cart = cart.filter(c => !(c.id === id && c.size === size && optionsKey(c.options) === optsKey));
   persistCart();
   updateCartCount();
   renderCart();
@@ -2141,10 +2817,11 @@ function renderCheckoutSummary(){
   const subtotal = cartTotal();
   const delivery = fulfillment === 'delivery' && subtotal > 0 ? DELIVERY_FEE : 0;
   const total = subtotal + delivery;
-  const lines = cart.map(c=>{
+  const lines = cart.filter(c => findProduct(c.id)).map(c=>{
     const p = findProduct(c.id);
+    const unit = typeof c.unitPrice === 'number' ? c.unitPrice : getPriceForSize(p, c.size);
     const label = p.name + (c.size ? ` (${c.size})` : '') + ` × ${c.qty}`;
-    return `<div class="sum-row"><span>${label}</span><span>${peso(getPriceForSize(p, c.size)*c.qty)}</span></div>`;
+    return `<div class="sum-row"><span>${label}${c.optionsSummary ? `<br><small class="sum-row-opts">${c.optionsSummary}</small>` : ''}</span><span>${peso(unit*c.qty)}</span></div>`;
   }).join('') || '<div class="sum-row"><span>Your cart is empty</span><span></span></div>';
 
   $('#checkoutSummary').html(`
@@ -2162,12 +2839,22 @@ async function placeOrder(){
   if(cart.length === 0) return;
 
   const $form = $('.checkout-layout .form-card').first();
+  const selectedAddress = myAddresses.find(a => a.id === checkoutSelectedAddressId);
   const customer = {
     name: $form.find('input[type="text"]').val().trim(),
     phone: $form.find('input[type="tel"]').val().trim(),
     email: $form.find('input[type="email"]').val().trim(),
     address: fulfillment === 'delivery' ? $('#addressGroup input').val().trim() : ''
   };
+  // Only attach lat/lng when the address on the form still matches the
+  // saved address it came from — if the customer hand-edited the text
+  // after picking a saved address, the old pin no longer describes
+  // where they typed, so it's better to send no coordinates than a
+  // wrong one.
+  if(fulfillment === 'delivery' && selectedAddress && selectedAddress.address === customer.address){
+    customer.lat = selectedAddress.lat;
+    customer.lng = selectedAddress.lng;
+  }
   if(!customer.name || !customer.phone){
     showToast('Please fill in your name and phone number.', 'warning');
     return;
@@ -2178,7 +2865,11 @@ async function placeOrder(){
   const total = subtotal + deliveryFee;
   const items = cart.map(c => {
     const p = findProduct(c.id);
-    return { id: p.id, name: p.name, price: getPriceForSize(p, c.size), qty: c.qty, size: c.size || null };
+    const unit = typeof c.unitPrice === 'number' ? c.unitPrice : getPriceForSize(p, c.size);
+    return {
+      id: p.id, name: p.name, price: unit, qty: c.qty, size: c.size || null,
+      options: c.options || null, optionsSummary: c.optionsSummary || null
+    };
   });
   const paymentMethod = payOptLabel($('.pay-opt.active'));
 
@@ -2198,6 +2889,7 @@ async function placeOrder(){
     cart = [];
     persistCart();
     updateCartCount();
+    checkoutSelectedAddressId = null;
     navigate('confirmation');
     // Best-effort — the order is already placed at this point, so an
     // email hiccup shouldn't show as a checkout failure to the customer.
@@ -2429,10 +3121,6 @@ $(document).on('click', '#verifyContinueBtn', async function(){
     const result = await window.CCAuth.verifyOtp(code);
     if(result.ok){
       showToast("Email verified — you're all set!", 'success');
-      // verifyOtp() only updates Firestore — it doesn't touch the nav
-      // dot/dropdown, which only refresh on the auth.js onAuthStateChanged
-      // listener (login/logout/page load). Re-firing authRoleReady here
-      // updates them immediately instead of waiting for the next reload.
       document.dispatchEvent(new CustomEvent("authRoleReady", {
         detail: { user: window.currentUser, role: window.currentRole, otpVerified: true }
       }));
@@ -2458,21 +3146,17 @@ $(document).on('click', '#accountDdVerifyBtn', function(){
   goToVerifyEmail(window.currentUser ? window.currentUser.email : '');
 });
 
-/* Reflect sign-in state in the nav: show an Admin link for admins,
-   and swap the account icon's behavior once we know who's signed in. */
 document.addEventListener('authStateReady', function(e){
   const { user } = e.detail;
   const realUser = user && !user.isAnonymous ? user : null;
   syncCartToAccount(realUser);
   syncWishlistToAccount(realUser);
+  syncAddressesToAccount(realUser);
   $('#accountStatusDot').toggle(!!realUser);
   $('#accountBtn').attr('title', realUser ? `Signed in as ${realUser.displayName || realUser.email}` : 'Not signed in — click to log in')
     .toggleClass('signed-in', !!realUser);
 });
 
-/* Verification status arrives slightly later than the base auth state
-   (it needs a Firestore read), so the dot/dropdown update here once
-   authRoleReady fires rather than in authStateReady above. */
 document.addEventListener('authRoleReady', function(e){
   const { user, otpVerified } = e.detail;
   const realUser = user && !user.isAnonymous ? user : null;
@@ -2489,6 +3173,7 @@ function renderAccountDropdown(user, otpVerified){
     ${!otpVerified ? `<button type="button" class="account-dd-unverified" id="accountDdVerifyBtn">Email not verified — tap to verify</button>` : ''}
     <div class="account-dd-divider"></div>
     <button type="button" class="account-dd-link" id="accountDdOrdersBtn">Order History</button>
+    <button type="button" class="account-dd-link" id="accountDdAddressesBtn">My Addresses</button>
     <button type="button" class="account-dd-link" id="accountDdWishlistBtn">Favorites</button>
     <button class="btn btn-outline account-dd-logout" id="accountLogoutBtn">Log Out</button>
   `);
@@ -2497,6 +3182,11 @@ function renderAccountDropdown(user, otpVerified){
 $(document).on('click', '#accountDdOrdersBtn', function(){
   $('#accountDropdownWrap').removeClass('open');
   navigate('order-history');
+});
+
+$(document).on('click', '#accountDdAddressesBtn', function(){
+  $('#accountDropdownWrap').removeClass('open');
+  navigate('addresses');
 });
 
 $(document).on('click', '#accountDdWishlistBtn', function(){
@@ -2531,9 +3221,6 @@ $(document).on('click', function(e){
 /* ================= CONFIRM DIALOG (replaces window.confirm) ================= */
 let confirmResolve = null;
 
-/* Usage: const ok = await showConfirm({ title, message, confirmText, danger });
-   Resolves true/false depending on which button was pressed (or false if
-   dismissed via backdrop click / Escape). */
 function showConfirm({ title = 'Are you sure?', message = "This action can't be undone.", confirmText = 'Confirm', cancelText = 'Cancel', danger = false } = {}){
   $('#confirmDialogTitle').text(title);
   $('#confirmDialogMsg').text(message);
@@ -2619,9 +3306,6 @@ function initNavScroll(){
   onScroll();
 }
 
-/* ================= PRODUCT CARD: SUBTLE 3D TILT ================= */
-/* Only .product-card gets the tilt — .cat-card is deliberately flat/
-   editorial by design (see its CSS comment), so it's left alone. */
 function initCardTilt(){
   if(window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
   if(window.matchMedia('(hover: none)').matches) return; // skip on touch devices
@@ -2641,10 +3325,6 @@ function initCardTilt(){
   });
 }
 
-/* ================= ABOUT SECTION: ANIMATED STAT COUNTERS ================= */
-/* Counts up any "<strong>" inside .about-stats from 0 to its printed
-   value once it scrolls into view. Reads the number out of the existing
-   text so it keeps whatever prefix/suffix is already there (e.g. "12k+"). */
 function initStatCounters(){
   const nodes = document.querySelectorAll('.about-stats strong:not([data-counted])');
   if(!nodes.length) return;
@@ -2680,10 +3360,6 @@ function initStatCounters(){
   nodes.forEach(n => obs.observe(n));
 }
 
-/* ================= ADD TO CART: FLY-TO-CART MICRO-INTERACTION ================= */
-/* Clones the product image and animates it flying into the cart icon,
-   then gives the cart icon a little bounce — a small, tactile confirmation
-   that something was actually added, instead of just a toast. */
 function flyToCart(sourceImgEl){
   if(window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
   const cartBtn = document.getElementById('cartBtn');
@@ -2808,6 +3484,8 @@ function renderAll(){
   renderMerchPage();
   buildComboProducts();
   renderFeaturedCombos();
+  renderCartDropdown();
+  rerenderActiveCartPage();
 }
 
 async function loadProductsFromFirestore(){
@@ -2836,10 +3514,19 @@ async function loadSettingsFromFirestore(){
   }
 }
 
+async function loadCategoriesFromFirestore(){
+  try{
+    const categories = await window.CCCategories.fetchAllCategories();
+    CUSTOM_CATEGORIES = categories;
+    applyCustomCategories(categories);
+  } catch(err){
+    console.error('Could not load custom categories from Firestore — falling back to the built-in category list.', err);
+  }
+}
+
 $(async function(){
 
   renderCategories();
-  renderReviews();
   updateCartCount();
   initReveal();
   initScrollProgress();
@@ -2854,16 +3541,18 @@ $(async function(){
   if(cachedSettings){
     DELIVERY_FEE = cachedSettings.deliveryFee;
   }
+  const cachedCategories = window.CCCategories.getCachedCategories();
+  if(cachedCategories && cachedCategories.length){
+    CUSTOM_CATEGORIES = cachedCategories;
+    applyCustomCategories(cachedCategories);
+  }
 
+  await loadCategoriesFromFirestore();
   await loadProductsFromFirestore();
   await loadSettingsFromFirestore();
   await loadCombosFromFirestore();
   renderAll();
 });
-/* ================= PROMO LAUNCH BANNER ================= */
-/* Fancy "New" popup shown once per browser session on page load.
-   sessionStorage (not localStorage) so it reappears on a fresh visit/tab
-   but doesn't nag on every reload within the same session. */
 (function initPromoOverlay(){
   const PROMO_KEY = 'cc_promo_seen_v1';
   const $overlay = $('#promoOverlay');
@@ -2878,8 +3567,6 @@ $(async function(){
   try{ seen = sessionStorage.getItem(PROMO_KEY) === '1'; } catch(err){ /* private mode — just show it */ }
 
   if(!seen){
-    // Slight delay so it arrives after the hero's own entrance animation
-    // has had a moment to breathe, rather than competing with it.
     setTimeout(() => $overlay.addClass('open'), 900);
   }
 
