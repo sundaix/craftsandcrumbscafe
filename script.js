@@ -758,6 +758,39 @@ function computePdUnitPrice(p, size, options){
   return base + optionsPriceDelta(p, options || {});
 }
 
+/* Same idea as optionsPriceDelta, but for calories — the product's own
+   base `calories` (admin-set, drinks only) plus whatever the selected
+   options add. Returns null (not 0) when there's genuinely no calorie
+   data at all, so the caller can hide the subtitle entirely rather
+   than showing a misleading "0 kcal". */
+function computePdCalories(p, options){
+  const hasBase = typeof p.calories === 'number';
+  let total = hasBase ? p.calories : 0;
+  let hasAny = hasBase;
+  getOptionGroups(p).forEach(g => {
+    (options[g.id] || []).forEach(cid => {
+      const choice = g.choices.find(c => c.id === cid);
+      if(choice && typeof choice.kcal === 'number'){
+        total += choice.kcal;
+        hasAny = true;
+      }
+    });
+  });
+  return hasAny ? total : null;
+}
+
+/* The small "16oz • 120 kcal" line under the product name — drinks
+   only, and only the parts that actually have data (a tea with no
+   calories set just shows the size, not a blank " • kcal"). */
+function pdSubtitleText(p, size, options){
+  if(!DRINK_CATEGORIES.includes(p.cat)) return '';
+  const parts = [];
+  if(size) parts.push(size);
+  const kcal = computePdCalories(p, options || {});
+  if(kcal !== null) parts.push(`~${kcal} kcal`);
+  return parts.join(' • ');
+}
+
 /* "Iced, Regular, BOSS, Oat Milk, No Added Sugar, Normal Ice, No Topping"
    — the one-line summary shown on the sticky action bar, on cart lines,
    and saved onto the order. Groups with nothing selected (shouldn't
@@ -830,13 +863,35 @@ function renderPdOptionGroups(p, options){
    label, and the running selection summary. Called after every size,
    option, or qty change so those three never fall out of sync with
    each other (the same class of bug fixed earlier in the cart). */
+/* Clamps the description to 3 lines by default and only reveals the
+   See More/See Less toggle if the text actually overflows that height
+   — a short one-line description never shows a pointless toggle. */
+function initPdDescToggle(){
+  const $desc = $('#pdDesc');
+  const $btn = $('#pdDescToggle');
+  if(!$desc.length || !$btn.length) return;
+  $desc.addClass('pd-desc-clamped');
+  $btn.text('See More').hide();
+  requestAnimationFrame(() => {
+    if($desc[0].scrollHeight > $desc[0].clientHeight + 2) $btn.show();
+  });
+}
+
+$(document).on('click', '#pdDescToggle', function(){
+  const nowClamped = $('#pdDesc').toggleClass('pd-desc-clamped').hasClass('pd-desc-clamped');
+  $(this).text(nowClamped ? 'See More' : 'See Less');
+});
+
 function refreshPdPricing(p){
   const unit = computePdUnitPrice(p, pdSize, pdOptions);
   const oos = pdSize ? isSizeOutOfStock(p, pdSize) : isProductOutOfStock(p);
   $('#pdPriceDisplayValue').text(peso(unit));
   if(p.comboMeta && pdSize) $('.combo-price-original-pd').text(comboOriginalPriceForSize(p, pdSize));
   $('#pdAddBtn').prop('disabled', oos).text(oos ? 'Out of Stock' : `Add to Cart · ${peso(unit * pdQty)}`);
+  $('#pdBuyNowBtn').prop('disabled', oos);
   $('#pdOptSummary').text(optionsSummaryText(p, pdOptions));
+  const subtitle = pdSubtitleText(p, pdSize, pdOptions);
+  $('#pdSubtitle').text(subtitle).toggle(!!subtitle);
 }
 
 /* Drinks show a range across their three sizes (e.g. "₱139–₱179");
@@ -1511,7 +1566,7 @@ function _advanceToastQueue(){
   else present();
 }
 
-function addToCart(id, qty=1, size=null, options=null, unitPrice=null){
+function addToCart(id, qty=1, size=null, options=null, unitPrice=null, silent=false){
   const p = findProduct(id);
   const finalUnitPrice = unitPrice != null ? unitPrice : (size ? getPriceForSize(p, size) : getDisplayPrice(p));
   const key = optionsKey(options);
@@ -1527,6 +1582,7 @@ function addToCart(id, qty=1, size=null, options=null, unitPrice=null){
     });
   }
   updateCartCount();
+  if(silent) return;
   const label = p.name + (size ? ` (${size})` : '');
   showToast('Added to cart · ' + label, 'cart');
 }
@@ -1763,7 +1819,7 @@ async function renderOrderHistory(){
 
   const rows = orders.map(o => {
     const status = o.status || 'pending';
-    const itemsText = (o.items || []).map(it => `${it.name}${it.size ? ` (${it.size})` : ''} × ${it.qty}`).join(', ');
+    const itemsText = (o.items || []).map(it => `${it.name}${it.size ? ` (${it.size})` : ''} × ${it.qty}${it.optionsSummary ? ` — ${it.optionsSummary}` : ''}`).join(', ');
     return `
       <div class="order-card">
         <div class="order-card-head">
@@ -2396,7 +2452,54 @@ function renderPdSecondary(p, options){
       </div>
     `;
   }
-  return sizingHtml + optionsHtml + infoHtml;
+  const aboutHtml = renderPdAbout(p);
+  const nutritionHtml = renderPdNutrition(p);
+  return sizingHtml + optionsHtml + infoHtml + aboutHtml + nutritionHtml;
+}
+
+/* "About the Drink" — a short fun-fact/backstory blurb, admin-set per
+   product (Drink Details in the Add/Edit form). Drinks only, and only
+   when the admin actually wrote something. */
+function renderPdAbout(p){
+  if(!DRINK_CATEGORIES.includes(p.cat) || !p.aboutText) return '';
+  return `
+    <div class="pd-about">
+      <h4>About the Drink</h4>
+      <p>${p.aboutText}</p>
+    </div>
+  `;
+}
+
+/* Nutrition table — serving size + calories (from the base product,
+   same number used in the header subtitle) plus whatever macro fields
+   the admin filled in. Rows with no value are skipped rather than
+   shown as blank/"—", and the whole section is skipped if there's
+   nothing to show at all. Reflects the base drink as configured
+   (default size/options), not a live recompute per selection — the
+   header subtitle is what tracks the live total instead. */
+function renderPdNutrition(p){
+  if(!DRINK_CATEGORIES.includes(p.cat)) return '';
+  const n = p.nutrition || {};
+  const rows = [
+    ['Serving Size', n.servingSize],
+    ['Calories', typeof p.calories === 'number' ? `${p.calories} kcal` : null],
+    ['Carbohydrates', n.carbs ? `${n.carbs} g` : null],
+    ['Sugar', n.sugar ? `${n.sugar} g` : null],
+    ['Protein', n.protein ? `${n.protein} g` : null],
+    ['Fat', n.fat ? `${n.fat} g` : null],
+    ['Sodium', n.sodium ? `${n.sodium} mg` : null],
+  ].filter(([, val]) => val !== null && val !== undefined && val !== '');
+  if(!rows.length) return '';
+  return `
+    <div class="pd-nutrition">
+      <h4>Nutrition</h4>
+      <table class="pd-nutrition-table">
+        <tbody>
+          ${rows.map(([label, val]) => `<tr><td>${label}</td><td>${val}</td></tr>`).join('')}
+        </tbody>
+      </table>
+    </div>
+  `;
 }
 
 function renderProductDetail(){
@@ -2428,11 +2531,13 @@ function renderProductDetail(){
     <div>
       <div class="eyebrow">${isCombo ? `Combo · ${p.comboMeta.discountPercent}% off` : p.cat}</div>
       <h1 style="margin:10px 0 4px;">${p.name}</h1>
+      <p class="pd-subtitle" id="pdSubtitle">${pdSubtitleText(p, pdSize, pdOptions)}</p>
       <div class="pd-price" id="pdPriceDisplay">
         ${isCombo ? `<span class="combo-price-original combo-price-original-pd">${comboOriginalPriceLabel(p)}</span>` : ''}
         <span id="pdPriceDisplayValue">${peso(startPrice)}</span>
       </div>
-      <p class="pd-desc">${p.desc}${p.ingredients ? ' Made in small batches at our counter, using seasonal ingredients whenever we can.' : ''}</p>
+      <p class="pd-desc pd-desc-clamped" id="pdDesc">${p.desc}${p.ingredients ? ' Made in small batches at our counter, using seasonal ingredients whenever we can.' : ''}</p>
+      <button type="button" class="pd-desc-toggle" id="pdDescToggle" style="display:none;">See More</button>
       ${renderPdSecondary(p, pdOptions)}
       <div class="pd-actions-wrap" id="pdActionsWrap">
         ${hasOptions ? `<div class="pd-opt-summary" id="pdOptSummary">${optionsSummaryText(p, pdOptions)}</div>` : ''}
@@ -2442,7 +2547,10 @@ function renderProductDetail(){
             <span id="pdQtyVal">1</span>
             <button data-qty-action="plus">+</button>
           </div>
-          <button class="btn btn-primary" id="pdAddBtn" data-pd-add="${p.id}" ${startOos ? 'disabled' : ''}>${startOos ? 'Out of Stock' : `Add to Cart · ${peso(startPrice)}`}</button>
+          <div class="pd-actions-btns">
+            <button class="btn btn-outline" id="pdBuyNowBtn" data-pd-buy-now="${p.id}" ${startOos ? 'disabled' : ''}>Buy Now</button>
+            <button class="btn btn-primary" id="pdAddBtn" data-pd-add="${p.id}" ${startOos ? 'disabled' : ''}>${startOos ? 'Out of Stock' : `Add to Cart · ${peso(startPrice)}`}</button>
+          </div>
           <button type="button" class="wishlist-btn pd-wishlist-btn ${isWishlisted(p.id) ? 'active' : ''}" data-wishlist-toggle="${p.id}" aria-label="Save to favorites">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="${isWishlisted(p.id) ? 'currentColor' : 'none'}"><path d="M12 21s-7.5-4.6-10-9.3C.6 8.1 2.4 4.5 6 4c2-.3 3.7.7 6 3 2.3-2.3 4-3.3 6-3 3.6.5 5.4 4.1 4 7.7C19.5 16.4 12 21 12 21z" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/></svg>
           </button>
@@ -2450,6 +2558,7 @@ function renderProductDetail(){
       </div>
     </div>
   `);
+  initPdDescToggle();
 
   // A combo's "you may also like" is the two real products it's made
   // of — showing random catalog items here instead would be confusing
@@ -2769,29 +2878,46 @@ $(document).on('click', '[data-opt-choice]:not([disabled])', function(){
   refreshPdPricing(p);
 });
 
-$(document).on('click', '[data-pd-add]', function(){
-  const p = findProduct($(this).data('pd-add'));
-  // Unsized products (flat stock) and sized products where every size
-  // is out of stock never get a pdSize selected, so neither check below
-  // would catch them — guard with the same product-level check the
-  // grid cards and admin dashboard use.
+/* Shared by Add to Cart and Buy Now — every out-of-stock/size-required
+   check lives here once so the two buttons can never disagree about
+   whether this selection is actually purchasable. Returns null (after
+   showing the relevant toast) when it isn't, or {unit, opts} when it is. */
+function validatePdSelection(p){
   if(!pdSize && isProductOutOfStock(p)){
     showToast('This item is out of stock.', 'warning');
-    return;
+    return null;
   }
   if(p.sizes && p.sizes.length > 1 && !pdSize){
     showToast('Please select a size first', 'warning');
-    return;
+    return null;
   }
   if(pdSize && isSizeOutOfStock(p, pdSize)){
     showToast('That size is out of stock.', 'warning');
-    return;
+    return null;
   }
   const unit = computePdUnitPrice(p, pdSize, pdOptions);
   const opts = getOptionGroups(p).length ? pdOptions : null;
-  addToCart(p.id, pdQty, pdSize, opts, unit);
+  return { unit, opts };
+}
+
+$(document).on('click', '[data-pd-add]', function(){
+  const p = findProduct($(this).data('pd-add'));
+  const selection = validatePdSelection(p);
+  if(!selection) return;
+  addToCart(p.id, pdQty, pdSize, selection.opts, selection.unit);
   const mainImg = document.getElementById('pdMainImg');
   if(mainImg) flyToCart(mainImg);
+});
+
+/* Adds the current selection to the cart (silently — no "Added to
+   cart" toast, since the very next thing is jumping to Checkout) and
+   heads straight there, same as tapping Add to Cart then Checkout. */
+$(document).on('click', '[data-pd-buy-now]', function(){
+  const p = findProduct($(this).data('pd-buy-now'));
+  const selection = validatePdSelection(p);
+  if(!selection) return;
+  addToCart(p.id, pdQty, pdSize, selection.opts, selection.unit, true);
+  navigate('checkout');
 });
 
 /* ================= RENDER: CART ================= */
