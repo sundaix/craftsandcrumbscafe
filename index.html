@@ -995,6 +995,66 @@
             <p id="adminSettingsStatus" style="margin-top:10px;"></p>
           </form>
         </div>
+
+        <div class="form-card">
+          <h3>Launch Popup</h3>
+          <p>The animated welcome popup shown once per visit when someone first lands on the site. Customize the message and which products it shows off in the 3D showcase.</p>
+          <form id="adminPromoForm">
+            <label class="check-row" style="margin-bottom:20px;">
+              <input type="checkbox" id="ppEnabled"> Show this popup to visitors
+            </label>
+
+            <div class="form-row">
+              <div class="form-group"><label for="ppBadgeText">Badge text</label><input type="text" id="ppBadgeText" placeholder="New" maxlength="14"></div>
+              <div class="form-group"><label for="ppEyebrow">Eyebrow label</label><input type="text" id="ppEyebrow" placeholder="Just Dropped" maxlength="28"></div>
+            </div>
+
+            <div class="form-group">
+              <label for="ppHeadline">Headline</label>
+              <textarea id="ppHeadline" rows="2" placeholder="Fresh Brews,&#10;Fresh Merch."></textarea>
+              <p class="form-hint">Press Enter for a line break, same as the title wrapping to a second line.</p>
+            </div>
+
+            <div class="form-group">
+              <label for="ppCopy">Body copy</label>
+              <textarea id="ppCopy" rows="3" placeholder="A sentence or two about what's new."></textarea>
+            </div>
+
+            <div class="form-row">
+              <div class="form-group"><label for="ppCtaText">Button text</label><input type="text" id="ppCtaText" placeholder="Take a Look" maxlength="24"></div>
+              <div class="form-group"><label for="ppDismissText">Dismiss link text</label><input type="text" id="ppDismissText" placeholder="Maybe later" maxlength="24"></div>
+            </div>
+
+            <div class="form-row">
+              <div class="form-group">
+                <label for="ppCategory">Auto-feature from category</label>
+                <select id="ppCategory" class="form-select"><option value="">— None —</option></select>
+                <p class="form-hint">Used whenever no products are hand-picked below.</p>
+              </div>
+              <div class="form-group">
+                <label for="ppSortMode">Pick the category's...</label>
+                <select id="ppSortMode" class="form-select">
+                  <option value="featured">Best sellers first</option>
+                  <option value="newest">Newest first</option>
+                </select>
+              </div>
+            </div>
+
+            <div class="form-group">
+              <label>Feature specific products instead <span id="ppPickCount" style="font-weight:400; color:var(--text-faint);"></span></label>
+              <div class="promo-pick-selected" id="ppSelectedChips"></div>
+              <input type="text" id="ppProductSearch" class="admin-search-input promo-pick-search" placeholder="Search products by name...">
+              <div class="promo-pick-list" id="ppProductList"></div>
+              <p class="form-hint">Search and check up to 3 to override the category above. Leave none picked to auto-feature the category instead.</p>
+            </div>
+
+            <div style="display:flex; gap:12px; flex-wrap:wrap;">
+              <button type="button" class="btn btn-outline" id="adminPromoPreviewBtn">Preview Popup</button>
+              <button type="submit" class="btn btn-primary" id="adminPromoSubmitBtn">Save Popup Settings</button>
+            </div>
+            <p id="adminPromoStatus" style="margin-top:10px;"></p>
+          </form>
+        </div>
       </div>
 
     </div>
@@ -1303,14 +1363,48 @@
     </button>
     <div class="promo-badge">
       <span class="promo-badge-ring"></span>
-      <span class="promo-badge-text">New</span>
+      <span class="promo-badge-text" id="promoBadgeText">New</span>
     </div>
-    <p class="eyebrow promo-eyebrow">Just Dropped</p>
+    <div class="promo-stage" id="promoStage">
+      <div class="promo-stage-cards" id="promoStageCards"></div>
+    </div>
+    <p class="eyebrow promo-eyebrow" id="promoEyebrow">Just Dropped</p>
     <h3 id="promoModalTitle">Fresh Brews,<br>Fresh Merch.</h3>
-    <p class="promo-modal-copy">New seasonal drinks and a handcrafted merch line just landed at Crafts &amp; Crumbs — brewed and stitched with the same care as always.</p>
+    <p class="promo-modal-copy" id="promoModalCopy">New seasonal drinks and a handcrafted merch line just landed at Crafts &amp; Crumbs — brewed and stitched with the same care as always.</p>
     <div class="promo-modal-actions">
       <button type="button" class="btn btn-primary" id="promoModalCta" data-nav="menu">Take a Look</button>
       <button type="button" class="btn btn-outline" id="promoModalDismiss">Maybe later</button>
+    </div>
+  </div>
+</div>
+
+<!-- Admin-only preview of the popup above — fully isolated ids/handlers
+     so previewing never marks the real popup "seen" (sessionStorage),
+     never navigates the admin off the dashboard, and works with
+     whatever's currently typed in the form, saved or not. -->
+<div class="promo-overlay" id="promoPreviewOverlay">
+  <div class="promo-modal" id="promoPreviewModal" role="dialog" aria-modal="true" aria-labelledby="promoPreviewModalTitle">
+    <div class="promo-modal-glow"></div>
+    <div class="promo-modal-sparkles" aria-hidden="true">
+      <span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span>
+    </div>
+    <span class="promo-preview-flag">Preview — not saved</span>
+    <button type="button" class="promo-modal-close" id="promoPreviewModalClose" aria-label="Close preview">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M6 6l12 12M18 6L6 18" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+    </button>
+    <div class="promo-badge">
+      <span class="promo-badge-ring"></span>
+      <span class="promo-badge-text" id="promoPreviewBadgeText">New</span>
+    </div>
+    <div class="promo-stage" id="promoPreviewStage">
+      <div class="promo-stage-cards" id="promoPreviewStageCards"></div>
+    </div>
+    <p class="eyebrow promo-eyebrow" id="promoPreviewEyebrow">Just Dropped</p>
+    <h3 id="promoPreviewModalTitle">Fresh Brews,<br>Fresh Merch.</h3>
+    <p class="promo-modal-copy" id="promoPreviewModalCopy"></p>
+    <div class="promo-modal-actions">
+      <button type="button" class="btn btn-primary" id="promoPreviewModalCta">Take a Look</button>
+      <button type="button" class="btn btn-outline" id="promoPreviewModalDismiss">Maybe later</button>
     </div>
   </div>
 </div>
