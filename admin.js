@@ -212,6 +212,7 @@ function renderAdminDashboard(){
   loadAndRenderAdminOrders();
   loadAndRenderAdminCombos();
   loadAndRenderAdminSettings();
+  loadAndRenderAdminPromo();
 }
 
 /* ================= TABS ================= */
@@ -1371,6 +1372,218 @@ $(document).on('submit', '#adminSettingsForm', async function(e){
   } finally {
     $btn.prop('disabled', false).text('Save Delivery Fee');
   }
+});
+
+/* ================= LAUNCH POPUP ================= */
+const PROMO_PICK_LIMIT = 3;
+
+/* Source of truth for the manual product picks — kept separate from
+   the checkbox DOM because the list gets re-rendered on every search
+   keystroke (only showing whatever matches), so a checked box that
+   scrolls out of view or gets filtered out would otherwise "forget"
+   its checked state. Selected ids persist here regardless of what
+   the search box currently shows. */
+let promoPickedIds = [];
+
+/* Reuses the same grouped-optgroup builder the product/category
+   dropdowns use elsewhere, so this stays in sync with custom
+   categories automatically. */
+function renderPromoCategorySelect(){
+  const $sel = $('#ppCategory');
+  const prev = $sel.val();
+  $sel.html(`<option value="">— None —</option>${buildCategoryOptgroupsHtml()}`);
+  if(prev) $sel.val(prev);
+}
+
+/* The "you've picked these" row, shown above the search box so the
+   admin never has to scroll/search to see what's currently selected —
+   each chip removes itself with one click. */
+function renderPromoSelectedChips(){
+  const $chips = $('#ppSelectedChips');
+  if(!promoPickedIds.length){ $chips.empty(); return; }
+  $chips.html(promoPickedIds.map(id => {
+    const p = PRODUCTS.find(x => x.id === id);
+    const name = p ? p.name : id;
+    return `
+      <span class="promo-pick-chip">
+        <span class="promo-pick-chip-name">${name}</span>
+        <button type="button" data-promo-unpick="${id}" aria-label="Remove ${name}">×</button>
+      </span>`;
+  }).join(''));
+}
+
+/* Filters by name as the admin types, instead of one long scrolling
+   list of the entire catalog — the whole point being it's now fast
+   to find one specific product instead of hunting through everything. */
+function renderPromoProductList(searchTerm){
+  const $list = $('#ppProductList');
+  if(!PRODUCTS.length){
+    $list.html('<p class="form-hint" style="margin:4px;">No products yet — add some from the Catalog tab first.</p>');
+    return;
+  }
+  const term = (searchTerm || '').trim().toLowerCase();
+  const filtered = term ? PRODUCTS.filter(p => p.name.toLowerCase().includes(term)) : PRODUCTS;
+  if(!filtered.length){
+    $list.html('<p class="form-hint" style="margin:4px;">No products match that search.</p>');
+    return;
+  }
+  $list.html(filtered.map(p => {
+    const thumb = (p.imgs && p.imgs[0]) || p.img || blankPlaceholder(p.id, p.cat);
+    const checked = promoPickedIds.includes(p.id) ? 'checked' : '';
+    return `
+      <label class="promo-pick-row">
+        <input type="checkbox" value="${p.id}" data-promo-pick ${checked}>
+        <img src="${thumb}" alt="">
+        <span class="promo-pick-row-name">${p.name}</span>
+        <span class="promo-pick-row-price">${priceLabel(p)}</span>
+      </label>`;
+  }).join(''));
+  updatePromoPickLimit();
+}
+
+/* Disables the remaining unchecked boxes once 3 are picked, rather
+   than only catching it as a submit-time error — immediate feedback
+   for a limit tied directly to how many cards the 3D stage lays out. */
+function updatePromoPickLimit(){
+  const count = promoPickedIds.length;
+  $('#ppPickCount').text(count ? `(${count}/${PROMO_PICK_LIMIT} selected)` : '');
+  $('[data-promo-pick]').each(function(){
+    const isChecked = promoPickedIds.includes(this.value);
+    $(this).closest('.promo-pick-row').toggleClass('disabled', !isChecked && count >= PROMO_PICK_LIMIT);
+  });
+}
+
+$(document).on('change', '[data-promo-pick]', function(){
+  const id = this.value;
+  if(this.checked){
+    if(promoPickedIds.length >= PROMO_PICK_LIMIT){ this.checked = false; return; }
+    promoPickedIds.push(id);
+  } else {
+    promoPickedIds = promoPickedIds.filter(x => x !== id);
+  }
+  renderPromoSelectedChips();
+  updatePromoPickLimit();
+});
+
+$(document).on('click', '[data-promo-unpick]', function(){
+  const id = $(this).attr('data-promo-unpick');
+  promoPickedIds = promoPickedIds.filter(x => x !== id);
+  // Uncheck the box too, in case it's currently visible under the
+  // active search term.
+  $(`[data-promo-pick][value="${id}"]`).prop('checked', false);
+  renderPromoSelectedChips();
+  updatePromoPickLimit();
+});
+
+$(document).on('input', '#ppProductSearch', function(){
+  renderPromoProductList($(this).val());
+});
+
+async function loadAndRenderAdminPromo(){
+  renderPromoCategorySelect();
+  $('#ppProductSearch').val('');
+  try{
+    const settings = await window.CCSettings.fetchSettings();
+    const cfg = settings.promoPopup || window.CCSettings.DEFAULT_PROMO_POPUP;
+    $('#ppEnabled').prop('checked', cfg.enabled !== false);
+    $('#ppBadgeText').val(cfg.badgeText || 'New');
+    $('#ppEyebrow').val(cfg.eyebrow || 'Just Dropped');
+    $('#ppHeadline').val((cfg.headline || '').replace(/<br\s*\/?>/gi, '\n'));
+    $('#ppCopy').val(cfg.copy || '');
+    $('#ppCtaText').val(cfg.ctaText || 'Take a Look');
+    $('#ppDismissText').val(cfg.dismissText || 'Maybe later');
+    $('#ppCategory').val(cfg.category || '');
+    $('#ppSortMode').val(cfg.sortMode || 'featured');
+    promoPickedIds = (cfg.productIds || []).slice(0, PROMO_PICK_LIMIT);
+    renderPromoSelectedChips();
+    renderPromoProductList('');
+  } catch(err){
+    console.error('Could not load popup settings from Firestore.', err);
+    promoPickedIds = [];
+    renderPromoSelectedChips();
+    renderPromoProductList('');
+  }
+}
+
+$(document).on('submit', '#adminPromoForm', async function(e){
+  e.preventDefault();
+  const productIds = promoPickedIds.slice(0, PROMO_PICK_LIMIT);
+  const promoPopup = {
+    enabled: $('#ppEnabled').prop('checked'),
+    badgeText: $('#ppBadgeText').val().trim() || 'New',
+    eyebrow: $('#ppEyebrow').val().trim(),
+    headline: $('#ppHeadline').val().trim().replace(/\n/g, '<br>'),
+    copy: $('#ppCopy').val().trim(),
+    ctaText: $('#ppCtaText').val().trim() || 'Take a Look',
+    dismissText: $('#ppDismissText').val().trim() || 'Maybe later',
+    category: $('#ppCategory').val(),
+    sortMode: $('#ppSortMode').val(),
+    productIds
+  };
+
+  const $btn = $('#adminPromoSubmitBtn');
+  const $status = $('#adminPromoStatus');
+  $btn.prop('disabled', true).text('Saving...');
+  $status.text('');
+  try{
+    await window.CCSettings.updatePromoPopup(promoPopup);
+    // Update the in-memory config script.js reads when it decides
+    // whether/what to show, so a freshly-saved popup takes effect on
+    // this browser's very next fresh session without a redeploy.
+    PROMO_POPUP_CONFIG = { ...PROMO_POPUP_DEFAULTS, ...promoPopup };
+    $status.text('Saved — visitors will see this the next time the popup shows.');
+  } catch(err){
+    console.error(err);
+    $status.text('Something went wrong while saving. Check the console for details.');
+  } finally {
+    $btn.prop('disabled', false).text('Save Popup Settings');
+  }
+});
+
+/* Reads the form exactly as Save would, but skips Firestore entirely
+   and renders straight into the isolated #promoPreviewOverlay — so
+   the admin can check copy/layout/product picks before committing,
+   and so mid-edit previewing never marks the real popup "seen" for
+   this browser or saves anything half-finished. */
+function buildPromoPreviewConfig(){
+  return {
+    badgeText: $('#ppBadgeText').val().trim() || 'New',
+    eyebrow: $('#ppEyebrow').val().trim(),
+    headline: $('#ppHeadline').val().trim().replace(/\n/g, '<br>'),
+    copy: $('#ppCopy').val().trim(),
+    ctaText: $('#ppCtaText').val().trim() || 'Take a Look',
+    dismissText: $('#ppDismissText').val().trim() || 'Maybe later',
+    category: $('#ppCategory').val(),
+    sortMode: $('#ppSortMode').val(),
+    productIds: promoPickedIds.slice(0, PROMO_PICK_LIMIT)
+  };
+}
+
+function showPromoPopupPreview(){
+  const cfg = buildPromoPreviewConfig();
+  const products = resolvePromoProducts(cfg);
+  applyPromoPopupContent(cfg, products, {
+    badge: '#promoPreviewBadgeText', eyebrow: '#promoPreviewEyebrow', title: '#promoPreviewModalTitle',
+    copy: '#promoPreviewModalCopy', cta: '#promoPreviewModalCta', dismiss: '#promoPreviewModalDismiss',
+    stage: '#promoPreviewStage', cards: '#promoPreviewStageCards'
+  });
+  $('#promoPreviewOverlay').addClass('open');
+}
+
+function closePromoPopupPreview(){
+  $('#promoPreviewOverlay').removeClass('open');
+}
+
+$(document).on('click', '#adminPromoPreviewBtn', function(e){
+  e.preventDefault(); // lives inside the <form> — don't let it submit/save
+  showPromoPopupPreview();
+});
+$(document).on('click', '#promoPreviewModalClose, #promoPreviewModalDismiss, #promoPreviewModalCta', closePromoPopupPreview);
+$(document).on('click', '#promoPreviewOverlay', function(e){
+  if(e.target === this) closePromoPopupPreview();
+});
+$(document).on('keydown', function(e){
+  if(e.key === 'Escape' && $('#promoPreviewOverlay').hasClass('open')) closePromoPopupPreview();
 });
 
 /* ================= COMBOS ================= */
