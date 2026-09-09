@@ -35,6 +35,25 @@ let PRODUCTS = [];
 // same value that used to be hardcoded here, and is overwritten by the
 // cached/live value from settings-service.js during init below.
 let DELIVERY_FEE = 60;
+// Launch-popup config, admin-configurable (Admin > Settings > Launch
+// Popup). Same "hardcoded fallback + overwritten by Firestore during
+// init" pattern as DELIVERY_FEE above. Kept in sync with the default
+// shape in settings-service.js's DEFAULT_PROMO_POPUP, just duplicated
+// here rather than imported since script.js/admin.js are plain
+// scripts (see DELIVERY_FEE for the same convention).
+const PROMO_POPUP_DEFAULTS = {
+  enabled: true,
+  badgeText: 'New',
+  eyebrow: 'Just Dropped',
+  headline: 'Fresh Brews,<br>Fresh Merch.',
+  copy: 'New seasonal drinks and a handcrafted merch line just landed at Crafts & Crumbs — brewed and stitched with the same care as always.',
+  ctaText: 'Take a Look',
+  dismissText: 'Maybe later',
+  category: '',
+  sortMode: 'featured',
+  productIds: []
+};
+let PROMO_POPUP_CONFIG = { ...PROMO_POPUP_DEFAULTS };
 const SEED_PRODUCTS = [
   /* ---- Pastries: All-day Bakery ---- */
   { id:'p13', name:'Classic Buttered Croissant', cat:'Pastries', price:120,
@@ -2038,10 +2057,11 @@ function placeholderImg(p){
 
 function bestSellerCard(p, i){
   const oos = isProductOutOfStock(p);
+  const isTop = i === 0;
   return `
     <div class="product-card best-card${oos ? ' oos' : ''}" style="--i:${i}">
       <div class="product-img" data-open-product="${p.id}">
-        <span class="bestseller-tag">${String(i+1).padStart(2,'0')}</span>
+        <span class="bestseller-tag${isTop ? ' tag-top' : ''}">${isTop ? 'Bestseller' : String(i+1).padStart(2,'0')}</span>
         <img src="${p.img}" alt="${p.name}">
         ${oos ? '<span class="oos-badge">Out of Stock</span>' : ''}
         <div class="best-card-shade"></div>
@@ -2049,6 +2069,7 @@ function bestSellerCard(p, i){
       <div class="product-info">
         <span class="eyebrow best-eyebrow">${p.cat}</span>
         <div class="product-name" data-open-product="${p.id}">${p.name}</div>
+        <div class="best-card-rating" data-rating-for="${p.id}"></div>
         <div class="product-desc">${p.desc}</div>
         <div class="product-footer">
           <span class="price">${priceLabel(p)}</span>
@@ -2064,7 +2085,37 @@ function bestSellerCard(p, i){
 function renderBestSellers(){
   const best = BEST_SELLER_IDS.map(findProduct).filter(Boolean);
   initBestSellerCarousel(best);
+  loadBestSellerRatings(best);
 }
+
+/* Fills in each card's live star-rating strip once real review data is
+   available. Runs after the initial render (and after review-service.js
+   has had a chance to attach window.CCReviews) so the carousel isn't
+   blocked on it — cards simply pick up their rating a moment later,
+   in both duplicated halves of the loop, once it resolves. */
+function loadBestSellerRatings(items, attempt){
+  attempt = attempt || 0;
+  if(!window.CCReviews){
+    if(attempt < 10) setTimeout(() => loadBestSellerRatings(items, attempt + 1), 300);
+    return;
+  }
+  const uniqueIds = [...new Set(items.map(p => p.id))];
+  uniqueIds.forEach(async id => {
+    try{
+      const reviews = await window.CCReviews.fetchReviewsForProduct(id);
+      if(!reviews.length) return;
+      const avg = reviews.reduce((s,r) => s + r.rating, 0) / reviews.length;
+      const html = `${starRatingHTML(avg, 'stars-sm')}<span>${reviews.length} review${reviews.length === 1 ? '' : 's'}</span>`;
+      document.querySelectorAll(`[data-rating-for="${id}"]`).forEach(el => {
+        el.innerHTML = html;
+        el.classList.add('show');
+      });
+    } catch(err){
+      console.error(err);
+    }
+  });
+}
+
 
 /* ================= POPULAR THIS WEEK — auto-scrolling marquee ================= */
 function debounce(fn, wait){
@@ -2113,7 +2164,7 @@ function initBestSellerCarousel(items){
   measure();
   window.addEventListener('resize', debounce(measure, 200));
 
-  const SPEED = 26; // px/sec, moving left — an unhurried, boutique-window drift
+  const SPEED = 40; // px/sec, moving left — a clearly-visible, unhurried drift
   // Respect the OS-level "reduce motion" setting: the passive drift is
   // pure decoration, so people who've asked for less motion get a
   // perfectly still carousel they can still browse with the arrows,
@@ -2596,6 +2647,47 @@ function renderPdNutrition(p, size, options){
   `;
 }
 
+/* Trust-row badges under the gallery. Copy differs by category so it
+   never reads oddly against what's actually being sold — "Made Fresh
+   to Order" fits a drink, not a printed tote bag, so merch gets its
+   own pair of claims instead of forcing one generic phrase onto both. */
+function trustRowHTML(isMerch){
+  const items = isMerch ? [
+    {
+      icon: '<path d="M12 3l8 4.5v9L12 21l-8-4.5v-9L12 3Z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/><path d="M4 7.5L12 12l8-4.5M12 12v9" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/>',
+      label: 'Quality Checked'
+    },
+    {
+      icon: '<path d="M4 4h7l9 9-7 7-9-9V4Z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/><circle cx="8" cy="8" r="1.3" fill="currentColor"/>',
+      label: 'Small-Batch Prints'
+    }
+  ] : [
+    {
+      icon: '<path d="M4 8h13a3 3 0 0 1 0 6h-1" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/><path d="M4 8v8a2 2 0 0 0 2 2h7a2 2 0 0 0 2-2V8" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/><path d="M7 4.5c0 1-1 1-1 2M11 4.5c0 1-1 1-1 2" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>',
+      label: 'Made Fresh to Order'
+    },
+    {
+      icon: '<path d="M12 3c3 3 5 6 5 9a5 5 0 0 1-10 0c0-3 2-6 5-9Z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/><path d="M9.5 15.5c0 1.5 1 2.5 2.5 2.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>',
+      label: 'Small-Batch Ingredients'
+    }
+  ];
+  items.push({
+    icon: '<rect x="3" y="6" width="18" height="13" rx="2" stroke="currentColor" stroke-width="1.5"/><path d="M3 10.5h18" stroke="currentColor" stroke-width="1.5"/><path d="M6.5 15h4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>',
+    label: 'Cash · GCash · Card'
+  });
+  return `
+    <div class="pd-trust-row">
+      ${items.map(it => `
+        <div class="pd-trust-item">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none">${it.icon}</svg>
+          <span>${it.label}</span>
+        </div>
+      `).join('')}
+    </div>
+  `;
+}
+
+
 function renderProductDetail(){
   const p = findProduct(currentProductId);
   pdQty = 1;
@@ -2626,20 +2718,7 @@ function renderProductDetail(){
       </div>
       ` : ''}
       <div class="pd-gallery-extra">
-        <div class="pd-trust-row">
-          <div class="pd-trust-item">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M4 8h13a3 3 0 0 1 0 6h-1" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/><path d="M4 8v8a2 2 0 0 0 2 2h7a2 2 0 0 0 2-2V8" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/><path d="M7 4.5c0 1-1 1-1 2M11 4.5c0 1-1 1-1 2" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
-            <span>Made Fresh to Order</span>
-          </div>
-          <div class="pd-trust-item">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M12 3c3 3 5 6 5 9a5 5 0 0 1-10 0c0-3 2-6 5-9Z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/><path d="M9.5 15.5c0 1.5 1 2.5 2.5 2.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
-            <span>Small-Batch Ingredients</span>
-          </div>
-          <div class="pd-trust-item">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none"><rect x="3" y="6" width="18" height="13" rx="2" stroke="currentColor" stroke-width="1.5"/><path d="M3 10.5h18" stroke="currentColor" stroke-width="1.5"/><path d="M6.5 15h4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
-            <span>Cash · GCash · Card</span>
-          </div>
-        </div>
+        ${trustRowHTML(isMerch)}
         <a href="javascript:void(0)" class="pd-rating-mini" id="pdGalleryRating" style="display:none;">
           <span class="pd-rating-mini-score" id="pdGalleryRatingScore"></span>
           <span class="stars" id="pdGalleryRatingStars"></span>
@@ -2708,9 +2787,21 @@ function renderProductDetail(){
 }
 
 /* ================= RATINGS & REVIEWS ================= */
-function starString(rating){
-  const r = Math.round(rating);
-  return '★★★★★'.slice(0, r) + '☆☆☆☆☆'.slice(0, 5 - r);
+/* Gradient-fill overlay stars — supports fractional ratings (e.g. 4.3)
+   by clipping a gold-gradient star row to a percentage width over a
+   muted track row underneath. sizeClass adds a size modifier class. */
+function starRatingHTML(rating, sizeClass){
+  const pct = Math.max(0, Math.min(100, (Number(rating) || 0) / 5 * 100));
+  const cls = 'star-rating' + (sizeClass ? ' ' + sizeClass : '');
+  return `<span class="${cls}"><span class="star-rating-track">★★★★★</span><span class="star-rating-fill" style="width:${pct}%">★★★★★</span></span>`;
+}
+function ratingQualitative(avg){
+  if(avg >= 4.5) return 'Excellent';
+  if(avg >= 3.5) return 'Great';
+  if(avg >= 2.5) return 'Good';
+  if(avg >= 1.5) return 'Fair';
+  if(avg > 0) return 'Poor';
+  return '';
 }
 
 /* State for the currently-open product's reviews, kept in memory so
@@ -2805,12 +2896,20 @@ function renderReviewsSection(){
     `;
   }).join('');
 
-  const summaryHtml = `
+  const qualitative = total ? ratingQualitative(avg) : '';
+  const summaryHtml = total ? `
     <div class="reviews-summary-card">
-      <div class="review-summary-score">${avg ? avg.toFixed(1) : '—'}</div>
-      <div class="stars stars-lg">${starString(avg)}</div>
+      ${qualitative ? `<div class="review-summary-badge">${qualitative}</div>` : ''}
+      <div class="review-summary-score">${avg.toFixed(1)}</div>
+      ${starRatingHTML(avg, 'stars-lg')}
       <div class="review-summary-count">${total} review${total === 1 ? '' : 's'}</div>
-      ${total ? `<div class="rating-bars">${barsHtml}</div>` : ''}
+      <div class="rating-bars">${barsHtml}</div>
+    </div>
+  ` : `
+    <div class="reviews-summary-card reviews-summary-card-empty">
+      <svg width="30" height="30" viewBox="0 0 24 24" fill="none"><path d="M12 3.5l2.5 5.4 5.9.6-4.4 4 1.3 5.9L12 16.4l-5.3 3 1.3-5.9-4.4-4 5.9-.6z" stroke="var(--cta-dark)" stroke-width="1.4" stroke-linejoin="round"/></svg>
+      <div class="review-summary-empty-title">No ratings yet</div>
+      <div class="review-summary-empty-sub">Be the first to rate this item</div>
     </div>
   `;
 
@@ -2820,7 +2919,7 @@ function renderReviewsSection(){
   // already shown further down in the reviews section itself.
   if(total){
     $('#pdGalleryRatingScore').text(avg.toFixed(1));
-    $('#pdGalleryRatingStars').text(starString(avg));
+    $('#pdGalleryRatingStars').html(starRatingHTML(avg));
     $('#pdGalleryRatingCount').text(`${total} review${total === 1 ? '' : 's'}`);
     $('#pdGalleryRating').show();
   } else {
@@ -2845,7 +2944,7 @@ function renderReviewsSection(){
               ${r.verified ? `<span class="verified-badge"><svg width="10" height="10" viewBox="0 0 24 24" fill="none"><path d="M5 13l4 4L19 7" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/></svg>Verified Purchase</span>` : ''}
             </div>
             <div class="review-stars-row">
-              <span class="stars">${starString(r.rating)}</span>
+              ${starRatingHTML(r.rating)}
               <span class="review-date">${formatReviewDate(r.createdAt)}</span>
             </div>
           </div>
@@ -2856,8 +2955,11 @@ function renderReviewsSection(){
     `;
       }).join('')
     : `<div class="reviews-empty">
-        <svg width="30" height="30" viewBox="0 0 24 24" fill="none"><path d="M12 17.3l-5.8 3 1.1-6.5-4.7-4.6 6.5-1 2.9-5.9 2.9 5.9 6.5 1-4.7 4.6 1.1 6.5z" stroke="var(--line-strong)" stroke-width="1.4" stroke-linejoin="round"/></svg>
-        <p>No reviews yet — be the first to share what you thought.</p>
+        <div class="reviews-empty-icon-wrap">
+          <svg width="26" height="26" viewBox="0 0 24 24" fill="none"><path d="M12 3.5l2.5 5.4 5.9.6-4.4 4 1.3 5.9L12 16.4l-5.3 3 1.3-5.9-4.4-4 5.9-.6z" stroke="var(--cta-dark)" stroke-width="1.5" stroke-linejoin="round"/></svg>
+        </div>
+        <p class="reviews-empty-title">No reviews yet</p>
+        <p class="reviews-empty-sub">Be the first to share what you thought about this item.</p>
       </div>`;
 
   // Gate the form on having actually bought the item — but an existing
@@ -2870,8 +2972,11 @@ function renderReviewsSection(){
     : canReview ? `
     <div class="review-form">
       <h4>${myReview ? 'Edit your review' : 'Write a review'}</h4>
-      <div class="review-star-input" id="reviewStarInput" data-value="${myReview ? myReview.rating : 0}">
-        ${[1,2,3,4,5].map(n => `<span data-star="${n}" class="${myReview && n <= myReview.rating ? 'active' : ''}">★</span>`).join('')}
+      <div class="review-star-input-row">
+        <div class="review-star-input" id="reviewStarInput" data-value="${myReview ? myReview.rating : 0}">
+          ${[1,2,3,4,5].map(n => `<span data-star="${n}" class="${myReview && n <= myReview.rating ? 'active' : ''}">★</span>`).join('')}
+        </div>
+        <span class="review-star-input-label" id="reviewRatingLabel">${myReview && myReview.rating ? ratingQualitative(myReview.rating) : 'Tap to rate'}</span>
       </div>
       <textarea id="reviewTextInput" placeholder="Optional — what did you think?" maxlength="600">${myReview ? escapeHtml(myReview.text || '') : ''}</textarea>
       <div class="review-form-footer">
@@ -2915,6 +3020,19 @@ $(document).on('click', '#reviewStarInput span', function(){
   const val = Number($(this).data('star'));
   $('#reviewStarInput').attr('data-value', val)
     .find('span').each(function(){ $(this).toggleClass('active', Number($(this).data('star')) <= val); });
+  $('#reviewRatingLabel').text(ratingQualitative(val));
+});
+
+$(document).on('mouseenter', '#reviewStarInput span', function(){
+  const val = Number($(this).data('star'));
+  $('#reviewStarInput').find('span').each(function(){ $(this).toggleClass('hover', Number($(this).data('star')) <= val); });
+  $('#reviewRatingLabel').text(ratingQualitative(val));
+});
+
+$(document).on('mouseleave', '#reviewStarInput', function(){
+  const val = Number($(this).attr('data-value')) || 0;
+  $(this).find('span').removeClass('hover');
+  $('#reviewRatingLabel').text(val ? ratingQualitative(val) : 'Tap to rate');
 });
 
 $(document).on('click', '#submitReviewBtn', async function(){
@@ -3589,7 +3707,7 @@ document.addEventListener('authStateReady', function(e){
    (it needs a Firestore read), so the dot/dropdown update here once
    authRoleReady fires rather than in authStateReady above. */
 document.addEventListener('authRoleReady', function(e){
-  const { user, otpVerified } = e.detail;
+  const { user, role, otpVerified } = e.detail;
   const realUser = user && !user.isAnonymous ? user : null;
   $('#accountStatusDot').toggleClass('unverified', !!(realUser && !otpVerified));
   renderAccountDropdown(realUser, otpVerified);
@@ -3958,6 +4076,7 @@ async function loadSettingsFromFirestore(){
   try{
     const settings = await window.CCSettings.fetchSettings();
     DELIVERY_FEE = settings.deliveryFee;
+    PROMO_POPUP_CONFIG = { ...PROMO_POPUP_DEFAULTS, ...(settings.promoPopup || {}) };
   } catch(err){
     console.error('Could not load settings from Firestore, using the default delivery fee instead.', err);
   }
@@ -4001,36 +4120,116 @@ $(async function(){
   await loadSettingsFromFirestore();
   await loadCombosFromFirestore();
   renderAll();
+  initPromoOverlay();
 });
 /* ================= PROMO LAUNCH BANNER ================= */
-/* Fancy "New" popup shown once per browser session on page load.
-   sessionStorage (not localStorage) so it reappears on a fresh visit/tab
-   but doesn't nag on every reload within the same session. */
-(function initPromoOverlay(){
+/* Fancy "New" popup shown once per browser session on page load,
+   showcasing 1-3 real products in a tilted 3D card stack. Fully
+   admin-configurable (Admin > Settings > Launch Popup) — copy, badge
+   text, and either an auto-featured category or a hand-picked list
+   of up to 3 products (PROMO_POPUP_CONFIG, loaded above alongside the
+   rest of settings). Called at the end of the main init block above
+   rather than running standalone, since it needs PRODUCTS and
+   PROMO_POPUP_CONFIG to already be populated — a plain top-level IIFE
+   here would fire before either finished loading from Firestore. */
+
+/* productIds (manual pick) always wins when non-empty; otherwise
+   falls back to auto-featuring the chosen category, sorted the way
+   the admin picked (best sellers vs newest — see sortProducts). Caps
+   at 3 either way, matching the 3D stage's card layout. */
+function resolvePromoProducts(cfg){
+  let list = [];
+  if(cfg.productIds && cfg.productIds.length){
+    list = cfg.productIds.map(id => PRODUCTS.find(p => p.id === id)).filter(Boolean);
+  }
+  if(!list.length && cfg.category){
+    const inCategory = PRODUCTS.filter(p => p.cat === cfg.category);
+    list = sortProducts(inCategory, cfg.sortMode === 'newest' ? 'newest' : 'featured');
+  }
+  return list.slice(0, 3);
+}
+
+/* Fans the given products out into a tilted stack: the middle item
+   (or the first of two) sits upright and forward, the rest lean away
+   symmetrically to either side. offset (-1..1-ish) drives everything
+   — horizontal spread, the 3D lean, the in-plane tilt, and how far
+   back in Z each card sits — so 1, 2, or 3 products all lay out
+   sensibly without separate cases for each count. */
+function renderPromoStage(products, target){
+  target = target || { stage: '#promoStage', cards: '#promoStageCards' };
+  const $stage = $(target.stage);
+  const $cards = $(target.cards);
+  if(!products.length){
+    $stage.hide();
+    $cards.empty();
+    return;
+  }
+  $stage.show();
+  const n = products.length;
+  $cards.html(products.map((p, i) => {
+    const offset = i - (n - 1) / 2;
+    const depth = Math.abs(offset);
+    const img = (p.imgs && p.imgs[0]) || p.img || blankPlaceholder(p.id, p.cat);
+    return `
+      <div class="promo-stage-card" style="--i:${i}; --offsetx:${(offset * 58).toFixed(1)}; --depth:${depth.toFixed(2)}; --angle:${(offset * 16).toFixed(1)}; --tilt:${(offset * 7).toFixed(1)}; z-index:${10 - Math.round(depth)};">
+        <div class="promo-stage-card-float" style="animation-delay:${(i * 0.28).toFixed(2)}s;">
+          <div class="promo-stage-card-img"><img src="${img}" alt="${p.name}" loading="lazy"></div>
+          <div class="promo-stage-card-info">
+            <span class="promo-stage-card-name">${p.name}</span>
+            <span class="promo-stage-card-price">${priceLabel(p)}</span>
+          </div>
+        </div>
+      </div>`;
+  }).join(''));
+}
+
+function applyPromoPopupContent(cfg, products, ids){
+  ids = ids || {
+    badge: '#promoBadgeText', eyebrow: '#promoEyebrow', title: '#promoModalTitle',
+    copy: '#promoModalCopy', cta: '#promoModalCta', dismiss: '#promoModalDismiss',
+    stage: '#promoStage', cards: '#promoStageCards'
+  };
+  $(ids.badge).text(cfg.badgeText || 'New');
+  $(ids.eyebrow).text(cfg.eyebrow || '');
+  $(ids.title).html(cfg.headline || '');
+  $(ids.copy).text(cfg.copy || '');
+  $(ids.cta).text(cfg.ctaText || 'Take a Look');
+  $(ids.dismiss).text(cfg.dismissText || 'Maybe later');
+  renderPromoStage(products, { stage: ids.stage, cards: ids.cards });
+}
+
+function initPromoOverlay(){
   const PROMO_KEY = 'cc_promo_seen_v1';
   const $overlay = $('#promoOverlay');
   if(!$overlay.length) return;
 
   function closePromo(){
     $overlay.removeClass('open');
-    sessionStorage.setItem(PROMO_KEY, '1');
+    try{ sessionStorage.setItem(PROMO_KEY, '1'); } catch(err){ /* private mode — fine, it'll just show again */ }
   }
+
+  // Bound every call (not just the first) — cheap no-op if a previous
+  // call already bound these, and guarantees the buttons work even if
+  // this function is ever invoked more than once in a session.
+  $('#promoModalClose, #promoModalDismiss').off('click.promo').on('click.promo', closePromo);
+  $('#promoModalCta').off('click.promo').on('click.promo', closePromo);
+  $overlay.off('click.promo').on('click.promo', function(e){
+    if(e.target === this) closePromo();
+  });
+  $(document).off('keydown.promo').on('keydown.promo', function(e){
+    if(e.key === 'Escape' && $overlay.hasClass('open')) closePromo();
+  });
+
+  if(!PROMO_POPUP_CONFIG.enabled) return;
 
   let seen = false;
   try{ seen = sessionStorage.getItem(PROMO_KEY) === '1'; } catch(err){ /* private mode — just show it */ }
+  if(seen) return;
 
-  if(!seen){
-    // Slight delay so it arrives after the hero's own entrance animation
-    // has had a moment to breathe, rather than competing with it.
-    setTimeout(() => $overlay.addClass('open'), 900);
-  }
+  const products = resolvePromoProducts(PROMO_POPUP_CONFIG);
+  applyPromoPopupContent(PROMO_POPUP_CONFIG, products);
 
-  $('#promoModalClose, #promoModalDismiss').on('click', closePromo);
-  $('#promoModalCta').on('click', closePromo);
-  $overlay.on('click', function(e){
-    if(e.target === this) closePromo();
-  });
-  $(document).on('keydown', function(e){
-    if(e.key === 'Escape' && $overlay.hasClass('open')) closePromo();
-  });
-})();
+  // Slight delay so it arrives after the hero's own entrance animation
+  // has had a moment to breathe, rather than competing with it.
+  setTimeout(() => $overlay.addClass('open'), 900);
+}
