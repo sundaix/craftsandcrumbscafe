@@ -3,10 +3,17 @@ let adminEditingId = null; // set while editing an existing product, null when a
 let adminProductSearch = '';    // current text in the Products search box
 let adminCategoryFilter = 'All'; // current selection in the category filter dropdown
 
+/* Mirrors the product being added/edited's optionGroups field while the
+   form is open — see renderOptionGroupsBuilder() below for the shape
+   and the whole "OPTION GROUPS BUILDER" section for how it's edited. */
 let apOptionGroups = [];
 
 const FOOD_CATEGORIES = ['Coffee', 'Non-Coffee', 'Tea', 'Pastries', 'Sandwiches', 'Cakes'];
 
+/* Default size list offered for each sized category when adding a new
+   product, or when switching an existing product to one of these
+   categories. Editing a product that already has its own size list
+   keeps that list instead (see renderSizePriceRows). */
 const DEFAULT_SIZES_BY_CATEGORY = {
   Shirts: ['XS','S','M','L','XL','XXL'],
   Shorts: ['XS','S','M','L','XL','XXL'],
@@ -46,6 +53,12 @@ function closeCategoryModal(){
   $('#categoryModalOverlay').removeClass('open');
 }
 
+/* Lists categories the admin has actually created (CUSTOM_CATEGORIES),
+   each with a delete button — built-in categories (Coffee, Shirts,
+   etc.) aren't shown here since they're hardcoded in script.js and
+   were never meant to be removable. Shows how many products currently
+   sit in each category so an admin isn't surprised by an orphaned
+   product after deleting one. */
 function renderExistingCategoriesList(){
   const $wrap = $('#ccExistingWrap');
   if(!CUSTOM_CATEGORIES.length){
@@ -70,6 +83,12 @@ function renderExistingCategoriesList(){
   $wrap.show();
 }
 
+/* Deletes a custom category: confirms (with a stronger warning if
+   products still use it, since those products won't be reassigned
+   automatically), removes it from Firestore, unwinds every place it
+   was folded into (CAT_LABELS, sidebars, pricing rules — see
+   removeCustomCategoryEffects in script.js), and refreshes every
+   piece of UI that reads category data. */
 $(document).on('click', '[data-admin-category-delete]', async function(){
   const id = $(this).data('admin-category-delete');
   const c = CUSTOM_CATEGORIES.find(x => x.id === id);
@@ -114,10 +133,19 @@ $(document).on('change', '#ccPricing', function(){
   $('#ccSizesField').toggle($(this).val() === 'sized-stock');
 });
 
+/* Turns a free-typed label into a doc-id-safe key in the same style
+   as the built-in categories ('Non-Coffee', 'ToteBags') — letters and
+   numbers only, no spaces. Falls back to a timestamp if the label is
+   somehow left with nothing usable (e.g. all punctuation). */
 function slugifyCategoryLabel(label){
   return label.trim().replace(/[^a-zA-Z0-9]+/g, '') || ('Category' + Date.now());
 }
 
+/* Guarantees the id doesn't collide with a built-in or previously
+   added category — appends 2, 3, 4... until it finds a free one.
+   Collisions should be rare (two categories with very similar names)
+   but silently overwriting an existing category would be much worse
+   than a slightly-suffixed id. */
 function uniqueCategoryId(base){
   if(!CAT_LABELS[base]) return base;
   let n = 2;
@@ -322,6 +350,23 @@ $(document).on('change', '#adminCategoryFilter', function(){
   renderAdminProductsTable();
 });
 
+/* Shared by the Edit and Duplicate handlers below — fills the
+   Calories/About/Nutrition fields from an existing product (or blanks
+   them for a fresh one). Kept separate from toggleFoodFields/
+   renderSizePriceRows since those two are also called on category
+   *change*, when there's no product to pull values from. */
+function populateDrinkDetailsFields(p){
+  const n = (p && p.nutrition) || {};
+  $('#apCalories').val(p && typeof p.calories === 'number' ? p.calories : '');
+  $('#apAboutText').val((p && p.aboutText) || '');
+  $('#apNutServing').val(n.servingSize || '');
+  $('#apNutCarbs').val(n.carbs != null ? n.carbs : '');
+  $('#apNutSugar').val(n.sugar != null ? n.sugar : '');
+  $('#apNutProtein').val(n.protein != null ? n.protein : '');
+  $('#apNutFat').val(n.fat != null ? n.fat : '');
+  $('#apNutSodium').val(n.sodium != null ? n.sodium : '');
+}
+
 /* Edit: pull the product into the Add/Edit form and switch to that tab */
 $(document).on('click', '[data-admin-edit]', function(){
   const id = $(this).data('admin-edit');
@@ -338,6 +383,7 @@ $(document).on('click', '[data-admin-edit]', function(){
   $('#apIngredients').val(p.ingredients || '');
   $('#apAllergens').val(p.allergens || '');
   $('#apStock').val(p.stock !== undefined && p.stock !== null ? p.stock : '');
+  populateDrinkDetailsFields(p);
   toggleFoodFields(p.cat);
   renderSizePriceRows(p.cat, p);
   setImagePreview('apImgPreviewImg', 'apImgPreviewPlaceholder', p.img || '');
@@ -368,6 +414,7 @@ $(document).on('click', '[data-admin-duplicate]', function(){
   $('#apIngredients').val(p.ingredients || '');
   $('#apAllergens').val(p.allergens || '');
   $('#apStock').val(p.stock !== undefined && p.stock !== null ? p.stock : '');
+  populateDrinkDetailsFields(p);
   toggleFoodFields(p.cat);
   renderSizePriceRows(p.cat, p); // pre-checks the same sizes the original has — just adjust and save
   setImagePreview('apImgPreviewImg', 'apImgPreviewPlaceholder', p.img || '');
@@ -408,6 +455,7 @@ function renderSizePriceRows(cat, existingProduct){
   $('#apSizesField').toggle(isStockSized);
   $('#apDrinkSizesField').toggle(isPriceSized);
   $('#apOptionGroupsField').toggle(isPriceSized);
+  $('#apDrinkDetailsField').toggle(isPriceSized);
   $('#apPriceGroup').toggle(!isPriceSized);
   $('#apStockGroup').toggle(!isStockSized);
   $('#apStock').prop('required', !isStockSized);
@@ -499,31 +547,54 @@ function newOptionChoice(){
 function renderOptionGroupsBuilder(){
   const $wrap = $('#apOptionGroups');
   if(!apOptionGroups.length){
-    $wrap.html('<p class="form-hint opt-groups-empty">No customization options yet.</p>');
+    $wrap.html(`
+      <div class="opt-groups-empty">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none"><path d="M4 6h16M4 12h10M4 18h7" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
+        <p>No customization options yet.<br>Add a group below to build a page like the size selector above.</p>
+      </div>
+    `);
     return;
   }
   $wrap.html(apOptionGroups.map((g, gi) => `
     <div class="opt-group-card">
-      <div class="opt-group-card-head">
-        <input type="text" class="opt-group-label-input" data-og="${gi}" placeholder="Group label, e.g. Choose your bean" value="${g.label || ''}">
-        <select class="opt-group-type-select form-select" data-og="${gi}">
-          <option value="single" ${g.type !== 'multi' ? 'selected' : ''}>Single choice</option>
-          <option value="multi" ${g.type === 'multi' ? 'selected' : ''}>Multiple choice</option>
-        </select>
-        ${g.type === 'multi' ? `<input type="number" min="1" step="1" class="opt-group-max-input" data-og="${gi}" placeholder="Max" value="${g.max || ''}">` : ''}
-        <button type="button" class="admin-icon-btn opt-group-remove" data-og-remove="${gi}" aria-label="Remove group">
+      <div class="opt-group-card-top">
+        <span class="opt-group-index">Group ${gi + 1}</span>
+        <button type="button" class="admin-icon-btn admin-icon-btn-danger opt-group-remove" data-og-remove="${gi}" aria-label="Remove group">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M6 6l12 12M18 6L6 18" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
         </button>
+      </div>
+      <input type="text" class="opt-group-label-input" data-og="${gi}" placeholder="Group label, e.g. Choose your bean" value="${g.label || ''}">
+      <div class="opt-group-type-row">
+        <div class="opt-type-toggle" data-og="${gi}">
+          <button type="button" class="opt-type-btn${g.type !== 'multi' ? ' active' : ''}" data-og="${gi}" data-type="single">Single choice</button>
+          <button type="button" class="opt-type-btn${g.type === 'multi' ? ' active' : ''}" data-og="${gi}" data-type="multi">Multiple choice</button>
+        </div>
+        ${g.type === 'multi' ? `
+          <label class="opt-max-field">
+            <span>Max</span>
+            <input type="number" min="1" step="1" class="opt-group-max-input" data-og="${gi}" placeholder="—" value="${g.max || ''}">
+          </label>
+        ` : ''}
       </div>
       <div class="opt-choice-rows">
         ${g.choices.map((c, ci) => `
           <div class="opt-choice-row">
             <input type="text" class="opt-choice-label-input" data-og="${gi}" data-oc="${ci}" placeholder="Choice label, e.g. Oat Milk" value="${c.label || ''}">
-            <input type="number" step="1" class="opt-choice-price-input" data-og="${gi}" data-oc="${ci}" placeholder="+₱0" value="${c.price || ''}">
-            <input type="number" step="1" class="opt-choice-kcal-input" data-og="${gi}" data-oc="${ci}" placeholder="kcal" value="${c.kcal || ''}">
-            <label class="opt-choice-check"><input type="checkbox" class="opt-choice-default-input" data-og="${gi}" data-oc="${ci}" ${c.default ? 'checked' : ''}> Default</label>
-            <label class="opt-choice-check"><input type="checkbox" class="opt-choice-avail-input" data-og="${gi}" data-oc="${ci}" ${c.available !== false ? 'checked' : ''}> Available</label>
-            <button type="button" class="opt-choice-remove" data-og="${gi}" data-oc-remove="${ci}" aria-label="Remove choice">&times;</button>
+            <div class="opt-choice-price-wrap">
+              <span>+₱</span>
+              <input type="number" step="1" class="opt-choice-price-input" data-og="${gi}" data-oc="${ci}" placeholder="0" value="${c.price || ''}">
+            </div>
+            <div class="opt-choice-kcal-wrap">
+              <input type="number" step="1" class="opt-choice-kcal-input" data-og="${gi}" data-oc="${ci}" placeholder="0" value="${c.kcal || ''}">
+              <span>kcal</span>
+            </div>
+            <div class="opt-choice-toggles">
+              <label class="opt-toggle-pill"><input type="checkbox" class="opt-choice-default-input" data-og="${gi}" data-oc="${ci}" ${c.default ? 'checked' : ''}><span>Default</span></label>
+              <label class="opt-toggle-pill"><input type="checkbox" class="opt-choice-avail-input" data-og="${gi}" data-oc="${ci}" ${c.available !== false ? 'checked' : ''}><span>Available</span></label>
+            </div>
+            <button type="button" class="opt-choice-remove" data-og="${gi}" data-oc-remove="${ci}" aria-label="Remove choice">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none"><path d="M6 6l12 12M18 6L6 18" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+            </button>
           </div>
         `).join('')}
       </div>
@@ -549,8 +620,11 @@ $(document).on('click', '.opt-choice-remove', function(){
   apOptionGroups[gi].choices.splice($(this).data('oc-remove'), 1);
   renderOptionGroupsBuilder();
 });
-$(document).on('change', '.opt-group-type-select', function(){
-  apOptionGroups[$(this).data('og')].type = $(this).val();
+$(document).on('click', '.opt-type-btn', function(){
+  const gi = $(this).data('og');
+  const type = $(this).data('type');
+  if(apOptionGroups[gi].type === type) return;
+  apOptionGroups[gi].type = type;
   renderOptionGroupsBuilder();
 });
 $(document).on('input', '.opt-group-label-input', function(){
@@ -761,6 +835,27 @@ $(document).on('submit', '#adminAddProductForm', async function(e){
     : [];
   if(isPriceSized && cleanedOptionGroups.length) fields.optionGroups = cleanedOptionGroups;
 
+  // Calories/About/Nutrition — drinks only, and each piece only gets
+  // written if the admin actually filled it in (an empty number input
+  // stays out of `fields` entirely rather than saving 0/null, same
+  // spirit as cleanedOptionGroups above dropping empty groups).
+  if(isPriceSized){
+    const caloriesVal = parseInt($('#apCalories').val(), 10);
+    if(!isNaN(caloriesVal)) fields.calories = caloriesVal;
+
+    const aboutVal = $('#apAboutText').val().trim();
+    if(aboutVal) fields.aboutText = aboutVal;
+
+    const nutrition = {};
+    const servingVal = $('#apNutServing').val().trim();
+    if(servingVal) nutrition.servingSize = servingVal;
+    [['apNutCarbs','carbs'], ['apNutSugar','sugar'], ['apNutProtein','protein'], ['apNutFat','fat'], ['apNutSodium','sodium']].forEach(([inputId, key]) => {
+      const v = parseFloat($('#' + inputId).val());
+      if(!isNaN(v)) nutrition[key] = v;
+    });
+    if(Object.keys(nutrition).length) fields.nutrition = nutrition;
+  }
+
   if(adminEditingId){
     $btn.prop('disabled', true).text('Updating...');
     // updateDoc only ever touches the keys you pass it — leaving
@@ -777,6 +872,9 @@ $(document).on('submit', '#adminAddProductForm', async function(e){
       if(!isFood && prevProduct.allergens !== undefined) fieldsToDelete.push('allergens');
       if(!isStockSized && !isPriceSized && prevProduct.sizes !== undefined) fieldsToDelete.push('sizes');
       if(!fields.optionGroups && prevProduct.optionGroups !== undefined) fieldsToDelete.push('optionGroups');
+      if(!fields.calories && fields.calories !== 0 && prevProduct.calories !== undefined) fieldsToDelete.push('calories');
+      if(!fields.aboutText && prevProduct.aboutText !== undefined) fieldsToDelete.push('aboutText');
+      if(!fields.nutrition && prevProduct.nutrition !== undefined) fieldsToDelete.push('nutrition');
     }
     try{
       await window.CCProducts.updateProduct(adminEditingId, fields, fieldsToDelete);
@@ -997,6 +1095,7 @@ function openOrderDetailModal(orderId){
     <div class="order-detail-item">
       <div>
         <div class="order-detail-item-name">${it.name}${it.size ? ` <span class="cart-dd-size">(${it.size})</span>` : ''}</div>
+        ${it.optionsSummary ? `<div class="order-detail-item-opts">${it.optionsSummary}</div>` : ''}
         <div class="order-detail-item-meta">${it.qty} × ${peso(it.price)}</div>
       </div>
       <div class="order-detail-item-total">${peso(it.price * it.qty)}</div>
