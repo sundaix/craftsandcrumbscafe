@@ -1,9 +1,3 @@
-/* =========================================================
-   Crafts & Crumbs — products-service.js
-   All Firestore reads/writes for the "products" collection
-   live here. script.js calls these instead of touching a
-   hardcoded array.
-========================================================= */
 import { db } from "./firebase-config.js";
 import {
   collection, getDocs, getDoc, doc, setDoc, addDoc, updateDoc, deleteDoc, deleteField, increment
@@ -12,10 +6,6 @@ import {
 const PRODUCTS_COL = "products";
 const CACHE_KEY = "cc_products_cache_v2";
 
-/* Synchronous read of whatever product list was cached from the
-   last successful Firestore fetch. Lets the UI paint immediately
-   on repeat visits instead of waiting on a network round trip.
-   Returns null if nothing has been cached yet (first-ever visit). */
 export function getCachedProducts(){
   try{
     const raw = localStorage.getItem(CACHE_KEY);
@@ -29,17 +19,9 @@ function setCachedProducts(products){
   try{
     localStorage.setItem(CACHE_KEY, JSON.stringify(products));
   } catch(err){
-    // Storage full/unavailable (private browsing, etc.) — safe to ignore,
-    // it just means we skip the fast-path cache next time.
   }
 }
 
-/* Keeps the localStorage cache in sync with individual admin writes
-   (add/update/delete), so the "paint instantly from cache" fast-path
-   on the next page load never shows a price/product that's already
-   been changed in Firestore. Without this, an admin edit was only
-   reflected in the cache after the NEXT full fetchAllProducts() call,
-   which meant an old price could still flash briefly on page reload. */
 function patchCachedProduct(id, fields, fieldsToDelete){
   const cached = getCachedProducts();
   if(!cached) return;
@@ -64,10 +46,6 @@ function removeCachedProduct(id){
   setCachedProducts(cached.filter(p => p.id !== id));
 }
 
-/* Reads every product from Firestore. Returns [] if the
-   collection is empty (e.g. before seeding has been run).
-   Also refreshes the local cache on success so the next page
-   load can render instantly before this fetch even starts. */
 export async function fetchAllProducts(){
   const snap = await getDocs(collection(db, PRODUCTS_COL));
   const products = snap.docs.map(d => ({ id: d.id, ...d.data() }));
@@ -380,4 +358,46 @@ export async function fillMissingDrinkDetails(drinkCategories){
   return updated;
 }
 
-window.CCProducts = { fetchAllProducts, addProduct, updateProduct, deleteProduct, seedProducts, getCachedProducts, decrementStock, cleanupLegacyFoodFields, flattenSizePricing, fillMissingDrinkDetails };
+/* =========================================================
+   NORMALIZE DRINK SIZES TO 16oz / 20oz / 24oz
+   Rewrites every Coffee/Non-Coffee/Tea product's `sizes` array to
+   exactly three entries — 16oz, 20oz, 24oz — each priced ₱20 apart,
+   using whatever that drink's cheapest existing size was priced at
+   as the new 16oz price (so nobody's drink randomly gets cheaper or
+   pricier, it just gets re-labeled onto the three-size scale). A
+   product that's missing sizes entirely, or only has one or two, is
+   just as broken for the customer-facing size selector as one with
+   the wrong labels — both get fixed here the same way. Drinks that
+   already have exactly 16oz/20oz/24oz are left completely alone. */
+export async function normalizeDrinkSizes(drinkCategories){
+  const snap = await getDocs(collection(db, PRODUCTS_COL));
+  const updated = [];
+  for(const docSnap of snap.docs){
+    const data = docSnap.data();
+    if(!drinkCategories.includes(data.cat)) continue;
+
+    const existingOpts = Array.isArray(data.sizes)
+      ? data.sizes.map(s => typeof s === 'string' ? { size: s, price: data.price } : s)
+      : [];
+    const currentLabels = existingOpts.map(o => o.size).filter(Boolean);
+    const alreadyCorrect = currentLabels.length === 3 &&
+      ['16oz', '20oz', '24oz'].every(sz => currentLabels.includes(sz));
+    if(alreadyCorrect) continue;
+
+    const basePrice = existingOpts.length
+      ? Math.min(...existingOpts.map(o => typeof o.price === 'number' ? o.price : data.price))
+      : (typeof data.price === 'number' ? data.price : 0);
+    const newSizes = [
+      { size: '16oz', price: basePrice },
+      { size: '20oz', price: basePrice + 20 },
+      { size: '24oz', price: basePrice + 40 }
+    ];
+
+    await updateDoc(doc(db, PRODUCTS_COL, docSnap.id), { sizes: newSizes, price: basePrice });
+    patchCachedProduct(docSnap.id, { sizes: newSizes, price: basePrice });
+    updated.push(docSnap.id);
+  }
+  return updated;
+}
+
+window.CCProducts = { fetchAllProducts, addProduct, updateProduct, deleteProduct, seedProducts, getCachedProducts, decrementStock, cleanupLegacyFoodFields, flattenSizePricing, fillMissingDrinkDetails, normalizeDrinkSizes };
