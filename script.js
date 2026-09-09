@@ -25,7 +25,15 @@ function blankPlaceholder(id, cat){
   return 'data:image/svg+xml;utf8,' + encodeURIComponent(svg);
 }
 
+/* ================= DATA =================
+   SEED_PRODUCTS is only used to seed Firestore once (via the
+   Admin page's "Seed Starter Catalog" button). The live catalog
+   that the site actually renders from is the mutable PRODUCTS
+   array below, populated from Firestore at startup. */
 let PRODUCTS = [];
+// Flat delivery fee, admin-configurable (Admin > Settings). Starts at the
+// same value that used to be hardcoded here, and is overwritten by the
+// cached/live value from settings-service.js during init below.
 let DELIVERY_FEE = 60;
 const SEED_PRODUCTS = [
   /* ---- Pastries: All-day Bakery ---- */
@@ -371,6 +379,12 @@ const CATEGORIES = [
 let cart = []; // {id, qty, size}
 let cartOwnerUid = null; // uid whose cart is currently loaded into `cart` — null while signed out
 
+/* Raw combo records from Firestore (name, desc, img, drinkId, pastryId,
+   discountPercent, active) and the "product-shaped" versions derived
+   from them — see buildComboProducts() further down. Kept as separate
+   arrays from PRODUCTS/PRODUCTS-derived state rather than merged in,
+   so the Menu/Merch grids and the admin Products table never
+   accidentally pick up a combo as if it were a real catalog item. */
 let COMBOS = [];
 let COMBO_PRODUCTS = [];
 
@@ -394,6 +408,9 @@ function rerenderActiveCartPage(){
   if(activePage === 'checkout') renderCheckoutSummary();
 }
 
+/* Called from authStateReady on every login/logout/page load. Cart
+   now lives in Firestore (cart-service.js) instead of localStorage,
+   so the same cart shows up on web and mobile. */
 async function syncCartToAccount(realUser){
   if(realUser){
     if(cartOwnerUid === realUser.uid) return; // already this account's cart, nothing to do
@@ -405,6 +422,10 @@ async function syncCartToAccount(realUser){
     rerenderActiveCartPage();
     return;
   }
+  // No real (non-anonymous) user right now. Only clear the cart if an
+  // account was actually just signed OUT of — guest checkout also
+  // triggers this listener via ensureSignedIn()'s anonymous sign-in,
+  // and that must NOT wipe items a guest already added.
   if(cartOwnerUid === null) return;
   cartOwnerUid = null;
   cart = [];
@@ -414,6 +435,10 @@ async function syncCartToAccount(realUser){
 let currentProductId = SEED_PRODUCTS[0].id;
 let pdQty = 1;
 let pdSize = null;
+/* Currently-selected choices on the product detail page's option
+   groups (bean, milk, syrup, etc — see getOptionGroups below).
+   Shape: { [groupId]: [choiceId, ...] }. Reset each time
+   renderProductDetail() opens a product. */
 let pdOptions = {};
 let menuFilter = 'Coffee';
 let menuSearch = '';
@@ -422,6 +447,11 @@ let merchFilter = 'Shirts';
 let merchSearch = '';
 let merchSort = 'featured';
 
+/* Remembers whatever category was selected right before a search
+   started typing, so that clearing the search box (rather than
+   picking a new category) puts the customer back where they were
+   instead of stranding them on "All Items"/"All Merchandise". Reset
+   to null once restored. */
 let menuFilterBeforeSearch = null;
 let merchFilterBeforeSearch = null;
 let fulfillment = 'delivery';
@@ -458,6 +488,12 @@ const MERCH_SIDEBAR = [
   ]},
 ];
 
+/* Wearable categories that price flat but track stock per size (see
+   the seed data above, where each has a `sizes: ['XS','S',...]`
+   array). Used by the admin Add/Edit form's stock-per-size UI and by
+   the "Flatten Size Pricing" legacy cleanup tool — it does NOT include
+   Coffee/Non-Coffee/Tea, which intentionally DO price per size
+   (12oz/16oz/20oz) and must never be "flattened" back to one price. */
 const SIZED_CATEGORIES = ['Shirts', 'Caps', 'Shorts', 'Socks'];
 const CAT_LABELS = {
   'Coffee': { group:'Drinks', sub:'Caffeine' },
@@ -475,6 +511,13 @@ const CAT_LABELS = {
   'Keychains': { group:'Merchandise', sub:'Keychains' },
 };
 
+/* Flattens a sidebar's groups down to the plain list of category keys
+   it contains — used to tell, given a product's `cat`, whether it
+   belongs to the Menu (food/drinks) or Merchandise side of the
+   catalog, so search can point a customer to the other section when
+   their term only matches over there. Computed on demand (not cached)
+   since admin-added custom categories can append to either sidebar at
+   runtime (see applyCustomCategory below). */
 function flatCats(sidebar){
   return sidebar.flatMap(g => g.items.map(it => it.cat));
 }
@@ -483,6 +526,22 @@ function escapeRegExp(str){
   return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
+/* Product search matching. Plain substring matching (name.includes(q))
+   used to match a query anywhere at all — including mid-word, e.g.
+   "tee" matching inside "sauteed" or "cap" matching inside "escaped".
+   That surfaced completely unrelated products (a pasta dish showing
+   up for a "tee" search because its description says "sauteed
+   mushrooms"). Matching is now anchored to word boundaries instead —
+   a term only counts if it starts a word (so "tee" still matches
+   "Tee"/"Teeshirt", "cook" still matches "Cookie", but neither matches
+   burred inside another word).
+
+   Multi-word queries are split into separate terms, each checked
+   independently against the product's combined name + description,
+   and ALL terms must match (in any order, anywhere across the two
+   fields) — so "chocolate cake" matches a cake named "Dark Chocolate
+   Loaf" whose description mentions "cake" without either word needing
+   to appear together or in that order. */
 function productMatchesQuery(p, query){
   const terms = query.trim().split(/\s+/).filter(Boolean);
   if(!terms.length) return true;
@@ -490,8 +549,23 @@ function productMatchesQuery(p, query){
   return terms.every(term => new RegExp('\\b' + escapeRegExp(term), 'i').test(haystack));
 }
 
+/* ================= CUSTOM CATEGORIES ================= */
+/* Categories an admin has added at runtime via the "+ Add Category"
+   form (admin.js), on top of the built-in set above. Kept as its own
+   list (rather than only folded into CAT_LABELS) so the admin
+   dashboard can tell "built-in" and "custom" categories apart if it
+   ever needs to (e.g. only custom ones are deletable). */
 let CUSTOM_CATEGORIES = [];
 
+/* Folds one category doc — see categories-service.js for the shape —
+   into every piece of config a category needs to participate in:
+   CAT_LABELS (badge + breadcrumb text), FOOD_CATEGORIES /
+   DRINK_CATEGORIES / SIZED_CATEGORIES / DEFAULT_SIZES_BY_CATEGORY
+   (pricing + stock behavior, all declared in admin.js but shared
+   here since script.js and admin.js are plain scripts in the same
+   global scope), and the Menu/Merchandise sidebar it should appear
+   on. Safe to call more than once with the same category — it just
+   no-ops after the first time (CAT_LABELS[c.id] already set). */
 function applyCustomCategory(c){
   if(CAT_LABELS[c.id]) return;
   CAT_LABELS[c.id] = { group: c.group, sub: c.label };
@@ -519,6 +593,10 @@ function applyCustomCategories(categories){
   categories.forEach(applyCustomCategory);
 }
 
+/* Reverses applyCustomCategory — unwinds every place a category id
+   was folded into when it was added, so deleting it actually removes
+   it from dropdowns/sidebars instead of leaving stale references
+   behind. Only ever called on entries from CUSTOM_CATEGORIES; built-in
    categories never go through this. */
 function removeCustomCategoryEffects(c){
   delete CAT_LABELS[c.id];
@@ -535,6 +613,10 @@ function removeCustomCategoryEffects(c){
   const groupEntry = sidebar.find(g => g.group === c.group);
   if(groupEntry){
     groupEntry.items = groupEntry.items.filter(it => it.cat !== c.id);
+    // Drop the whole group heading once it has nothing left under it —
+    // only happens for a group the admin invented from scratch, since
+    // built-in groups (Drinks/Food/Wearables) always keep their
+    // built-in items regardless.
     if(!groupEntry.items.length){
       const gi = sidebar.indexOf(groupEntry);
       if(gi > -1) sidebar.splice(gi, 1);
@@ -547,6 +629,15 @@ const peso = n => '₱' + n.toLocaleString('en-PH');
 const findProduct = id => PRODUCTS.find(p => p.id === id) || COMBO_PRODUCTS.find(p => p.id === id);
 const escapeHtml = str => $('<div>').text(str == null ? '' : str).html();
 
+/* Normalizes a product's `sizes` field to `[{size, price, stock}, ...]`
+   no matter which shape it's actually in:
+   - plain string ('S') — legacy/seed data, flat price, no stock tracked
+   - {size, price} — drinks (Coffee/Non-Coffee/Tea): 12oz/16oz/20oz each
+     priced independently; stock isn't tracked per size for these
+   - {size, stock} — wearables (Shirts/Caps/Shorts/Socks): one flat
+     price, stock tracked per size
+   `stock: null` means stock isn't tracked for that size at all, which
+   the storefront treats as always available (never crossed out). */
 function getSizeOptions(p){
   if(!p.sizes) return [];
   return p.sizes.map(s => {
@@ -559,12 +650,29 @@ function getSizeOptions(p){
   });
 }
 
+/* True when a specific size is out of stock — only ever true when
+   that size actually has stock tracked (stock isn't null) and it's
+   down to zero or below. A size with no stock tracking at all is
+   always treated as available. */
 function isSizeOutOfStock(p, sizeLabel){
   const opts = getSizeOptions(p);
   const match = opts.find(o => o.size === sizeLabel);
   return !!match && match.stock !== null && match.stock <= 0;
 }
 
+/* Single source of truth for "is this product out of stock", shared by
+   every customer-facing surface (grid cards, quick add, product detail
+   page) so they always agree with each other AND with the admin
+   dashboard's stock badge (admin.js), which is built from these same
+   two stock shapes:
+   - Per-size tracked (wearables — Shirts/Caps/Shorts/Socks): out of
+     stock only once every size that actually tracks stock is at 0 or
+     below. Sizes with stock:null (untracked) don't count either way.
+   - Flat top-level stock (drinks, food, ToteBags/Bracelets/Keychains):
+     out of stock when p.stock is a tracked number <= 0.
+   A product with no stock tracked anywhere (p.stock is null/undefined
+   and no sizes track stock) is always treated as available — same as
+   the admin table's "—" badge. */
 function isProductOutOfStock(p){
   const trackedSizes = getSizeOptions(p).filter(o => o.stock !== null);
   if(trackedSizes.length) return trackedSizes.every(o => o.stock <= 0);
@@ -586,16 +694,35 @@ function getDisplayPrice(p){
   return Math.min(...opts.map(o => o.price));
 }
 
+/* True when at least two sizes are actually priced differently — true
+   for every drink (12oz/16oz/20oz each cost more) and false for
+   wearables (one flat price regardless of size), which is what
+   decides whether each size chip needs its own price shown. */
 function hasVariablePricing(p){
   const opts = getSizeOptions(p);
   if(opts.length < 2) return false;
   return new Set(opts.map(o => o.price)).size > 1;
 }
 
+/* ================= PRODUCT CUSTOMIZATION (OPTION GROUPS) ================= */
+/* A product can optionally carry `optionGroups`, an array admin-defined
+   groups like "Choose your bean" or "Topping" — see admin.js's option
+   group builder for the exact shape written to Firestore:
+     { id, label, type:'single'|'multi', max (multi only),
+       choices: [{ id, label, price, kcal, available, default }] }
+   Only drinks (Coffee/Non-Coffee/Tea) get these today, but nothing
+   here assumes that — any product with optionGroups gets the UI. */
 function getOptionGroups(p){
   return Array.isArray(p.optionGroups) ? p.optionGroups : [];
 }
 
+/* Every group (single or multi) is expected to have real, priced
+   choices for its "nothing extra" state too (e.g. "No Topping",
+   "Standard", "No Added Sugar") — same pattern the ZUS reference used.
+   That means picking sensible defaults is just: for a single-select
+   group, whichever available choice is flagged `default` (or the
+   first available one); for multi-select, every available choice
+   flagged `default`. Nothing needs special-casing for "no selection". */
 function defaultPdOptions(p){
   const out = {};
   getOptionGroups(p).forEach(g => {
@@ -621,11 +748,20 @@ function optionsPriceDelta(p, options){
   return delta;
 }
 
+/* Base price (from the selected size, or the display price for
+   unsized products) plus whatever the selected options add. This is
+   the single source of truth for what the customer is about to pay —
+   used by the pd page's live price, the Add to Cart button, and what
+   ultimately gets stored on the cart line as `unitPrice`. */
 function computePdUnitPrice(p, size, options){
   const base = size ? getPriceForSize(p, size) : getDisplayPrice(p);
   return base + optionsPriceDelta(p, options || {});
 }
 
+/* "Iced, Regular, BOSS, Oat Milk, No Added Sugar, Normal Ice, No Topping"
+   — the one-line summary shown on the sticky action bar, on cart lines,
+   and saved onto the order. Groups with nothing selected (shouldn't
+   normally happen since every group has a default) are just skipped. */
 function optionsSummaryText(p, options){
   if(!options) return '';
   const parts = [];
@@ -640,6 +776,10 @@ function optionsSummaryText(p, options){
   return parts.join(', ');
 }
 
+/* Stable string key for a set of selected options, order-independent —
+   used to tell whether two cart lines for the same product/size are
+   actually the same customization (should merge quantities) or
+   different ones (should stay as separate lines). */
 function optionsKey(options){
   if(!options) return '';
   return Object.keys(options).sort()
@@ -647,6 +787,9 @@ function optionsKey(options){
     .join('|');
 }
 
+/* Renders every option group for the current product as chip rows —
+   single-select groups behave like the existing size chips (one
+   active choice), multi-select groups toggle on/off up to `max`. */
 function renderPdOptionGroups(p, options){
   const groups = getOptionGroups(p);
   if(!groups.length) return '';
@@ -682,6 +825,11 @@ function renderPdOptionGroups(p, options){
   `;
 }
 
+/* Re-reads pdOptions/pdSize/pdQty and repaints everything on the pd
+   page that depends on them — the live price, the Add to Cart button
+   label, and the running selection summary. Called after every size,
+   option, or qty change so those three never fall out of sync with
+   each other (the same class of bug fixed earlier in the cart). */
 function refreshPdPricing(p){
   const unit = computePdUnitPrice(p, pdSize, pdOptions);
   const oos = pdSize ? isSizeOutOfStock(p, pdSize) : isProductOutOfStock(p);
@@ -704,6 +852,12 @@ function priceLabel(p){
   return peso(getDisplayPrice(p));
 }
 
+/* Shared by the Menu and Merchandise grids. "Featured" keeps the
+   catalog's natural order but pulls best sellers to the front — it's
+   the closest thing this app has to a popularity signal without a real
+   sales-analytics pipeline behind it. "Newest" relies on createdAt,
+   which only admin-added products have (see products-services.js /
+   admin.js) — older seed products fall back to the end of that sort. */
 function sortProducts(items, sortValue){
   const list = [...items];
   const toMs = (val) => {
@@ -3121,6 +3275,10 @@ $(document).on('click', '#verifyContinueBtn', async function(){
     const result = await window.CCAuth.verifyOtp(code);
     if(result.ok){
       showToast("Email verified — you're all set!", 'success');
+      // verifyOtp() only updates Firestore — it doesn't touch the nav
+      // dot/dropdown, which only refresh on the auth.js onAuthStateChanged
+      // listener (login/logout/page load). Re-firing authRoleReady here
+      // updates them immediately instead of waiting for the next reload.
       document.dispatchEvent(new CustomEvent("authRoleReady", {
         detail: { user: window.currentUser, role: window.currentRole, otpVerified: true }
       }));
@@ -3146,6 +3304,8 @@ $(document).on('click', '#accountDdVerifyBtn', function(){
   goToVerifyEmail(window.currentUser ? window.currentUser.email : '');
 });
 
+/* Reflect sign-in state in the nav: show an Admin link for admins,
+   and swap the account icon's behavior once we know who's signed in. */
 document.addEventListener('authStateReady', function(e){
   const { user } = e.detail;
   const realUser = user && !user.isAnonymous ? user : null;
@@ -3157,6 +3317,9 @@ document.addEventListener('authStateReady', function(e){
     .toggleClass('signed-in', !!realUser);
 });
 
+/* Verification status arrives slightly later than the base auth state
+   (it needs a Firestore read), so the dot/dropdown update here once
+   authRoleReady fires rather than in authStateReady above. */
 document.addEventListener('authRoleReady', function(e){
   const { user, otpVerified } = e.detail;
   const realUser = user && !user.isAnonymous ? user : null;
@@ -3221,6 +3384,9 @@ $(document).on('click', function(e){
 /* ================= CONFIRM DIALOG (replaces window.confirm) ================= */
 let confirmResolve = null;
 
+/* Usage: const ok = await showConfirm({ title, message, confirmText, danger });
+   Resolves true/false depending on which button was pressed (or false if
+   dismissed via backdrop click / Escape). */
 function showConfirm({ title = 'Are you sure?', message = "This action can't be undone.", confirmText = 'Confirm', cancelText = 'Cancel', danger = false } = {}){
   $('#confirmDialogTitle').text(title);
   $('#confirmDialogMsg').text(message);
@@ -3306,6 +3472,9 @@ function initNavScroll(){
   onScroll();
 }
 
+/* ================= PRODUCT CARD: SUBTLE 3D TILT ================= */
+/* Only .product-card gets the tilt — .cat-card is deliberately flat/
+   editorial by design (see its CSS comment), so it's left alone. */
 function initCardTilt(){
   if(window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
   if(window.matchMedia('(hover: none)').matches) return; // skip on touch devices
@@ -3325,6 +3494,10 @@ function initCardTilt(){
   });
 }
 
+/* ================= ABOUT SECTION: ANIMATED STAT COUNTERS ================= */
+/* Counts up any "<strong>" inside .about-stats from 0 to its printed
+   value once it scrolls into view. Reads the number out of the existing
+   text so it keeps whatever prefix/suffix is already there (e.g. "12k+"). */
 function initStatCounters(){
   const nodes = document.querySelectorAll('.about-stats strong:not([data-counted])');
   if(!nodes.length) return;
@@ -3360,6 +3533,10 @@ function initStatCounters(){
   nodes.forEach(n => obs.observe(n));
 }
 
+/* ================= ADD TO CART: FLY-TO-CART MICRO-INTERACTION ================= */
+/* Clones the product image and animates it flying into the cart icon,
+   then gives the cart icon a little bounce — a small, tactile confirmation
+   that something was actually added, instead of just a toast. */
 function flyToCart(sourceImgEl){
   if(window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
   const cartBtn = document.getElementById('cartBtn');
@@ -3484,6 +3661,10 @@ function renderAll(){
   renderMerchPage();
   buildComboProducts();
   renderFeaturedCombos();
+  // Products may have still been loading the first time the cart dropdown
+  // (or the cart/checkout page) rendered, which would have left it showing
+  // "empty" even though items existed. Re-paint it now that PRODUCTS /
+  // COMBO_PRODUCTS are populated.
   renderCartDropdown();
   rerenderActiveCartPage();
 }
@@ -3553,6 +3734,10 @@ $(async function(){
   await loadCombosFromFirestore();
   renderAll();
 });
+/* ================= PROMO LAUNCH BANNER ================= */
+/* Fancy "New" popup shown once per browser session on page load.
+   sessionStorage (not localStorage) so it reappears on a fresh visit/tab
+   but doesn't nag on every reload within the same session. */
 (function initPromoOverlay(){
   const PROMO_KEY = 'cc_promo_seen_v1';
   const $overlay = $('#promoOverlay');
@@ -3567,6 +3752,8 @@ $(async function(){
   try{ seen = sessionStorage.getItem(PROMO_KEY) === '1'; } catch(err){ /* private mode — just show it */ }
 
   if(!seen){
+    // Slight delay so it arrives after the hero's own entrance animation
+    // has had a moment to breathe, rather than competing with it.
     setTimeout(() => $overlay.addClass('open'), 900);
   }
 
