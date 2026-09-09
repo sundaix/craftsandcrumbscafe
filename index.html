@@ -19,6 +19,11 @@
 
 <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
 
+<!-- Leaflet: free, no API key, no billing account — used for the
+     delivery-address pin map (My Addresses page + Checkout). Map
+     tiles come from OpenStreetMap at runtime, not from this CDN. -->
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+
 <link rel="stylesheet" href="style.css">
 </head>
 <body>
@@ -31,6 +36,7 @@
       </button>
       <div class="search-box header-search">
         <input type="text" id="headerSearch" placeholder="Search" aria-label="Search products">
+        <button type="button" class="search-clear" id="headerSearchClear" aria-label="Clear search">&times;</button>
         <button class="search-btn" id="headerSearchBtn" aria-label="Search">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><circle cx="11" cy="11" r="7" stroke="currentColor" stroke-width="1.8"/><path d="m20 20-3.5-3.5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
         </button>
@@ -217,7 +223,9 @@
       <div class="search-box menu-content-search">
         <svg width="15" height="15" viewBox="0 0 24 24" fill="none"><circle cx="11" cy="11" r="7" stroke="currentColor" stroke-width="1.8"/><path d="m20 20-3.5-3.5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
         <input type="text" id="menuSearch" placeholder="Looking for..." aria-label="Search the menu">
+        <button type="button" class="search-clear" id="menuSearchClear" aria-label="Clear search">&times;</button>
       </div>
+      <div class="search-cross-hint" id="menuCrossHint"></div>
       <div class="breadcrumb" id="menuBreadcrumb">Drinks / Caffeine</div>
       <div class="menu-heading-row">
         <h1 id="menuHeading">Caffeine</h1>
@@ -249,7 +257,9 @@
       <div class="search-box menu-content-search">
         <svg width="15" height="15" viewBox="0 0 24 24" fill="none"><circle cx="11" cy="11" r="7" stroke="currentColor" stroke-width="1.8"/><path d="m20 20-3.5-3.5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
         <input type="text" id="merchSearch" placeholder="Looking for..." aria-label="Search merchandise">
+        <button type="button" class="search-clear" id="merchSearchClear" aria-label="Clear search">&times;</button>
       </div>
+      <div class="search-cross-hint" id="merchCrossHint"></div>
       <div class="breadcrumb" id="merchBreadcrumb">Wearables / Shirts</div>
       <div class="menu-heading-row">
         <h1 id="merchHeading">Shirts</h1>
@@ -309,7 +319,11 @@
           <div class="form-group"><label for="coPhone">Phone number</label><input id="coPhone" type="tel" placeholder="09XX XXX XXXX"></div>
         </div>
         <div class="form-group"><label for="coEmail">Email address</label><input id="coEmail" type="email" placeholder="you@email.com"></div>
-        <div class="form-group" id="addressGroup"><label for="coAddress">Delivery address</label><input id="coAddress" type="text" placeholder="Street, Barangay, City"></div>
+                <div class="form-group" id="addressGroup">
+          <label for="coAddress">Delivery address</label>
+          <div id="coSavedAddressPicker" class="saved-address-picker" style="display:none;"></div>
+          <input id="coAddress" type="text" placeholder="Street, Barangay, City">
+        </div>
       </div>
 
       <div class="form-card">
@@ -389,6 +403,21 @@
       <button type="button" class="btn btn-outline btn-sm" id="wishlistClearBtn" style="display:none;">Clear All</button>
     </div>
     <div id="wishlistGrid" class="product-grid"></div>
+  </div>
+</div>
+
+<!-- saved addresses page -->
+<div class="page" data-page="addresses">
+  <div class="container order-history-wrap">
+    <div class="section-head">
+      <div>
+        <div class="eyebrow">Your Account</div>
+        <h1>My Addresses</h1>
+        <p class="wishlist-count">Save delivery addresses so checkout only takes one tap.</p>
+      </div>
+      <button type="button" class="btn btn-primary btn-sm" id="addAddressBtn">+ Add New Address</button>
+    </div>
+    <div id="addressesList" class="addresses-list"></div>
   </div>
 </div>
 
@@ -660,9 +689,7 @@
     <aside class="admin-sidebar">
       <button class="admin-tab active" data-admin-tab="overview">Overview</button>
       <button class="admin-tab" data-admin-tab="products">Products</button>
-      <button class="admin-tab" data-admin-tab="combos">Combos</button>
       <button class="admin-tab" data-admin-tab="orders">Orders</button>
-      <button class="admin-tab" data-admin-tab="add-product">Add Product</button>
       <button class="admin-tab" data-admin-tab="settings">Settings</button>
     </aside>
 
@@ -711,188 +738,192 @@
         </div>
       </div>
 
-      <!-- products -->
+      <!-- products (catalog + add/edit product + combos, all in one tab) -->
       <div class="admin-panel" data-admin-panel="products">
-        <div class="admin-panel-head">
-          <h3>Manage Products</h3>
-          <div class="admin-panel-head-controls">
-            <select id="adminCategoryFilter" class="admin-search-input admin-category-filter">
-              <option value="All">All Categories</option>
-              <optgroup label="Drinks">
-                <option value="Coffee">Coffee</option>
-                <option value="Non-Coffee">Non-Coffee</option>
-                <option value="Tea">Tea</option>
-              </optgroup>
-              <optgroup label="Food">
-                <option value="Pastries">Pastries</option>
-                <option value="Sandwiches">Sandwiches</option>
-                <option value="Cakes">Cakes</option>
-              </optgroup>
-              <optgroup label="Wearables">
-                <option value="Shirts">Shirts</option>
-                <option value="Caps">Caps</option>
-                <option value="Shorts">Shorts</option>
-                <option value="Socks">Socks</option>
-                <option value="ToteBags">Tote Bags</option>
-              </optgroup>
-              <optgroup label="Accessories">
-                <option value="Bracelets">Bracelets</option>
-                <option value="Keychains">Keychains</option>
-              </optgroup>
-            </select>
-            <input type="text" id="adminProductSearch" class="admin-search-input" placeholder="Search products">
+
+        <div class="admin-subtabs">
+          <button class="admin-subtab active" data-admin-subtab="catalog">Catalog</button>
+          <button class="admin-subtab" data-admin-subtab="add-product">Add / Edit Product</button>
+          <button class="admin-subtab" data-admin-subtab="combos">Combos</button>
+        </div>
+
+        <!-- catalog -->
+        <div class="admin-subpanel active" data-admin-subpanel="catalog">
+          <div class="admin-panel-head">
+            <h3>Manage Products</h3>
+            <div class="admin-panel-head-controls">
+              <select id="adminCategoryFilter" class="admin-search-input admin-category-filter">
+                <option value="All">All Categories</option>
+              </select>
+              <input type="text" id="adminProductSearch" class="admin-search-input" placeholder="Search products">
+              <button type="button" class="btn btn-outline btn-sm" id="openAddCategoryBtn">+ Add Category</button>
+            </div>
+          </div>
+          <div class="admin-table-wrap">
+            <table class="admin-table">
+              <thead>
+                <tr><th>Product</th><th>Category</th><th>Price</th><th>Stock</th><th></th></tr>
+              </thead>
+              <tbody id="adminProductsBody"></tbody>
+            </table>
           </div>
         </div>
-        <div class="admin-table-wrap">
-          <table class="admin-table">
-            <thead>
-              <tr><th>Product</th><th>Category</th><th>Price</th><th>Stock</th><th></th></tr>
-            </thead>
-            <tbody id="adminProductsBody"></tbody>
-          </table>
+
+        <!-- add / edit product -->
+        <div class="admin-subpanel" data-admin-subpanel="add-product">
+          <div class="form-card">
+            <h3 id="adminFormTitle">Add Product to Inventory</h3>
+            <form id="adminAddProductForm">
+              <input type="hidden" id="apEditId" value="">
+              <div class="form-row">
+                <div class="form-group"><label for="apName">Product name</label><input type="text" id="apName" placeholder="Iced Spanish Latte" required></div>
+                <div class="form-group" id="apPriceGroup"><label for="apPrice">Price (₱)</label><input type="number" id="apPrice" min="0" step="1" placeholder="150" required></div>
+              </div>
+              <div class="form-row">
+                <div class="form-group" id="apStockGroup"><label for="apStock">Stock quantity</label><input type="number" id="apStock" min="0" step="1" placeholder="e.g. 50" required></div>
+              </div>
+              <div class="form-group">
+                <label for="apCategory">Category</label>
+                <select id="apCategory" class="form-select" required>
+                  <option value="Coffee">Coffee</option>
+                  <option value="Non-Coffee">Non-Coffee</option>
+                  <option value="Tea">Tea</option>
+                  <option value="Pastries">Pastries</option>
+                  <option value="Sandwiches">Sandwiches</option>
+                  <option value="Cakes">Cakes</option>
+                  <option value="Shirts">Shirts</option>
+                  <option value="Caps">Caps</option>
+                  <option value="Shorts">Shorts</option>
+                  <option value="Socks">Socks</option>
+                  <option value="ToteBags">Tote Bags</option>
+                  <option value="Bracelets">Bracelets</option>
+                  <option value="Keychains">Keychains</option>
+                </select>
+                <p class="form-hint">Don't see the right category? Use "+ Add Category" on the Catalog tab first — it'll show up here right away.</p>
+              </div>
+              <div class="form-group" id="apSizesField" style="display:none;">
+                <label>Sizes &amp; Stock</label>
+                <div id="apSizeRows" class="size-stock-rows"></div>
+                <p class="form-hint">Every size shares the Price field above. Uncheck a size the product doesn't come in at all — leave a size checked with 0 stock to keep it listed but show it as out of stock.</p>
+              </div>
+              <div class="form-group" id="apDrinkSizesField" style="display:none;">
+                <label>Sizes &amp; Prices</label>
+                <div id="apDrinkSizeRows" class="size-price-rows"></div>
+                <p class="form-hint">Every drink comes in these three sizes, each priced on its own — bigger sizes usually cost a bit more.</p>
+              </div>
+              <div class="form-group" id="apOptionGroupsField" style="display:none;">
+                <label>Customization Options</label>
+                <div id="apOptionGroups" class="opt-groups-builder"></div>
+                <button type="button" class="btn btn-outline btn-sm" id="apAddOptionGroupBtn">+ Add Option Group</button>
+                <p class="form-hint">Optional. Add groups like "Choose your bean", "Milk", or "Topping" so customers see a customization page for this drink, like the size selector above. Leave empty for a plain drink with no extra choices.</p>
+              </div>
+              <div class="form-group"><label for="apDesc">Short description</label><input type="text" id="apDesc" placeholder="One or two sentences describing the item" required></div>
+              <div class="form-group">
+                <label>Product Image</label>
+                <div class="image-upload-field">
+                  <div class="image-upload-preview" id="apImgPreview">
+                    <img id="apImgPreviewImg" style="display:none;" alt="">
+                    <span id="apImgPreviewPlaceholder" class="image-upload-placeholder">No image yet</span>
+                  </div>
+                  <div class="image-upload-controls">
+                    <label for="apImgFile" class="btn btn-outline btn-sm image-upload-btn">Choose Image</label>
+                    <input type="file" id="apImgFile" accept="image/*" style="display:none;">
+                    <p class="form-hint">Automatically cropped to a square and resized to 1000×1000 for consistent display everywhere it's shown.</p>
+                    <p class="image-upload-status" id="apImgUploadStatus"></p>
+                  </div>
+                </div>
+                <label for="apImg" class="form-label-secondary">or paste an image URL</label>
+                <input type="text" id="apImg" placeholder="https://... (leave blank for a placeholder image)">
+              </div>
+              <div id="apFoodFields">
+                <div class="form-group"><label for="apIngredients">Ingredients</label><input type="text" id="apIngredients" placeholder="Comma-separated ingredients"></div>
+                <div class="form-group"><label for="apAllergens">Allergens</label><input type="text" id="apAllergens" placeholder="e.g. Gluten (wheat), Milk"></div>
+              </div>
+              <button type="submit" class="btn btn-primary btn-full" id="adminFormSubmitBtn">Add Product</button>
+              <button type="button" class="btn btn-outline btn-full admin-cancel-edit" id="adminCancelEditBtn" style="display:none;">Cancel Edit</button>
+            </form>
+          </div>
         </div>
+
+        <!-- combos -->
+        <div class="admin-subpanel" data-admin-subpanel="combos">
+          <div class="admin-panel-head">
+            <h3 id="adminComboFormTitle">Manage Combos</h3>
+          </div>
+
+          <div class="admin-table-wrap">
+            <table class="admin-table">
+              <thead>
+                <tr><th>Combo</th><th>Drink</th><th>Pastry</th><th>Discount</th><th>Status</th><th></th></tr>
+              </thead>
+              <tbody id="adminCombosBody"></tbody>
+            </table>
+          </div>
+
+          <div class="form-card" style="margin-top:26px;">
+            <h3 id="adminComboFormHeading">Add Combo</h3>
+            <form id="adminAddComboForm">
+              <input type="hidden" id="acEditId" value="">
+              <div class="form-group"><label for="acName">Combo name</label><input type="text" id="acName" placeholder="Morning Set" required></div>
+              <div class="form-row">
+                <div class="form-group"><label for="acDrink">Drink</label><select id="acDrink" class="form-select" required></select></div>
+                <div class="form-group"><label for="acPastry">Pastry</label><select id="acPastry" class="form-select" required></select></div>
+              </div>
+              <div class="form-row">
+                <div class="form-group"><label for="acDiscount">Discount off combined price (%)</label><input type="number" id="acDiscount" min="0" max="90" step="1" placeholder="10" required></div>
+                <div class="form-group">
+                  <label for="acActive">Status</label>
+                  <select id="acActive" class="form-select">
+                    <option value="true">Active — visible on the home page</option>
+                    <option value="false">Inactive — hidden (e.g. out of season)</option>
+                  </select>
+                </div>
+              </div>
+              <div class="form-group"><label for="acDesc">Short description</label><input type="text" id="acDesc" placeholder="Leave blank to auto-generate from the drink + pastry names"></div>
+              <div class="form-group">
+                <label>Combo Image</label>
+                <div class="image-upload-field">
+                  <div class="image-upload-preview" id="acImgPreview">
+                    <img id="acImgPreviewImg" style="display:none;" alt="">
+                    <span id="acImgPreviewPlaceholder" class="image-upload-placeholder">No image yet</span>
+                  </div>
+                  <div class="image-upload-controls">
+                    <label for="acImgFile" class="btn btn-outline btn-sm image-upload-btn">Choose Image</label>
+                    <input type="file" id="acImgFile" accept="image/*" style="display:none;">
+                    <p class="form-hint">Automatically cropped to a square and resized to 1000×1000 for consistent display everywhere it's shown.</p>
+                    <p class="image-upload-status" id="acImgUploadStatus"></p>
+                  </div>
+                </div>
+                <label for="acImg" class="form-label-secondary">or paste an image URL</label>
+                <input type="text" id="acImg" placeholder="https://..." required>
+              </div>
+              <button type="submit" class="btn btn-primary btn-full" id="adminComboFormSubmitBtn">Add Combo</button>
+              <button type="button" class="btn btn-outline btn-full admin-cancel-edit" id="adminComboCancelEditBtn" style="display:none;">Cancel Edit</button>
+            </form>
+          </div>
+        </div>
+
       </div>
 
       <!-- orders -->
       <div class="admin-panel" data-admin-panel="orders">
         <div class="admin-panel-head">
           <h3>Orders</h3>
-          <button class="btn btn-outline btn-sm" id="adminRefreshOrders">Refresh</button>
+          <div class="admin-panel-head-controls">
+            <input type="text" id="adminOrderSearch" class="admin-search-input" placeholder="Search order #, name, phone...">
+            <button class="btn btn-outline btn-sm" id="adminRefreshOrders">Refresh</button>
+          </div>
         </div>
+
+        <div class="order-status-filters" id="orderStatusFilters"></div>
+
         <div class="admin-table-wrap">
           <table class="admin-table">
             <thead>
-              <tr><th>Order</th><th>Customer</th><th>Fulfillment</th><th>Total</th><th>Status</th></tr>
+              <tr><th>Order</th><th>Placed</th><th>Customer</th><th>Fulfillment</th><th>Total</th><th>Status</th></tr>
             </thead>
             <tbody id="adminOrdersBody"></tbody>
           </table>
-        </div>
-      </div>
-
-      <!-- combos -->
-      <div class="admin-panel" data-admin-panel="combos">
-        <div class="admin-panel-head">
-          <h3 id="adminComboFormTitle">Manage Combos</h3>
-        </div>
-
-        <div class="admin-table-wrap">
-          <table class="admin-table">
-            <thead>
-              <tr><th>Combo</th><th>Drink</th><th>Pastry</th><th>Discount</th><th>Status</th><th></th></tr>
-            </thead>
-            <tbody id="adminCombosBody"></tbody>
-          </table>
-        </div>
-
-        <div class="form-card" style="margin-top:26px;">
-          <h3 id="adminComboFormHeading">Add Combo</h3>
-          <form id="adminAddComboForm">
-            <input type="hidden" id="acEditId" value="">
-            <div class="form-group"><label for="acName">Combo name</label><input type="text" id="acName" placeholder="Morning Set" required></div>
-            <div class="form-row">
-              <div class="form-group"><label for="acDrink">Drink</label><select id="acDrink" class="form-select" required></select></div>
-              <div class="form-group"><label for="acPastry">Pastry</label><select id="acPastry" class="form-select" required></select></div>
-            </div>
-            <div class="form-row">
-              <div class="form-group"><label for="acDiscount">Discount off combined price (%)</label><input type="number" id="acDiscount" min="0" max="90" step="1" placeholder="10" required></div>
-              <div class="form-group">
-                <label for="acActive">Status</label>
-                <select id="acActive" class="form-select">
-                  <option value="true">Active — visible on the home page</option>
-                  <option value="false">Inactive — hidden (e.g. out of season)</option>
-                </select>
-              </div>
-            </div>
-            <div class="form-group"><label for="acDesc">Short description</label><input type="text" id="acDesc" placeholder="Leave blank to auto-generate from the drink + pastry names"></div>
-            <div class="form-group">
-              <label>Combo Image</label>
-              <div class="image-upload-field">
-                <div class="image-upload-preview" id="acImgPreview">
-                  <img id="acImgPreviewImg" style="display:none;" alt="">
-                  <span id="acImgPreviewPlaceholder" class="image-upload-placeholder">No image yet</span>
-                </div>
-                <div class="image-upload-controls">
-                  <label for="acImgFile" class="btn btn-outline btn-sm image-upload-btn">Choose Image</label>
-                  <input type="file" id="acImgFile" accept="image/*" style="display:none;">
-                  <p class="form-hint">Automatically cropped to a square and resized to 1000×1000 for consistent display everywhere it's shown.</p>
-                  <p class="image-upload-status" id="acImgUploadStatus"></p>
-                </div>
-              </div>
-              <label for="acImg" class="form-label-secondary">or paste an image URL</label>
-              <input type="text" id="acImg" placeholder="https://..." required>
-            </div>
-            <button type="submit" class="btn btn-primary btn-full" id="adminComboFormSubmitBtn">Add Combo</button>
-            <button type="button" class="btn btn-outline btn-full admin-cancel-edit" id="adminComboCancelEditBtn" style="display:none;">Cancel Edit</button>
-          </form>
-        </div>
-      </div>
-
-      <!-- add / edit product -->
-      <div class="admin-panel" data-admin-panel="add-product">
-        <div class="form-card">
-          <h3 id="adminFormTitle">Add Product to Inventory</h3>
-          <form id="adminAddProductForm">
-            <input type="hidden" id="apEditId" value="">
-            <div class="form-row">
-              <div class="form-group"><label for="apName">Product name</label><input type="text" id="apName" placeholder="Iced Spanish Latte" required></div>
-              <div class="form-group" id="apPriceGroup"><label for="apPrice">Price (₱)</label><input type="number" id="apPrice" min="0" step="1" placeholder="150" required></div>
-            </div>
-            <div class="form-row">
-              <div class="form-group" id="apStockGroup"><label for="apStock">Stock quantity</label><input type="number" id="apStock" min="0" step="1" placeholder="e.g. 50" required></div>
-            </div>
-            <div class="form-group">
-              <label for="apCategory">Category</label>
-              <select id="apCategory" class="form-select" required>
-                <option value="Coffee">Coffee</option>
-                <option value="Non-Coffee">Non-Coffee</option>
-                <option value="Tea">Tea</option>
-                <option value="Pastries">Pastries</option>
-                <option value="Sandwiches">Sandwiches</option>
-                <option value="Cakes">Cakes</option>
-                <option value="Shirts">Shirts</option>
-                <option value="Caps">Caps</option>
-                <option value="Shorts">Shorts</option>
-                <option value="Socks">Socks</option>
-                <option value="ToteBags">Tote Bags</option>
-                <option value="Bracelets">Bracelets</option>
-                <option value="Keychains">Keychains</option>
-              </select>
-            </div>
-            <div class="form-group" id="apSizesField" style="display:none;">
-              <label>Sizes &amp; Stock</label>
-              <div id="apSizeRows" class="size-stock-rows"></div>
-              <p class="form-hint">Every size shares the Price field above. Uncheck a size the product doesn't come in at all — leave a size checked with 0 stock to keep it listed but show it as out of stock.</p>
-            </div>
-            <div class="form-group" id="apDrinkSizesField" style="display:none;">
-              <label>Sizes &amp; Prices</label>
-              <div id="apDrinkSizeRows" class="size-price-rows"></div>
-              <p class="form-hint">Every drink comes in these three sizes, each priced on its own — bigger sizes usually cost a bit more.</p>
-            </div>
-            <div class="form-group"><label for="apDesc">Short description</label><input type="text" id="apDesc" placeholder="One or two sentences describing the item" required></div>
-            <div class="form-group">
-              <label>Product Image</label>
-              <div class="image-upload-field">
-                <div class="image-upload-preview" id="apImgPreview">
-                  <img id="apImgPreviewImg" style="display:none;" alt="">
-                  <span id="apImgPreviewPlaceholder" class="image-upload-placeholder">No image yet</span>
-                </div>
-                <div class="image-upload-controls">
-                  <label for="apImgFile" class="btn btn-outline btn-sm image-upload-btn">Choose Image</label>
-                  <input type="file" id="apImgFile" accept="image/*" style="display:none;">
-                  <p class="form-hint">Automatically cropped to a square and resized to 1000×1000 for consistent display everywhere it's shown.</p>
-                  <p class="image-upload-status" id="apImgUploadStatus"></p>
-                </div>
-              </div>
-              <label for="apImg" class="form-label-secondary">or paste an image URL</label>
-              <input type="text" id="apImg" placeholder="https://... (leave blank for a placeholder image)">
-            </div>
-            <div id="apFoodFields">
-              <div class="form-group"><label for="apIngredients">Ingredients</label><input type="text" id="apIngredients" placeholder="Comma-separated ingredients"></div>
-              <div class="form-group"><label for="apAllergens">Allergens</label><input type="text" id="apAllergens" placeholder="e.g. Gluten (wheat), Milk"></div>
-            </div>
-            <button type="submit" class="btn btn-primary btn-full" id="adminFormSubmitBtn">Add Product</button>
-            <button type="button" class="btn btn-outline btn-full admin-cancel-edit" id="adminCancelEditBtn" style="display:none;">Cancel Edit</button>
-          </form>
         </div>
       </div>
 
@@ -974,6 +1005,63 @@
     </button>
     <img id="qrModalImg" src="" alt="Payment QR code">
     <p id="qrModalLabel">Scan this QR to pay.</p>
+  </div>
+</div>
+
+<div class="legal-overlay" id="categoryModalOverlay">
+  <div class="legal-modal" id="categoryModal" style="max-width:480px;" role="dialog" aria-modal="true" aria-labelledby="categoryModalTitle">
+    <button class="legal-close" id="categoryModalClose" aria-label="Close">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M6 6l12 12M18 6L6 18" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
+    </button>
+    <div class="legal-header">
+      <div class="legal-icon">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none"><path d="M12 3l8 8-9 9-8-8V4h8z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/><circle cx="8" cy="8" r="1.4" fill="currentColor"/></svg>
+      </div>
+      <h2 id="categoryModalTitle">Add Category</h2>
+      <p>Define a new product category and how it should behave.</p>
+    </div>
+    <form id="addCategoryForm">
+      <div class="legal-body" style="padding-top:4px;">
+        <div class="cc-existing-wrap" id="ccExistingWrap" style="display:none;">
+          <p class="cc-existing-title">Your custom categories</p>
+          <div class="cc-existing-list" id="ccExistingList"></div>
+        </div>
+        <div class="form-group"><label for="ccLabel">Category name</label><input type="text" id="ccLabel" placeholder="e.g. Frappes" required></div>
+        <div class="form-row">
+          <div class="form-group">
+            <label for="ccPage">Shows up on</label>
+            <select id="ccPage" class="form-select">
+              <option value="menu">Menu page (drinks &amp; food)</option>
+              <option value="merch">Merchandise page (wearables &amp; accessories)</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label for="ccGroup">Sidebar group</label>
+            <input type="text" id="ccGroup" list="ccGroupOptions" placeholder="e.g. Drinks, Food..." required>
+            <datalist id="ccGroupOptions"></datalist>
+          </div>
+        </div>
+        <div class="form-group">
+          <label for="ccPricing">Pricing &amp; stock style</label>
+          <select id="ccPricing" class="form-select">
+            <option value="flat">Flat price, one stock count</option>
+            <option value="sized-stock">One price, stock tracked per size (like Shirts)</option>
+            <option value="sized-price">Price varies per size (like Coffee/Tea)</option>
+          </select>
+        </div>
+        <div class="form-group" id="ccSizesField" style="display:none;">
+          <label for="ccSizes">Sizes</label>
+          <input type="text" id="ccSizes" placeholder="e.g. S, M, L, XL">
+          <p class="form-hint">Comma-separated. Becomes the default size list offered when adding a product in this category.</p>
+        </div>
+        <label class="check-row" style="margin-top:2px;">
+          <input type="checkbox" id="ccFoodFields"> Show Ingredients &amp; Allergens fields for this category
+        </label>
+      </div>
+      <div class="legal-footer">
+        <button type="submit" class="btn btn-primary btn-full" id="addCategorySubmitBtn">Add Category</button>
+      </div>
+    </form>
   </div>
 </div>
 
@@ -1110,6 +1198,46 @@
   </div>
 </div>
 
+<div class="legal-overlay" id="addressFormOverlay">
+  <div class="legal-modal address-form-modal" role="dialog" aria-modal="true" aria-labelledby="addressFormTitle">
+    <button type="button" class="legal-close" id="addressFormClose" aria-label="Close">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M6 6l12 12M18 6L6 18" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+    </button>
+    <div class="legal-header" style="padding-bottom:8px;">
+      <h2 id="addressFormTitle">Add Address</h2>
+      <p>Drop a pin or type the address — either updates the other.</p>
+    </div>
+    <div class="legal-body address-form-body">
+      <form id="addressForm">
+        <div class="form-group">
+          <label for="afLabel">Label</label>
+          <input id="afLabel" type="text" placeholder="Home, Work, Mom's house...">
+        </div>
+        <div class="form-group">
+          <label for="afAddress">Address</label>
+          <div class="address-input-row">
+            <input id="afAddress" type="text" placeholder="Street, Barangay, City" required>
+            <button type="button" class="btn btn-outline btn-sm" id="afSearchBtn">Search</button>
+          </div>
+        </div>
+        <button type="button" class="link-btn" id="afUseCurrentLocationBtn">Use my current location</button>
+        <div class="address-map-wrap">
+          <div id="addressMap"></div>
+          <p class="address-map-hint">Drag the pin to your exact delivery spot.</p>
+        </div>
+        <label class="af-default-check">
+          <input type="checkbox" id="afIsDefault">
+          Set as my default address
+        </label>
+      </form>
+    </div>
+    <div class="legal-footer" style="display:flex; gap:10px;">
+      <button type="button" class="btn btn-outline" id="addressFormCancel" style="flex:1;">Cancel</button>
+      <button type="submit" form="addressForm" class="btn btn-primary" id="addressFormSubmit" style="flex:1;">Save Address</button>
+    </div>
+  </div>
+</div>
+
 <div class="promo-overlay" id="promoOverlay">
   <div class="promo-modal" id="promoModal" role="dialog" aria-modal="true" aria-labelledby="promoModalTitle">
     <div class="promo-modal-glow"></div>
@@ -1135,6 +1263,7 @@
 
 <div class="toast-veil" id="toastVeil" aria-hidden="true"></div>
 <div class="toast" id="toast" role="status" aria-live="polite">
+  <div class="toast-accent-bar" id="toastAccentBar"></div>
   <div class="toast-icon" id="toastIcon">
     <span class="toast-steam s1"></span>
     <span class="toast-steam s2"></span>
@@ -1142,9 +1271,9 @@
     <svg id="toastIconSvg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 8h1a4 4 0 1 1 0 8h-1"/><path d="M3 8h14v7a4 4 0 0 1-4 4H7a4 4 0 0 1-4-4z"/></svg>
   </div>
   <span class="toast-msg" id="toastMsg">Added to cart</span>
-  <div class="toast-timer"><div class="toast-timer-bar" id="toastTimerBar"></div></div>
 </div>
 <script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
 
 <script src="https://cdn.jsdelivr.net/npm/@emailjs/browser@4/dist/email.min.js"></script>
@@ -1153,10 +1282,12 @@
 <script type="module" src="auth.js"></script>
 <script type="module" src="products-services.js"></script>
 <script type="module" src="settings-service.js"></script>
+<script type="module" src="categories-service.js"></script>
 <script type="module" src="combos-service.js"></script>
 <script type="module" src="orders-service.js"></script>
 <script type="module" src="cart-service.js"></script>
 <script type="module" src="wishlist-service.js"></script>
+<script type="module" src="addresses-service.js"></script>
 <script type="module" src="review-service.js"></script>
 
 <script src="email-notifications.js"></script>
