@@ -759,13 +759,17 @@ function computePdUnitPrice(p, size, options){
 }
 
 /* Same idea as optionsPriceDelta, but for calories — the product's own
-   base `calories` (admin-set, drinks only) plus whatever the selected
-   options add. Returns null (not 0) when there's genuinely no calorie
-   data at all, so the caller can hide the subtitle entirely rather
-   than showing a misleading "0 kcal". */
-function computePdCalories(p, options){
+   base `calories` (admin-set, drinks only), SIZE-SCALED to whatever
+   size is currently selected (see scaleForSize), plus whatever the
+   selected options add on top (add-ins like an extra shot cost the
+   same calories no matter what size cup they go in, so those are
+   added AFTER scaling, not scaled themselves). Returns null (not 0)
+   when there's genuinely no calorie data at all, so the caller can
+   hide the subtitle entirely rather than showing a misleading
+   "0 kcal". */
+function computePdCalories(p, options, size){
   const hasBase = typeof p.calories === 'number';
-  let total = hasBase ? p.calories : 0;
+  let total = hasBase ? scaleForSize(p, p.calories, size) : 0;
   let hasAny = hasBase;
   getOptionGroups(p).forEach(g => {
     (options[g.id] || []).forEach(cid => {
@@ -776,7 +780,30 @@ function computePdCalories(p, options){
       }
     });
   });
-  return hasAny ? total : null;
+  return hasAny ? Math.round(total) : null;
+}
+
+/* A drink's nutrition numbers (calories + the macro table) are admin-
+   entered for ONE reference size — n.servingSize if set, otherwise
+   whatever the smallest size on the product is. A 20oz obviously has
+   more sugar in it than a 12oz of the exact same drink, so every
+   value scales in proportion to the selected size's volume relative
+   to that reference size. Returns 1 (no scaling) for anything that
+   isn't a plain "<number>oz" size, or when there's no size to compare
+   against at all (unsized drinks, or nothing selected yet) — those
+   just show the admin's numbers as-is. */
+function pdSizeOz(sizeStr){
+  if(!sizeStr) return null;
+  const m = String(sizeStr).match(/(\d+(?:\.\d+)?)\s*oz/i);
+  return m ? parseFloat(m[1]) : null;
+}
+function scaleForSize(p, value, size){
+  if(typeof value !== 'number') return value;
+  const n = p.nutrition || {};
+  const refOz = pdSizeOz(n.servingSize) || pdSizeOz((getSizeOptions(p)[0] || {}).size);
+  const selOz = pdSizeOz(size);
+  if(!refOz || !selOz) return value;
+  return value * (selOz / refOz);
 }
 
 /* The small "16oz • 120 kcal" line under the product name — drinks
@@ -786,7 +813,7 @@ function pdSubtitleText(p, size, options){
   if(!DRINK_CATEGORIES.includes(p.cat)) return '';
   const parts = [];
   if(size) parts.push(size);
-  const kcal = computePdCalories(p, options || {});
+  const kcal = computePdCalories(p, options || {}, size);
   if(kcal !== null) parts.push(`~${kcal} kcal`);
   return parts.join(' • ');
 }
@@ -882,16 +909,64 @@ $(document).on('click', '#pdDescToggle', function(){
   $(this).text(nowClamped ? 'See More' : 'See Less');
 });
 
+/* Rating teaser under the gallery just jumps down to the full reviews
+   section — html already has scroll-behavior:smooth set globally, so
+   this doesn't need its own animation logic. */
+$(document).on('click', '#pdGalleryRating', function(){
+  document.getElementById('productReviews')?.scrollIntoView({ behavior:'smooth', block:'start' });
+});
+
+/* Keeps the sticky gallery's top offset pixel-accurate to the actual
+   rendered header height (via a CSS variable) instead of a guessed
+   constant in the stylesheet, and tracks the exact moment the gallery
+   transitions into its pinned state so a "docked" shadow can kick in
+   (see .pd-gallery.is-stuck in style.css) instead of the stick just
+   happening silently. Re-run on every product-detail render, since
+   #pdContent is fully replaced each time and any previous observer's
+   target no longer exists in the DOM. */
+let pdGalleryObserver = null;
+function initPdGallerySticky(){
+  const header = document.querySelector('header.site-nav');
+  const headerH = header ? Math.round(header.getBoundingClientRect().height) : 80;
+  document.documentElement.style.setProperty('--pd-sticky-top', (headerH + 12) + 'px');
+
+  if(pdGalleryObserver){ pdGalleryObserver.disconnect(); pdGalleryObserver = null; }
+  const sentinel = document.getElementById('pdGallerySentinel');
+  const gallery = document.querySelector('#pdContent .pd-gallery');
+  if(!sentinel || !gallery || !('IntersectionObserver' in window)) return;
+  if(!window.matchMedia('(min-width:981px)').matches){
+    gallery.classList.remove('is-stuck');
+    return;
+  }
+  pdGalleryObserver = new IntersectionObserver(
+    ([entry]) => gallery.classList.toggle('is-stuck', !entry.isIntersecting),
+    { rootMargin: `-${headerH + 13}px 0px 0px 0px`, threshold: 0 }
+  );
+  pdGalleryObserver.observe(sentinel);
+}
+$(window).on('resize', () => { if(document.getElementById('pdGallerySentinel')) initPdGallerySticky(); });
+
 function refreshPdPricing(p){
   const unit = computePdUnitPrice(p, pdSize, pdOptions);
   const oos = pdSize ? isSizeOutOfStock(p, pdSize) : isProductOutOfStock(p);
   $('#pdPriceDisplayValue').text(peso(unit));
   if(p.comboMeta && pdSize) $('.combo-price-original-pd').text(comboOriginalPriceForSize(p, pdSize));
-  $('#pdAddBtn').prop('disabled', oos).text(oos ? 'Out of Stock' : `Add to Cart · ${peso(unit * pdQty)}`);
+  $('#pdAddBtn').prop('disabled', oos);
+  $('#pdAddBtnLabel').text(oos ? 'Out of Stock' : `Add to Cart · ${peso(unit * pdQty)}`);
   $('#pdBuyNowBtn').prop('disabled', oos);
   $('#pdOptSummary').text(optionsSummaryText(p, pdOptions));
   const subtitle = pdSubtitleText(p, pdSize, pdOptions);
   $('#pdSubtitle').text(subtitle).toggle(!!subtitle);
+  // Nutrition table scales with size and add-ons too (see
+  // renderPdNutrition) — re-render it in place on every size/option
+  // change so it never shows stale numbers from the previous
+  // selection. Whether the section exists at all is fixed per
+  // product (it depends only on whether the admin filled in any
+  // calories/nutrition, not on which size/options are picked), so
+  // this only ever needs to update content, never add or remove
+  // the section itself.
+  const $nutrition = $('#pdNutritionSection');
+  if($nutrition.length) $nutrition.replaceWith(renderPdNutrition(p, pdSize, pdOptions));
 }
 
 /* Drinks show a range across their three sizes (e.g. "₱139–₱179");
@@ -1819,7 +1894,7 @@ async function renderOrderHistory(){
 
   const rows = orders.map(o => {
     const status = o.status || 'pending';
-    const itemsText = (o.items || []).map(it => `${it.name}${it.size ? ` (${it.size})` : ''} × ${it.qty}${it.optionsSummary ? ` — ${it.optionsSummary}` : ''}`).join(', ');
+    const itemsText = (o.items || []).map(it => `${it.name}${it.size ? ` (${it.size})` : ''} × ${it.qty}`).join(', ');
     return `
       <div class="order-card">
         <div class="order-card-head">
@@ -2391,7 +2466,12 @@ $(document).on('change', '#merchSort', function(){
    product with `ingredients` — food AND drinks), or both together for
    a sized drink. Other merch (totes, bracelets, keychains) gets
    neither. */
-function renderPdSecondary(p, options){
+/* Selection controls only — size chips and customization option chips.
+   Split out from the old renderPdSecondary so the actions bar (Buy
+   Now/Add to Cart) can sit right after these instead of after the
+   reference material below, which used to bury it under nutrition
+   tables and "about" blurbs on drinks with a lot of admin content. */
+function renderPdSelection(p, options){
   const chart = SIZE_CHARTS[p.cat];
   let sizingHtml = '';
   if(p.sizes && p.sizes.length){
@@ -2437,6 +2517,16 @@ function renderPdSecondary(p, options){
     `;
   }
   const optionsHtml = renderPdOptionGroups(p, options || {});
+  return sizingHtml + optionsHtml;
+}
+
+/* Reference-only material — ingredients/allergens, the "About the
+   Drink" blurb, and the nutrition table. None of this affects price
+   or what gets added to the cart, so it belongs below the actions
+   bar: a shopper who already knows what they want shouldn't have to
+   scroll past it to check out, but it's right there for anyone who
+   wants the details before buying. */
+function renderPdReference(p, size, options){
   let infoHtml = '';
   if(p.ingredients){
     infoHtml = `
@@ -2453,8 +2543,8 @@ function renderPdSecondary(p, options){
     `;
   }
   const aboutHtml = renderPdAbout(p);
-  const nutritionHtml = renderPdNutrition(p);
-  return sizingHtml + optionsHtml + infoHtml + aboutHtml + nutritionHtml;
+  const nutritionHtml = renderPdNutrition(p, size, options);
+  return infoHtml + aboutHtml + nutritionHtml;
 }
 
 /* "About the Drink" — a short fun-fact/backstory blurb, admin-set per
@@ -2474,24 +2564,28 @@ function renderPdAbout(p){
    same number used in the header subtitle) plus whatever macro fields
    the admin filled in. Rows with no value are skipped rather than
    shown as blank/"—", and the whole section is skipped if there's
-   nothing to show at all. Reflects the base drink as configured
-   (default size/options), not a live recompute per selection — the
-   header subtitle is what tracks the live total instead. */
-function renderPdNutrition(p){
+   nothing to show at all. LIVE: every number here scales with the
+   currently selected size (see scaleForSize) and the calories line
+   also includes any selected add-on's own kcal — refreshPdPricing
+   re-renders this same block on every size/option change so it never
+   falls out of sync with the price and subtitle above it. */
+function renderPdNutrition(p, size, options){
   if(!DRINK_CATEGORIES.includes(p.cat)) return '';
   const n = p.nutrition || {};
+  const calories = computePdCalories(p, options || {}, size);
+  const round1 = (v) => Math.round(v * 10) / 10;
   const rows = [
-    ['Serving Size', n.servingSize],
-    ['Calories', typeof p.calories === 'number' ? `${p.calories} kcal` : null],
-    ['Carbohydrates', n.carbs ? `${n.carbs} g` : null],
-    ['Sugar', n.sugar ? `${n.sugar} g` : null],
-    ['Protein', n.protein ? `${n.protein} g` : null],
-    ['Fat', n.fat ? `${n.fat} g` : null],
-    ['Sodium', n.sodium ? `${n.sodium} mg` : null],
+    ['Serving Size', size || n.servingSize],
+    ['Calories', calories !== null ? `${calories} kcal` : null],
+    ['Carbohydrates', n.carbs ? `${round1(scaleForSize(p, n.carbs, size))} g` : null],
+    ['Sugar', n.sugar ? `${round1(scaleForSize(p, n.sugar, size))} g` : null],
+    ['Protein', n.protein ? `${round1(scaleForSize(p, n.protein, size))} g` : null],
+    ['Fat', n.fat ? `${round1(scaleForSize(p, n.fat, size))} g` : null],
+    ['Sodium', n.sodium ? `${Math.round(scaleForSize(p, n.sodium, size))} mg` : null],
   ].filter(([, val]) => val !== null && val !== undefined && val !== '');
   if(!rows.length) return '';
   return `
-    <div class="pd-nutrition">
+    <div class="pd-nutrition" id="pdNutritionSection">
       <h4>Nutrition</h4>
       <table class="pd-nutrition-table">
         <tbody>
@@ -2522,10 +2616,37 @@ function renderProductDetail(){
   const startOos = pdSize ? isSizeOutOfStock(p, pdSize) : isProductOutOfStock(p);
   const hasOptions = getOptionGroups(p).length > 0;
   $('#pdContent').html(`
-    <div>
+    <div class="pd-gallery-col">
+      <div class="pd-gallery-sentinel" id="pdGallerySentinel"></div>
+      <div class="pd-gallery">
       <div class="pd-main-img"><img id="pdMainImg" src="${p.imgs[0]}" alt="${p.name}"></div>
+      ${p.imgs.length > 1 ? `
       <div class="pd-thumbs">
         ${p.imgs.map((im,i)=>`<img src="${im}" class="${i===0?'active':''}" data-thumb="${im}" alt="${p.name} view ${i+1}">`).join('')}
+      </div>
+      ` : ''}
+      <div class="pd-gallery-extra">
+        <div class="pd-trust-row">
+          <div class="pd-trust-item">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M4 8h13a3 3 0 0 1 0 6h-1" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/><path d="M4 8v8a2 2 0 0 0 2 2h7a2 2 0 0 0 2-2V8" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/><path d="M7 4.5c0 1-1 1-1 2M11 4.5c0 1-1 1-1 2" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+            <span>Made Fresh to Order</span>
+          </div>
+          <div class="pd-trust-item">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M12 3c3 3 5 6 5 9a5 5 0 0 1-10 0c0-3 2-6 5-9Z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/><path d="M9.5 15.5c0 1.5 1 2.5 2.5 2.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+            <span>Small-Batch Ingredients</span>
+          </div>
+          <div class="pd-trust-item">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none"><rect x="3" y="6" width="18" height="13" rx="2" stroke="currentColor" stroke-width="1.5"/><path d="M3 10.5h18" stroke="currentColor" stroke-width="1.5"/><path d="M6.5 15h4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+            <span>Cash · GCash · Card</span>
+          </div>
+        </div>
+        <a href="javascript:void(0)" class="pd-rating-mini" id="pdGalleryRating" style="display:none;">
+          <span class="pd-rating-mini-score" id="pdGalleryRatingScore"></span>
+          <span class="stars" id="pdGalleryRatingStars"></span>
+          <span class="pd-rating-mini-count" id="pdGalleryRatingCount"></span>
+          <svg class="pd-rating-mini-arrow" width="13" height="13" viewBox="0 0 24 24" fill="none"><path d="M9 6l6 6-6 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </a>
+      </div>
       </div>
     </div>
     <div>
@@ -2538,7 +2659,7 @@ function renderProductDetail(){
       </div>
       <p class="pd-desc pd-desc-clamped" id="pdDesc">${p.desc}${p.ingredients ? ' Made in small batches at our counter, using seasonal ingredients whenever we can.' : ''}</p>
       <button type="button" class="pd-desc-toggle" id="pdDescToggle" style="display:none;">See More</button>
-      ${renderPdSecondary(p, pdOptions)}
+      ${renderPdSelection(p, pdOptions)}
       <div class="pd-actions-wrap" id="pdActionsWrap">
         ${hasOptions ? `<div class="pd-opt-summary" id="pdOptSummary">${optionsSummaryText(p, pdOptions)}</div>` : ''}
         <div class="pd-actions">
@@ -2548,14 +2669,21 @@ function renderProductDetail(){
             <button data-qty-action="plus">+</button>
           </div>
           <div class="pd-actions-btns">
-            <button class="btn btn-outline" id="pdBuyNowBtn" data-pd-buy-now="${p.id}" ${startOos ? 'disabled' : ''}>Buy Now</button>
-            <button class="btn btn-primary" id="pdAddBtn" data-pd-add="${p.id}" ${startOos ? 'disabled' : ''}>${startOos ? 'Out of Stock' : `Add to Cart · ${peso(startPrice)}`}</button>
+            <button class="btn btn-outline" id="pdBuyNowBtn" data-pd-buy-now="${p.id}" ${startOos ? 'disabled' : ''}>
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M13 2 4 14h6l-1 8 9-12h-6l1-8Z"/></svg>
+              Buy Now
+            </button>
+            <button class="btn btn-primary" id="pdAddBtn" data-pd-add="${p.id}" ${startOos ? 'disabled' : ''}>
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M3 4h2l2.4 12.2a2 2 0 0 0 2 1.6h7.7a2 2 0 0 0 2-1.6L21 8H6" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/><circle cx="10" cy="21" r="1.4" fill="currentColor"/><circle cx="18" cy="21" r="1.4" fill="currentColor"/></svg>
+              <span id="pdAddBtnLabel">${startOos ? 'Out of Stock' : `Add to Cart · ${peso(startPrice)}`}</span>
+            </button>
           </div>
           <button type="button" class="wishlist-btn pd-wishlist-btn ${isWishlisted(p.id) ? 'active' : ''}" data-wishlist-toggle="${p.id}" aria-label="Save to favorites">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="${isWishlisted(p.id) ? 'currentColor' : 'none'}"><path d="M12 21s-7.5-4.6-10-9.3C.6 8.1 2.4 4.5 6 4c2-.3 3.7.7 6 3 2.3-2.3 4-3.3 6-3 3.6.5 5.4 4.1 4 7.7C19.5 16.4 12 21 12 21z" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/></svg>
           </button>
         </div>
       </div>
+      ${renderPdReference(p, pdSize, pdOptions)}
     </div>
   `);
   initPdDescToggle();
@@ -2576,6 +2704,7 @@ function renderProductDetail(){
   $('#relatedGrid').html([...related, ...fill].map(productCard).join(''));
   initReveal();
   loadAndRenderReviews(p.id);
+  initPdGallerySticky();
 }
 
 /* ================= RATINGS & REVIEWS ================= */
@@ -2684,6 +2813,19 @@ function renderReviewsSection(){
       ${total ? `<div class="rating-bars">${barsHtml}</div>` : ''}
     </div>
   `;
+
+  // Small rating teaser under the product gallery, only shown once
+  // there's an actual score to show — an empty/zero rating there
+  // would just be noise next to the "no reviews yet" empty state
+  // already shown further down in the reviews section itself.
+  if(total){
+    $('#pdGalleryRatingScore').text(avg.toFixed(1));
+    $('#pdGalleryRatingStars').text(starString(avg));
+    $('#pdGalleryRatingCount').text(`${total} review${total === 1 ? '' : 's'}`);
+    $('#pdGalleryRating').show();
+  } else {
+    $('#pdGalleryRating').hide();
+  }
 
   const realUser = window.currentUser && !window.currentUser.isAnonymous ? window.currentUser : null;
   const myReview = realUser ? reviews.find(r => r.uid === realUser.uid) : null;
