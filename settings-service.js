@@ -9,6 +9,19 @@ const CACHE_KEY = "cc_settings_cache_v1";
 
 export const DEFAULT_DELIVERY_FEE = 60;
 
+export const DEFAULT_PROMO_POPUP = {
+  enabled: true,
+  badgeText: 'New',
+  eyebrow: 'Just Dropped',
+  headline: 'Fresh Brews,<br>Fresh Merch.',
+  copy: 'New seasonal drinks and a handcrafted merch line just landed at Crafts & Crumbs — brewed and stitched with the same care as always.',
+  ctaText: 'Take a Look',
+  dismissText: 'Maybe later',
+  category: '',
+  sortMode: 'featured',
+  productIds: []
+};
+
 export function getCachedSettings(){
   try{
     const raw = localStorage.getItem(CACHE_KEY);
@@ -27,9 +40,11 @@ function setCachedSettings(settings){
 
 export async function fetchSettings(){
   const snap = await getDoc(doc(db, SETTINGS_COL, GENERAL_DOC_ID));
+  const data = snap.exists() ? snap.data() : {};
   const settings = {
     deliveryFee: DEFAULT_DELIVERY_FEE,
-    ...(snap.exists() ? snap.data() : {})
+    ...data,
+    promoPopup: { ...DEFAULT_PROMO_POPUP, ...(data.promoPopup || {}) }
   };
   setCachedSettings(settings);
   return settings;
@@ -41,4 +56,16 @@ export async function updateDeliveryFee(fee){
   setCachedSettings({ ...cached, deliveryFee: fee });
 }
 
-window.CCSettings = { fetchSettings, updateDeliveryFee, getCachedSettings, DEFAULT_DELIVERY_FEE };
+/* promoPopup is always saved as a whole object (the admin form always
+   submits every field), so a shallow Firestore merge on just this one
+   top-level key is enough — no need for dot-path field updates. */
+export async function updatePromoPopup(promoPopup){
+  await setDoc(doc(db, SETTINGS_COL, GENERAL_DOC_ID), { promoPopup }, { merge: true });
+  const cached = getCachedSettings() || { deliveryFee: DEFAULT_DELIVERY_FEE, promoPopup: DEFAULT_PROMO_POPUP };
+  setCachedSettings({ ...cached, promoPopup });
+}
+
+window.CCSettings = {
+  fetchSettings, updateDeliveryFee, updatePromoPopup, getCachedSettings,
+  DEFAULT_DELIVERY_FEE, DEFAULT_PROMO_POPUP
+};
