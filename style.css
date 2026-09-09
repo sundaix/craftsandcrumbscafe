@@ -1078,17 +1078,56 @@
   .pd-thumbs img{ width:74px; height:74px; object-fit:cover; border-radius:10px; cursor:pointer; opacity:0.6; transition:0.2s; border:2px solid transparent; }
   .pd-thumbs img:hover, .pd-thumbs img.active{ opacity:1; border-color:var(--sage); }
   .pd-price{ font-family:'Lora',serif; font-size:28px; font-weight:700; color:var(--cta); margin:14px 0; }
+  /* Quick-glance "16oz • ~120 kcal" line under the product name —
+     drinks only, updates live as size/options change. Empty (non-drink
+     products, or a drink with no calorie data at all) collapses to
+     nothing rather than leaving a blank line. */
+  .pd-subtitle{ font-size:13px; font-weight:500; color:var(--text-faint); margin:0 0 2px; }
+  .pd-subtitle:empty{ display:none; }
   .pd-desc{ color:var(--text-soft); font-size:14.5px; line-height:1.8; margin-bottom:20px; }
+  .pd-desc-clamped{
+    display:-webkit-box; -webkit-line-clamp:3; -webkit-box-orient:vertical; overflow:hidden;
+  }
+  .pd-desc-toggle{
+    background:none; border:none; padding:0; margin:-12px 0 20px; font-size:13px; font-weight:600;
+    color:var(--sage); text-decoration:underline; text-underline-offset:3px; cursor:pointer;
+  }
   .pd-info-grid{ display:grid; grid-template-columns:1fr 1fr; gap:14px; margin-bottom:24px; }
   .pd-ingredients{ background:var(--card); border-radius:var(--radius-sm); padding:16px 18px; margin-bottom:0; }
   .pd-ingredients h4{ font-size:13px; text-transform:uppercase; letter-spacing:0.06em; margin-bottom:8px; color:var(--sage); font-family:'Poppins',sans-serif; font-weight:600; }
   .pd-ingredients p{ font-size:13px; color:var(--text-soft); line-height:1.7; }
   .pd-allergens{ background:rgba(192,133,82,0.10); border:1px solid rgba(192,133,82,0.22); }
   .pd-allergens h4{ color:var(--cta-dark); }
+
+  /* "About the Drink" fun-fact card — same card language as
+     Ingredients/Allergens above it, just full-width on its own row. */
+  .pd-about{
+    background:var(--card); border-radius:var(--radius-sm); padding:16px 18px; margin-bottom:24px;
+  }
+  .pd-about h4{ font-size:13px; text-transform:uppercase; letter-spacing:0.06em; margin-bottom:8px; color:var(--sage); font-family:'Poppins',sans-serif; font-weight:600; }
+  .pd-about p{ font-size:13.5px; color:var(--text-soft); line-height:1.75; font-style:italic; }
+
+  /* Nutrition table — plain label/value rows, same hairline rhythm as
+     the size guide table so drink pages read as one visual family. */
+  .pd-nutrition{ margin-bottom:24px; }
+  .pd-nutrition h4{ font-size:13px; text-transform:uppercase; letter-spacing:0.06em; margin-bottom:10px; color:var(--sage); font-family:'Poppins',sans-serif; font-weight:600; }
+  .pd-nutrition-table{ width:100%; border-collapse:collapse; font-size:13.5px; }
+  .pd-nutrition-table td{ padding:9px 2px; border-bottom:1px solid var(--line); color:var(--text); }
+  .pd-nutrition-table tr:last-child td{ border-bottom:none; }
+  .pd-nutrition-table td:first-child{ color:var(--text-soft); }
+  .pd-nutrition-table td:last-child{ text-align:right; font-weight:600; }
   @media (max-width:520px){
     .pd-info-grid{ grid-template-columns:1fr; }
   }
-  .pd-actions{ display:flex; align-items:center; gap:16px; margin-bottom:10px; }
+  .pd-actions{ display:flex; align-items:center; gap:16px; margin-bottom:10px; flex-wrap:wrap; }
+  /* Buy Now (outline) + Add to Cart (filled) share the remaining space
+     as a pair, so the qty stepper and wishlist heart keep their own
+     fixed width instead of getting squeezed. */
+  .pd-actions-btns{ display:flex; gap:10px; flex:1 1 220px; min-width:0; }
+  .pd-actions-btns .btn{ flex:1; white-space:nowrap; }
+  @media (max-width:480px){
+    .pd-actions-btns{ order:3; flex-basis:100%; }
+  }
   .related-title{ margin:64px 0 24px; font-size:22px; }
 
   /* ---- Product detail: wearables size selector ---- */
@@ -1495,6 +1534,7 @@
   }
   .order-detail-item:last-child{ border-bottom:none; padding-bottom:0; }
   .order-detail-item-name{ font-weight:600; font-size:13.5px; }
+  .order-detail-item-opts{ font-size:11.5px; color:var(--text-faint); margin-top:3px; }
   .order-detail-item-meta{ font-size:12px; color:var(--text-soft); margin-top:3px; }
   .order-detail-item-total{ font-weight:700; font-size:13.5px; white-space:nowrap; font-family:'Poppins',sans-serif; }
 
@@ -1870,53 +1910,121 @@
   .size-price-input:focus{ border-color:var(--sage); box-shadow:var(--ring); }
 
   /* ---------- Admin: option groups builder (drinks only) ---------- */
-  .opt-groups-builder{ display:flex; flex-direction:column; gap:14px; margin-bottom:10px; }
-  .opt-groups-empty{ margin:0 0 10px; }
-  .opt-group-card{
-    padding:14px; background:var(--bg); border:1px solid var(--line); border-radius:10px;
+  .opt-groups-builder{ display:flex; flex-direction:column; gap:16px; margin-bottom:12px; }
+
+  .drink-details-grid{ display:grid; grid-template-columns:1fr 1fr; gap:14px; }
+  .drink-details-grid-4{ grid-template-columns:repeat(4,1fr); }
+  @media (max-width:640px){
+    .drink-details-grid, .drink-details-grid-4{ grid-template-columns:1fr 1fr; }
   }
-  .opt-group-card-head{ display:flex; align-items:center; gap:8px; margin-bottom:10px; flex-wrap:wrap; }
+
+  /* Empty state — a quiet dashed card rather than one bare line of text,
+     so "nothing here yet" reads as an intentional state, not a gap. */
+  .opt-groups-empty{
+    display:flex; flex-direction:column; align-items:center; text-align:center; gap:10px;
+    padding:28px 20px; border:1px dashed var(--line-strong); border-radius:14px;
+    color:var(--text-faint); background:var(--bg);
+  }
+  .opt-groups-empty svg{ color:var(--text-faint); }
+  .opt-groups-empty p{ font-size:12.5px; line-height:1.6; margin:0; }
+
+  /* Each option group is its own elevated card — white against the
+     form's cream background, with a soft shadow instead of a flat
+     border, so a stack of several groups reads as distinct, orderly
+     units rather than one long run-on block of inputs. */
+  .opt-group-card{
+    padding:18px; background:#fff; border:1px solid var(--line); border-radius:14px;
+    box-shadow:var(--shadow-sm);
+  }
+  .opt-group-card-top{ display:flex; align-items:center; justify-content:space-between; margin-bottom:12px; }
+  .opt-group-index{
+    font-size:11px; font-weight:700; letter-spacing:0.08em; text-transform:uppercase; color:var(--sage);
+    font-family:'Poppins',sans-serif;
+  }
   .opt-group-label-input{
-    flex:1; min-width:160px; padding:8px 10px; border-radius:8px; border:1px solid var(--line-strong);
+    width:100%; padding:11px 14px; border-radius:10px; border:1px solid var(--line-strong);
+    font-size:14px; font-weight:600; outline:none; background:var(--bg); margin-bottom:14px;
+    transition:border-color 0.2s ease, box-shadow 0.2s ease;
+  }
+  .opt-group-label-input:focus{ border-color:var(--sage); box-shadow:var(--ring); background:#fff; }
+
+  /* Single/Multiple choice as a segmented pill toggle instead of a
+     bare <select> — reads at a glance and matches the chip language
+     used everywhere else on the product page this builder feeds. */
+  .opt-group-type-row{ display:flex; align-items:center; gap:14px; flex-wrap:wrap; margin-bottom:16px; }
+  .opt-type-toggle{ display:inline-flex; background:var(--card); border-radius:100px; padding:3px; gap:2px; }
+  .opt-type-btn{
+    padding:8px 16px; border-radius:100px; border:none; background:none; cursor:pointer;
+    font-size:12px; font-weight:600; color:var(--text-soft); font-family:'Poppins',sans-serif;
+    transition:0.2s var(--ease-premium); white-space:nowrap;
+  }
+  .opt-type-btn.active{ background:var(--ink); color:#fff; }
+  .opt-max-field{
+    display:flex; align-items:center; gap:8px; font-size:12px; font-weight:600; color:var(--text-soft);
+    cursor:text;
+  }
+  .opt-group-max-input{
+    width:56px; padding:7px 8px; border-radius:8px; border:1px solid var(--line-strong);
+    font-size:13px; outline:none; background:#fff; text-align:center;
+  }
+  .opt-group-max-input:focus{ border-color:var(--sage); box-shadow:var(--ring); }
+
+  /* Each choice is its own compact card with a stable grid: the label
+     always spans full width, price/kcal sit in bordered input-groups
+     with their unit baked into the field instead of a floating
+     placeholder, and the two toggles + remove button line up on their
+     own row. Stacks to one column on narrow admin panels (see the
+     screenshot this replaced) and settles into a single aligned row
+     once there's room — same structure either way, just reflowed. */
+  .opt-choice-rows{ display:flex; flex-direction:column; gap:10px; margin-bottom:14px; }
+  .opt-choice-row{
+    display:grid; gap:8px 10px; align-items:center;
+    grid-template-columns:1fr 1fr;
+    grid-template-areas:
+      "label label"
+      "price kcal"
+      "toggles remove";
+    padding:12px; background:var(--bg); border:1px solid var(--line); border-radius:11px;
+  }
+  .opt-choice-label-input{
+    grid-area:label; width:100%; padding:8px 11px; border-radius:9px; border:1px solid var(--line-strong);
     font-size:13px; font-weight:600; outline:none; background:#fff;
     transition:border-color 0.2s ease, box-shadow 0.2s ease;
   }
-  .opt-group-label-input:focus{ border-color:var(--sage); box-shadow:var(--ring); }
-  .opt-group-type-select{
-    padding:8px 10px; border-radius:8px; border:1px solid var(--line-strong);
-    font-size:12.5px; background:#fff; outline:none; cursor:pointer;
+  .opt-choice-label-input:focus{ border-color:var(--sage); box-shadow:var(--ring); }
+  .opt-choice-price-wrap, .opt-choice-kcal-wrap{
+    grid-area:price; display:flex; align-items:stretch; border:1px solid var(--line-strong);
+    border-radius:9px; background:#fff; overflow:hidden;
   }
-  .opt-group-max-input{
-    width:64px; padding:8px 10px; border-radius:8px; border:1px solid var(--line-strong);
-    font-size:13px; outline:none; background:#fff;
-  }
-  .opt-group-max-input:focus{ border-color:var(--sage); box-shadow:var(--ring); }
-  .opt-group-remove{ margin-left:auto; flex-shrink:0; }
-
-  .opt-choice-rows{ display:flex; flex-direction:column; gap:8px; margin-bottom:10px; }
-  .opt-choice-row{ display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
-  .opt-choice-label-input{
-    flex:2; min-width:130px; padding:7px 10px; border-radius:8px; border:1px solid var(--line-strong);
-    font-size:12.5px; outline:none; background:#fff;
-    transition:border-color 0.2s ease, box-shadow 0.2s ease;
+  .opt-choice-kcal-wrap{ grid-area:kcal; }
+  .opt-choice-price-wrap span, .opt-choice-kcal-wrap span{
+    display:flex; align-items:center; padding:0 9px; font-size:11px; font-weight:700;
+    color:var(--text-faint); background:var(--card); white-space:nowrap;
   }
   .opt-choice-price-input, .opt-choice-kcal-input{
-    width:72px; padding:7px 8px; border-radius:8px; border:1px solid var(--line-strong);
-    font-size:12.5px; outline:none; background:#fff;
+    flex:1; min-width:0; width:100%; padding:8px 8px; border:none; outline:none;
+    font-size:12.5px; background:transparent;
   }
-  .opt-choice-label-input:focus, .opt-choice-price-input:focus, .opt-choice-kcal-input:focus{
-    border-color:var(--sage); box-shadow:var(--ring);
-  }
-  .opt-choice-check{
-    display:flex; align-items:center; gap:5px; font-size:11.5px; color:var(--text-faint);
+  .opt-choice-price-wrap:focus-within, .opt-choice-kcal-wrap:focus-within{ border-color:var(--sage); box-shadow:var(--ring); }
+  .opt-choice-toggles{ grid-area:toggles; display:flex; align-items:center; gap:14px; flex-wrap:wrap; }
+  .opt-toggle-pill{
+    display:flex; align-items:center; gap:6px; font-size:11.5px; font-weight:600; color:var(--text-soft);
     cursor:pointer; user-select:none; white-space:nowrap;
   }
-  .opt-choice-check input{ width:14px; height:14px; accent-color:var(--sage); cursor:pointer; }
+  .opt-toggle-pill input{ width:14px; height:14px; accent-color:var(--sage); cursor:pointer; }
   .opt-choice-remove{
-    background:none; border:none; color:var(--text-faint); font-size:16px; line-height:1;
-    cursor:pointer; padding:4px 6px; border-radius:6px; transition:background .18s ease, color .18s ease;
+    grid-area:remove; justify-self:end; display:inline-flex; align-items:center; justify-content:center;
+    width:26px; height:26px; background:#fff; border:1px solid var(--line-strong); border-radius:8px;
+    color:var(--text-faint); cursor:pointer; transition:background .18s ease, color .18s ease, border-color .18s ease;
   }
-  .opt-choice-remove:hover{ background:var(--danger); color:#fff; }
+  .opt-choice-remove:hover{ background:var(--danger); color:#fff; border-color:var(--danger); }
+
+  @media (min-width:640px){
+    .opt-choice-row{
+      grid-template-columns:2fr 96px 96px auto 28px;
+      grid-template-areas:"label price kcal toggles remove";
+    }
+  }
 
   /* Number inputs in the builder are typed, not scrolled — same
      reasoning as the Price/Stock fields above. */
