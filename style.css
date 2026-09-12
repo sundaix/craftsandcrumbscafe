@@ -2724,6 +2724,12 @@
   transition:transform 0.55s var(--ease-premium), opacity 0.5s var(--ease-premium);
 }
 .promo-overlay.open .promo-modal{ transform:translateY(0) scale(1); opacity:1; }
+/* A hovered stage card zooms in past its normal footprint (see
+   .promo-stage-card:hover below) — it needs to physically escape this
+   modal's overflow:hidden or the enlarge reads as a crop instead of a
+   zoom. Only relax it while a card is actually hovered, so the
+   decorative glow/sparkles stay clipped the rest of the time. */
+.promo-modal:has(.promo-stage-card:hover){ overflow:visible; }
 
 /* Soft rotating glow behind the content — reads as premium light,
    not a gimmick, since it stays slow and subtle. */
@@ -2822,9 +2828,20 @@
   height:186px; margin:6px auto 2px;
   perspective:1100px;
 }
+/* Raised above the headline/copy/actions below it (all z-index:1
+   siblings within .promo-modal) only while a card is zoomed, so the
+   enlarged card renders in front of that text instead of being
+   painted over by it. */
+.promo-stage:has(.promo-stage-card:hover){ z-index:5; }
 .promo-stage-cards{
   position:relative; width:100%; height:100%;
   transform-style:preserve-3d;
+}
+/* Spotlight effect: once any card is hovered, dim and soften the
+   others so the zoomed one reads as the clear focus rather than
+   fighting its neighbors for attention. */
+.promo-stage-cards:has(.promo-stage-card:hover) .promo-stage-card:not(:hover){
+  opacity:0.4; filter:blur(1px) saturate(0.7);
 }
 .promo-stage-card{
   position:absolute; top:0; left:50%;
@@ -2833,6 +2850,9 @@
   box-shadow:0 18px 38px rgba(33,28,22,0.22), 0 2px 8px rgba(33,28,22,0.08);
   overflow:hidden;
   opacity:0;
+  z-index:var(--z, 1);
+  will-change:transform;
+  backface-visibility:hidden;
   transform:
     translate(calc(-50% + (var(--offsetx, 0) * 1px)), 16px)
     translateZ(calc(var(--depth, 0) * -46px))
@@ -2841,17 +2861,20 @@
     scale(calc(1 - (var(--depth, 0) * 0.09)));
   animation:promoCardIn 0.75s var(--ease-premium) forwards;
   animation-delay:calc(0.5s + (var(--i, 0) * 0.14s));
-  transition:transform 0.45s var(--ease-premium), box-shadow 0.3s ease;
-  cursor:default;
+  transition:transform 0.6s var(--ease-premium), box-shadow 0.5s var(--ease-premium), opacity 0.4s var(--ease-premium), filter 0.4s var(--ease-premium);
 }
+/* Only the real customer popup's cards are clickable — the admin
+   preview mirrors this hover/zoom effect for accuracy but has nothing
+   to navigate to, so it keeps the default cursor there. */
+#promoStageCards .promo-stage-card{ cursor:pointer; }
 .promo-stage-card:hover{
   transform:
-    translate(calc(-50% + (var(--offsetx, 0) * 1px)), 4px)
-    translateZ(30px)
+    translate(calc(-50% + (var(--offsetx, 0) * 1px)), -8px)
+    translateZ(70px)
     rotateY(0deg) rotate(0deg)
-    scale(1.06) !important;
-  box-shadow:0 24px 48px rgba(33,28,22,0.3);
-  z-index:20 !important;
+    scale(1.55) !important;
+  box-shadow:0 30px 60px rgba(33,28,22,0.38);
+  z-index:40 !important;
 }
 @keyframes promoCardIn{
   from{
@@ -2868,11 +2891,14 @@
 /* Gentle continuous bob lives on a CHILD element rather than the card
    itself, so it composes with (instead of fighting) the card's own
    fan-position transform above — two elements, two independent
-   transforms, no keyframe conflict. */
+   transforms, no keyframe conflict. Paused on hover so the zoomed,
+   info-revealing card holds still long enough to actually read. */
 .promo-stage-card-float{
+  position:relative;
   width:100%; height:100%;
   animation:promoCardFloat 3.4s ease-in-out infinite;
 }
+.promo-stage-card:hover .promo-stage-card-float{ animation-play-state:paused; }
 @keyframes promoCardFloat{
   0%, 100%{ transform:translateY(0); }
   50%{ transform:translateY(-5px); }
@@ -2888,6 +2914,34 @@
 .promo-stage-card-price{
   display:block; font-size:11px; font-weight:600; color:var(--cta-dark);
   font-family:'Lora', serif; margin-top:2px;
+}
+
+/* Brief-info reveal: hidden by default, fades/slides over the whole
+   card face (image + name/price) on hover so the customer gets a
+   description without leaving the popup. pointer-events:none so it
+   never steals the click that should open the product. Typography
+   matches how the rest of the site voices product copy — italic Lora
+   serif, the same treatment reviews and the hero's emphasis get —
+   instead of reading like a generic e-commerce tooltip. */
+.promo-stage-card-desc{
+  position:absolute; inset:0;
+  display:flex; flex-direction:column; justify-content:flex-end;
+  padding:12px;
+  background:linear-gradient(180deg, rgba(33,28,22,0) 26%, rgba(33,28,22,0.6) 58%, rgba(33,28,22,0.92) 100%);
+  opacity:0; transform:translateY(8px) scale(0.98);
+  transition:opacity 0.4s var(--ease-premium) 0.05s, transform 0.4s var(--ease-premium) 0.05s;
+  pointer-events:none;
+  text-align:left;
+}
+.promo-stage-card:hover .promo-stage-card-desc{ opacity:1; transform:translateY(0) scale(1); }
+.promo-stage-card-desc p{
+  margin:0; color:#F5EFE4; font-family:'Lora', serif; font-style:italic; font-weight:400;
+  font-size:12px; line-height:1.5;
+  display:-webkit-box; -webkit-line-clamp:4; -webkit-box-orient:vertical; overflow:hidden;
+}
+.promo-stage-card-cta{
+  display:block; margin-top:9px; font-size:10px; font-weight:600;
+  letter-spacing:var(--tracking-wide); text-transform:uppercase; color:var(--cta);
 }
 
 @media (max-width:520px){
