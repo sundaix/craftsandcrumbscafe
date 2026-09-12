@@ -47,8 +47,12 @@
     outline-offset:3px;
     border-radius:4px;
   }
+  html{ height:100%; }
   body{
     margin:0;
+    min-height:100vh;
+    display:flex;
+    flex-direction:column;
     background:var(--bg);
     color:var(--text);
     font-family:'Poppins', sans-serif;
@@ -58,6 +62,16 @@
     -webkit-font-smoothing:antialiased;
     -moz-osx-font-smoothing:grayscale;
   }
+  /* The whole reason the footer used to jump around between pages:
+     with no rule pinning it, its vertical position was just whatever
+     the active page's content height happened to leave behind — high
+     and cramped on a short page (login, an empty cart), fine on a
+     tall one. #app absorbing the leftover viewport height (and the
+     footer refusing to shrink) means the footer now always sits at
+     the bottom of the viewport on short pages and directly below
+     content on tall ones — consistent everywhere, no per-page jump. */
+  #app{ flex:1 0 auto; }
+  .footer-new{ flex-shrink:0; }
   h1,h2,h3,h4{
     font-family:'Lora', serif;
     font-weight:600;
@@ -476,9 +490,10 @@
   .wishlist-btn:hover{ transform:scale(1.08); background:#fff; }
   .wishlist-btn.active{ color:var(--danger); }
   .pd-wishlist-btn{
-    position:static; width:44px; height:44px; flex-shrink:0;
-    background:transparent; border:1px solid var(--line-strong);
+    position:static; width:46px; height:46px; flex-shrink:0;
+    background:#fff; border:1px solid var(--line-strong);
   }
+  .pd-wishlist-btn:hover{ border-color:var(--danger); background:var(--danger-tint); }
 
   .menu-heading-row{ display:flex; align-items:center; justify-content:space-between; gap:16px; flex-wrap:wrap; }
   .menu-heading-row h1{ margin:0; }
@@ -602,7 +617,16 @@
 
   .best-card{ position:relative; }
   .best-card .product-img{ height:230px; border-radius:var(--radius-lg) var(--radius-lg) 0 0; }
-  .best-card .product-img img{ transition:transform 0.9s var(--ease-premium, ease); }
+  .best-card .product-img img{
+    transition:transform 0.9s var(--ease-premium, ease);
+    animation:bestImgBreathe 7s ease-in-out infinite;
+    animation-delay:calc(var(--i, 0) * 0.4s);
+  }
+  @keyframes bestImgBreathe{
+    0%, 100%{ transform:scale(1); }
+    50%{ transform:scale(1.045); }
+  }
+  .best-card:hover .product-img img{ animation-play-state:paused; transform:scale(1.08); }
   .best-card-shade{
     position:absolute; inset:0;
     background:linear-gradient(180deg, rgba(46,43,39,0) 50%, rgba(33,28,22,0.5) 100%);
@@ -623,7 +647,23 @@
     transition:transform 0.4s var(--ease-premium, ease), box-shadow 0.4s ease;
   }
   .best-card:hover .bestseller-tag{ transform:translateY(-2px) scale(1.05); box-shadow:0 8px 20px rgba(33,28,22,0.34); }
-  .best-card .product-desc{ display:none; }
+  /* Rank #1 gets a distinct ribbon instead of the plain numbered circle,
+     so the row reads as curated rather than a uniform repeating grid. */
+  .bestseller-tag.tag-top{
+    width:auto; height:auto; padding:7px 13px; border-radius:100px;
+    background:linear-gradient(120deg,#e9c589,var(--cta-dark));
+    font-family:'Poppins',sans-serif; font-weight:700; font-style:normal; font-size:9.5px;
+    letter-spacing:0.09em; text-transform:uppercase; color:#fff; border:none;
+  }
+  .best-card .product-desc{
+    display:block; max-height:0; opacity:0; overflow:hidden; margin-top:0;
+    transition:max-height 0.4s var(--ease-premium, ease), opacity 0.3s ease, margin-top 0.4s ease;
+  }
+  .best-card:hover .product-desc{ max-height:64px; opacity:1; margin-top:6px; }
+  .best-card-rating{
+    display:none; align-items:center; gap:6px; margin-top:6px; font-size:11px; color:var(--text-faint);
+  }
+  .best-card-rating.show{ display:flex; }
   .best-card .eyebrow.best-eyebrow{ font-size:10px; letter-spacing:0.14em; color:var(--sage); }
   .best-card .product-info{ padding:22px 22px 24px; }
   .best-card .product-name{ transition:color 0.25s ease; }
@@ -679,6 +719,7 @@
   @media (prefers-reduced-motion: reduce){
     .carousel-track .product-card{ opacity:1; transform:none; animation:none; }
     .best-card .product-img::after{ display:none; }
+    .best-card .product-img img{ animation:none; }
   }
 
   .carousel-arrow{
@@ -814,25 +855,53 @@
     align-items:start;
   }
 
-  /* Summary card: big score, stars, distribution bars — sits sticky
-     alongside the list so it stays visible while scanning reviews. */
+  /* Star rating — gradient-fill overlay technique. Two stacked identical
+     star rows: a muted track underneath, and a gold-gradient row on top
+     clipped to a percentage width, giving smooth fractional ratings
+     (e.g. 4.3 stars) without per-star SVG math. */
+  .star-rating{ position:relative; display:inline-block; line-height:1; white-space:nowrap; font-size:12px; letter-spacing:2px; }
+  .star-rating-track, .star-rating-fill{ display:block; }
+  .star-rating-track{ color:var(--line-strong); }
+  .star-rating-fill{
+    position:absolute; top:0; left:0; overflow:hidden; white-space:nowrap;
+    background:linear-gradient(120deg,#e9c589 10%,var(--cta-dark) 85%);
+    -webkit-background-clip:text; background-clip:text; color:transparent;
+  }
+  .star-rating.stars-lg{ font-size:22px; letter-spacing:4px; margin-top:10px; }
+  .star-rating.stars-sm{ font-size:11px; letter-spacing:1.5px; }
+
+  /* Summary card: big score, qualitative badge, stars, distribution bars —
+     sits alongside the list so it stays visible while scanning reviews. */
   .reviews-summary-card{
-    position:sticky; top:100px;
-    background:var(--card); border-radius:var(--radius); padding:26px 24px;
+    background:linear-gradient(165deg,#fff,var(--card)); border:1px solid var(--line);
+    border-radius:var(--radius-lg); padding:28px 24px; box-shadow:var(--shadow-sm);
     display:flex; flex-direction:column; align-items:flex-start;
   }
-  .review-summary-score{ font-family:'Lora',serif; font-size:44px; font-weight:600; color:var(--ink); line-height:1; }
-  .stars-lg{ font-size:15px; margin-top:8px; }
-  .review-summary-count{ font-size:12px; color:var(--text-faint); margin-top:6px; letter-spacing:0.02em; }
-  .rating-bars{ width:100%; margin-top:22px; padding-top:20px; border-top:1px solid var(--line); display:flex; flex-direction:column; gap:7px; }
+  .reviews-summary-card-empty{
+    align-items:center; text-align:center; padding:34px 20px; gap:2px;
+  }
+  .reviews-summary-card-empty svg{ margin-bottom:10px; }
+  .review-summary-empty-title{ font-family:'Lora',serif; font-size:15px; font-weight:600; color:var(--ink); }
+  .review-summary-empty-sub{ font-size:11.5px; color:var(--text-faint); margin-top:4px; max-width:150px; line-height:1.5; }
+  .review-summary-badge{
+    font-size:10px; font-weight:700; letter-spacing:0.06em; text-transform:uppercase;
+    color:var(--cta-dark); background:rgba(168,111,65,0.12); padding:4px 10px;
+    border-radius:100px; margin-bottom:14px;
+  }
+  .review-summary-score{ font-family:'Lora',serif; font-size:48px; font-weight:600; color:var(--ink); line-height:1; }
+  .review-summary-count{ font-size:12px; color:var(--text-faint); margin-top:8px; letter-spacing:0.02em; }
+  .rating-bars{ width:100%; margin-top:22px; padding-top:20px; border-top:1px solid var(--line); display:flex; flex-direction:column; gap:8px; }
   .rating-bar-row{ display:flex; align-items:center; gap:8px; }
   .rating-bar-label{
     font-size:11px; font-weight:600; color:var(--text-soft); width:14px; flex:none;
     display:flex; align-items:center; gap:1px;
   }
   .rating-bar-star{ color:var(--cta-dark); font-size:9px; }
-  .rating-bar-track{ flex:1; height:5px; border-radius:100px; background:var(--line-strong); overflow:hidden; }
-  .rating-bar-fill{ height:100%; background:var(--cta-dark); border-radius:100px; transition:width 0.6s var(--ease-premium); }
+  .rating-bar-track{ flex:1; height:6px; border-radius:100px; background:var(--line-strong); overflow:hidden; }
+  .rating-bar-fill{
+    height:100%; border-radius:100px; transition:width 0.7s var(--ease-premium);
+    background:linear-gradient(90deg,#e9c589,var(--cta-dark));
+  }
   .rating-bar-pct{ font-size:10.5px; color:var(--text-faint); width:30px; text-align:right; flex:none; }
 
   /* Main column: sort control, list, form */
@@ -841,14 +910,19 @@
   .reviews-sort-wrap{ padding:3px 12px 3px 14px; }
 
   .review-list{ display:flex; flex-direction:column; }
-  .real-review{ border:none; padding:22px 0 !important; border-top:1px solid var(--line); margin:0; background:transparent; box-shadow:none; }
-  .real-review:hover{ transform:none; box-shadow:none; }
+  .real-review{
+    border:none; padding:22px 18px !important; border-top:1px solid var(--line); margin:0 -18px;
+    background:transparent; box-shadow:none; border-radius:var(--radius);
+    transition:background 0.25s ease, box-shadow 0.25s var(--ease-premium);
+  }
+  .real-review:hover{ transform:none; background:rgba(255,255,255,0.55); box-shadow:var(--shadow-sm); }
   .real-review:first-child{ border-top:none; padding-top:14px !important; }
   .real-review .review-top{ align-items:flex-start; gap:12px; margin-bottom:10px; }
   .review-avatar{
-    flex:none; width:36px; height:36px; border-radius:50%;
+    flex:none; width:38px; height:38px; border-radius:50%;
     display:flex; align-items:center; justify-content:center;
     color:#fff; font-family:'Lora',serif; font-weight:600; font-size:13px; letter-spacing:0.02em;
+    box-shadow:0 0 0 3px #fff, 0 0 0 4px var(--line);
   }
   .review-meta{ flex:1; min-width:0; }
   .review-name-row{ display:flex; align-items:center; gap:9px; flex-wrap:wrap; }
@@ -870,21 +944,40 @@
   .review-delete-btn:hover{ color:var(--danger); }
   .real-review .review-text{
     font-size:14px; font-style:normal; font-family:'Poppins',sans-serif; font-weight:300;
-    color:var(--text-soft); line-height:1.65; margin-left:48px; max-width:560px;
+    color:var(--text-soft); line-height:1.65; margin-left:50px; max-width:560px;
   }
 
   .reviews-empty, .reviews-loading{
-    color:var(--text-soft); font-size:13.5px; padding:36px 0;
-    display:flex; flex-direction:column; align-items:center; gap:12px; text-align:center;
+    color:var(--text-soft); font-size:13.5px; padding:44px 0 34px;
+    display:flex; flex-direction:column; align-items:center; text-align:center;
   }
+  .reviews-empty-icon-wrap{
+    width:56px; height:56px; border-radius:50%; margin-bottom:14px;
+    background:linear-gradient(165deg,#fff,var(--card)); border:1px solid var(--line);
+    display:flex; align-items:center; justify-content:center; box-shadow:var(--shadow-sm);
+  }
+  .reviews-empty-title{ font-family:'Lora',serif; font-size:15px; font-weight:600; color:var(--ink); margin:0; }
+  .reviews-empty-sub{ font-size:12.5px; color:var(--text-faint); margin:5px 0 0; max-width:280px; line-height:1.55; }
   .reviews-loading{ padding:24px 0; display:block; }
 
-  .review-form{ margin-top:20px; padding:24px; background:var(--card); border-radius:var(--radius); max-width:520px; }
-  .review-form h4{ font-size:14px; margin-bottom:14px; }
-  .review-star-input{ display:flex; gap:6px; font-size:26px; line-height:1; color:var(--line-strong); margin-bottom:14px; cursor:pointer; }
-  .review-star-input span{ transition:color 0.15s ease, transform 0.2s var(--ease-premium); display:inline-block; }
-  .review-star-input span:hover, .review-star-input span.active{ color:var(--cta-dark); }
-  .review-star-input span:hover{ transform:scale(1.12); }
+  .review-form{
+    margin-top:20px; padding:26px; background:linear-gradient(165deg,#fff,var(--card));
+    border:1px solid var(--line); border-radius:var(--radius-lg); box-shadow:var(--shadow-sm); max-width:520px;
+  }
+  .review-form h4{ font-size:14px; margin-bottom:16px; }
+  .review-star-input-row{ display:flex; align-items:center; gap:14px; margin-bottom:16px; flex-wrap:wrap; }
+  .review-star-input{ display:flex; gap:6px; font-size:28px; line-height:1; color:var(--line-strong); cursor:pointer; }
+  .review-star-input span{
+    transition:transform 0.2s var(--ease-premium), opacity 0.2s ease; display:inline-block;
+    background:linear-gradient(120deg,#e9c589,var(--cta-dark)); -webkit-background-clip:text; background-clip:text;
+    -webkit-text-fill-color:transparent; color:var(--line-strong); opacity:0.35;
+  }
+  .review-star-input span.hover, .review-star-input span.active{ opacity:1; }
+  .review-star-input span:hover{ transform:scale(1.15); }
+  .review-star-input-label{
+    font-size:11.5px; font-weight:600; color:var(--cta-dark); letter-spacing:0.02em;
+    background:rgba(168,111,65,0.1); padding:4px 10px; border-radius:100px;
+  }
   .review-form textarea{
     width:100%; min-height:84px; resize:vertical; padding:12px 14px; border:1px solid var(--line-strong);
     border-radius:var(--radius-sm); font-size:13px; margin-bottom:14px; font-family:'Poppins',sans-serif;
@@ -899,8 +992,11 @@
 
   @media (max-width:900px){
     .reviews-panel{ grid-template-columns:1fr; gap:28px; }
-    .reviews-summary-card{ position:static; flex-direction:row; flex-wrap:wrap; align-items:center; gap:0 22px; }
+    .reviews-summary-card{ position:static; flex-direction:row; flex-wrap:wrap; align-items:center; gap:10px 22px; }
+    .review-summary-badge{ order:-1; width:100%; margin-bottom:0; }
+    .reviews-summary-card-empty{ flex-direction:column; }
     .rating-bars{ margin-top:18px; }
+    .real-review{ margin:0; padding:22px 0 !important; }
     .real-review .review-text{ margin-left:0; }
   }
   @media (max-width:980px){
@@ -910,13 +1006,26 @@
   }
 
   /* ---------- Footer ---------- */
-  .footer-new{ background:var(--ink); color:rgba(247,245,241,0.7); padding:90px 0 34px; margin-top:0; border-top:none; }
+  .footer-new{
+    position:relative;
+    background:var(--ink); color:rgba(247,245,241,0.7);
+    padding:clamp(56px, 8vw, 90px) 0 34px; margin-top:0; border-top:none;
+  }
+  /* Same quiet signature the scroll-progress bar and .eyebrow rule use
+     elsewhere — a thin "pour" of the brand gradient, here marking the
+     handoff from content to footer instead of a hard flat line. */
+  .footer-new::before{
+    content:''; position:absolute; top:0; left:0; right:0; height:2px;
+    background:linear-gradient(90deg, var(--cta), var(--sage), var(--dusk));
+    opacity:0.55;
+  }
   .ftr-top{
     display:grid;
     grid-template-columns: 1.5fr 1fr 1fr 1fr;
     gap:40px;
     padding-bottom:52px;
   }
+  .ftr-brand{ padding-top:2px; }
   .ftr-logo{
     height:auto; width:auto; max-width:220px;
     filter:brightness(0) invert(1);
@@ -929,15 +1038,15 @@
   }
   .ftr-col ul{ display:flex; flex-direction:column; gap:14px; }
   .ftr-col li{ font-size:14px; color:rgba(247,245,241,0.75); font-weight:300; }
-  .ftr-col a{ color:rgba(247,245,241,0.75); cursor:pointer; transition:color 0.2s ease; }
+  .ftr-col a{ color:rgba(247,245,241,0.75); cursor:pointer; transition:color 0.25s var(--ease-premium); }
   .ftr-col a:hover{ color:#fff; }
   .ftr-social{ display:inline-flex; align-items:center; gap:9px; color:rgba(247,245,241,0.75) !important; font-weight:400; }
   .ftr-social-icon{
     width:24px; height:24px; border-radius:50%; border:1px solid rgba(247,245,241,0.25);
     display:flex; align-items:center; justify-content:center; color:rgba(247,245,241,0.85);
-    transition:background 0.25s ease, color 0.25s ease, border-color 0.25s ease;
+    transition:background 0.25s var(--ease-premium), color 0.25s var(--ease-premium), border-color 0.25s var(--ease-premium), transform 0.25s var(--ease-premium);
   }
-  .ftr-social:hover .ftr-social-icon{ background:#fff; border-color:#fff; color:var(--ink); }
+  .ftr-social:hover .ftr-social-icon{ background:#fff; border-color:#fff; color:var(--ink); transform:translateY(-2px); }
   .ftr-bottom{
     border-top:1px solid rgba(247,245,241,0.14); padding-top:24px;
     text-align:center; font-size:11.5px; color:rgba(247,245,241,0.4); line-height:1.8;
@@ -1067,29 +1176,152 @@
 
   /* qty selector */
   .qty-select{ display:flex; align-items:center; border:1px solid var(--line); border-radius:100px; overflow:hidden; }
-  .qty-select button{ background:none; width:30px; height:30px; font-size:16px; color:var(--text); }
+  .qty-select button{ background:none; width:30px; height:30px; font-size:16px; color:var(--text); transition:background 0.2s ease, color 0.2s ease; }
   .qty-select button:hover{ background:var(--card); }
   .qty-select span{ width:26px; text-align:center; font-size:13.5px; font-weight:600; }
+  /* On the product page the stepper sits next to two full-height
+     buttons and a wishlist icon — bump it up to match their footprint
+     so the row reads as one consistent height instead of a small pill
+     floating next to taller neighbors. */
+  .pd-actions .qty-select{ height:46px; background:#fff; border-color:var(--line-strong); flex-shrink:0; }
+  .pd-actions .qty-select button{ width:40px; height:100%; font-size:17px; }
+  .pd-actions .qty-select button:hover{ background:var(--bg); color:var(--cta-dark); }
+  .pd-actions .qty-select span{ width:30px; font-size:14.5px; }
 
   /* ---------- Product Detail ---------- */
   .pd-grid{ display:grid; grid-template-columns:1fr 1fr; gap:56px; padding:30px 0 60px; }
-  .pd-main-img{ border-radius:var(--radius); overflow:hidden; box-shadow:var(--shadow); aspect-ratio:1/1; margin-bottom:14px; }
+  .pd-main-img{ border-radius:var(--radius); overflow:hidden; box-shadow:var(--shadow); aspect-ratio:1/1; margin-bottom:14px; transition:box-shadow 0.35s var(--ease-premium); }
   .pd-main-img img{ width:100%; height:100%; object-fit:cover; }
   .pd-thumbs{ display:flex; gap:12px; }
   .pd-thumbs img{ width:74px; height:74px; object-fit:cover; border-radius:10px; cursor:pointer; opacity:0.6; transition:0.2s; border:2px solid transparent; }
   .pd-thumbs img:hover, .pd-thumbs img.active{ opacity:1; border-color:var(--sage); }
+  /* Desktop only: pin the gallery (image + thumbs) in place while the
+     info column scrolls past it. This is the column worth keeping in
+     view — it's short, fixed-height, and doesn't compete with
+     anything else for the same screen space, unlike the old sticky
+     actions bar, which lived inside the taller column and kept
+     visibly re-chasing its shifting bottom edge as you scrolled.
+     .pd-gallery-col is the actual grid item and stretches to the full
+     row height (same height as the info column) by grid's normal
+     default — that's what gives .pd-gallery room to travel and then
+     unstick right as both columns run out at the same time, instead
+     of sticking forever. .pd-gallery-sentinel is a 1px marker sitting
+     just above it in normal (non-sticky) flow; script.js watches it
+     with an IntersectionObserver to know the exact moment the gallery
+     transitions into its pinned state, which drives the shadow change
+     below. Single-column mobile layouts stack normally, so all of
+     this is desktop-only. */
+  @media (min-width:981px){
+    .pd-gallery{ position:sticky; top:var(--pd-sticky-top, 88px); }
+  }
+  .pd-gallery-sentinel{ height:1px; }
+  /* Once the gallery is actually pinned, the main image gets a
+     slightly deeper shadow — a small cue that it's now "floating"
+     above the page rather than sitting in the normal flow, instead of
+     the stick just happening silently. */
+  .pd-gallery.is-stuck .pd-main-img{ box-shadow:var(--shadow-hover); }
+
+  /* Fills the empty space that opens up below a pinned gallery on
+     tall product pages (lots of size/option/nutrition content in the
+     other column) with two small, genuinely useful things instead of
+     leaving dead air: a quiet trust strip, and a rating teaser that
+     jumps down to the real reviews. Both use the same card language
+     as the rest of the page (cream card / soft border / --radius-lg)
+     so they read as part of the design, not bolted on. */
+  .pd-gallery-extra{ margin-top:18px; display:flex; flex-direction:column; gap:12px; }
+  .pd-trust-row{
+    display:flex; background:var(--card); border:1px solid var(--line);
+    border-radius:var(--radius-lg); padding:16px 8px;
+  }
+  .pd-trust-item{
+    flex:1; display:flex; flex-direction:column; align-items:center; text-align:center;
+    gap:7px; padding:0 6px; color:var(--sage);
+  }
+  .pd-trust-item:not(:first-child){ border-left:1px solid var(--line-strong); }
+  .pd-trust-item span{
+    font-size:10.5px; font-weight:600; letter-spacing:0.01em; line-height:1.3; color:var(--text-soft);
+  }
+  .pd-rating-mini{
+    display:flex; align-items:center; gap:10px; padding:14px 16px;
+    background:linear-gradient(165deg,#fff,var(--card)); border:1px solid var(--line-strong); border-radius:var(--radius-lg);
+    text-decoration:none; color:var(--text); cursor:pointer;
+    transition:border-color 0.25s ease, box-shadow 0.25s var(--ease-premium), transform 0.25s var(--ease-premium);
+  }
+  .pd-rating-mini:hover{ border-color:var(--sage); box-shadow:var(--shadow); transform:translateY(-1px); }
+  .pd-rating-mini-score{ font-family:'Lora',serif; font-weight:700; font-size:16px; color:var(--ink); }
+  .pd-rating-mini .star-rating{ font-size:12px; letter-spacing:2px; }
+  .pd-rating-mini-count{ font-size:12px; color:var(--text-faint); flex:1; }
+  .pd-rating-mini-arrow{ color:var(--text-faint); flex-shrink:0; transition:transform 0.25s var(--ease-premium); }
+  .pd-rating-mini:hover .pd-rating-mini-arrow{ transform:translateX(3px); color:var(--sage); }
   .pd-price{ font-family:'Lora',serif; font-size:28px; font-weight:700; color:var(--cta); margin:14px 0; }
+  /* Quick-glance "16oz • ~120 kcal" line under the product name —
+     drinks only, updates live as size/options change. Empty (non-drink
+     products, or a drink with no calorie data at all) collapses to
+     nothing rather than leaving a blank line. */
+  .pd-subtitle{ font-size:13px; font-weight:500; color:var(--text-faint); margin:0 0 2px; }
+  .pd-subtitle:empty{ display:none; }
   .pd-desc{ color:var(--text-soft); font-size:14.5px; line-height:1.8; margin-bottom:20px; }
+  .pd-desc-clamped{
+    display:-webkit-box; -webkit-line-clamp:3; -webkit-box-orient:vertical; overflow:hidden;
+  }
+  .pd-desc-toggle{
+    background:none; border:none; padding:0; margin:-12px 0 20px; font-size:13px; font-weight:600;
+    color:var(--sage); text-decoration:underline; text-underline-offset:3px; cursor:pointer;
+  }
   .pd-info-grid{ display:grid; grid-template-columns:1fr 1fr; gap:14px; margin-bottom:24px; }
   .pd-ingredients{ background:var(--card); border-radius:var(--radius-sm); padding:16px 18px; margin-bottom:0; }
   .pd-ingredients h4{ font-size:13px; text-transform:uppercase; letter-spacing:0.06em; margin-bottom:8px; color:var(--sage); font-family:'Poppins',sans-serif; font-weight:600; }
   .pd-ingredients p{ font-size:13px; color:var(--text-soft); line-height:1.7; }
   .pd-allergens{ background:rgba(192,133,82,0.10); border:1px solid rgba(192,133,82,0.22); }
   .pd-allergens h4{ color:var(--cta-dark); }
+
+  /* "About the Drink" fun-fact card — same card language as
+     Ingredients/Allergens above it, just full-width on its own row. */
+  .pd-about{
+    background:var(--card); border-radius:var(--radius-sm); padding:16px 18px; margin-bottom:24px;
+  }
+  .pd-about h4{ font-size:13px; text-transform:uppercase; letter-spacing:0.06em; margin-bottom:8px; color:var(--sage); font-family:'Poppins',sans-serif; font-weight:600; }
+  .pd-about p{ font-size:13.5px; color:var(--text-soft); line-height:1.75; font-style:italic; }
+
+  /* Nutrition table — plain label/value rows, same hairline rhythm as
+     the size guide table so drink pages read as one visual family. */
+  .pd-nutrition{ margin-bottom:24px; }
+  .pd-nutrition h4{ font-size:13px; text-transform:uppercase; letter-spacing:0.06em; margin-bottom:10px; color:var(--sage); font-family:'Poppins',sans-serif; font-weight:600; }
+  .pd-nutrition-table{ width:100%; border-collapse:collapse; font-size:13.5px; }
+  .pd-nutrition-table td{ padding:9px 2px; border-bottom:1px solid var(--line); color:var(--text); }
+  .pd-nutrition-table tr:last-child td{ border-bottom:none; }
+  .pd-nutrition-table td:first-child{ color:var(--text-soft); }
+  .pd-nutrition-table td:last-child{ text-align:right; font-weight:600; }
   @media (max-width:520px){
     .pd-info-grid{ grid-template-columns:1fr; }
   }
-  .pd-actions{ display:flex; align-items:center; gap:16px; margin-bottom:10px; }
+  .pd-actions{ display:flex; align-items:center; gap:18px; margin-bottom:0; flex-wrap:wrap; }
+  /* Buy Now (outline) + Add to Cart (filled) share the remaining space
+     as a pair, so the qty stepper and wishlist heart keep their own
+     fixed width instead of getting squeezed. Add to Cart gets a larger
+     share of the row than Buy Now so it visually reads as the primary
+     action — same idea as the color contrast (filled vs outline), just
+     reinforced with size too. */
+  .pd-actions-btns{ display:flex; gap:12px; flex:1 1 240px; min-width:0; }
+  .pd-actions-btns .btn{ white-space:nowrap; }
+  .pd-actions-btns .btn-primary{ flex:1.4; }
+  .pd-actions-btns .btn-outline{ flex:1; }
+  /* Buy Now stays a quiet secondary action, but warms toward the brand
+     accent on hover/focus instead of the generic ink-outline treatment
+     every other outline button gets — small differentiation that helps
+     it still read as "for sale" rather than a neutral utility button. */
+  .pd-actions-btns .btn-outline:hover:not(:disabled){
+    border-color:var(--cta); color:var(--cta-dark); background:rgba(192,133,82,0.06);
+  }
+  /* Add to Cart is the one action we want a shopper's eye to land on
+     first — same lift/shadow language as every other primary button,
+     just a touch stronger since this is the highest-stakes button on
+     the page. */
+  .pd-actions-btns .btn-primary:hover:not(:disabled){ box-shadow:var(--shadow-lift); }
+  .pd-actions-btns .btn svg{ flex-shrink:0; }
+  @media (max-width:480px){
+    .pd-actions-btns{ order:3; flex-basis:100%; }
+  }
   .related-title{ margin:64px 0 24px; font-size:22px; }
 
   /* ---- Product detail: wearables size selector ---- */
@@ -1147,6 +1379,74 @@
 
   .cart-dd-size{ color:var(--text-faint); font-weight:400; }
 
+  /* ---- Product detail: customization option groups (bean, milk,
+     syrup, etc — admin-defined per product, see admin.js's builder) ---- */
+  .pd-options{ margin-bottom:24px; }
+  .pd-opt-group{ margin-bottom:20px; }
+  .pd-opt-head{ display:flex; align-items:baseline; justify-content:space-between; gap:10px; margin-bottom:12px; }
+  .pd-opt-head h4{ font-size:13px; text-transform:uppercase; letter-spacing:0.06em; color:var(--sage); font-family:'Poppins',sans-serif; font-weight:600; }
+  .pd-opt-tag{ font-size:11px; font-style:italic; color:var(--text-faint); white-space:nowrap; }
+  .pd-opt-choice-row{ display:flex; flex-wrap:wrap; gap:8px; }
+  .pd-opt-chip{
+    display:flex; flex-direction:column; align-items:flex-start; gap:1px;
+    padding:9px 14px; min-height:40px; justify-content:center;
+    background:var(--card); border:1px solid var(--line-strong); border-radius:var(--radius-sm);
+    font-size:13.5px; font-weight:600; color:var(--text); cursor:pointer; text-align:left;
+    transition:0.15s var(--ease-premium);
+  }
+  .pd-opt-chip:hover:not(:disabled){ border-color:var(--sage); }
+  .pd-opt-chip.active{ background:var(--ink); border-color:var(--ink); color:#fff; }
+  .pd-opt-chip-price{ font-size:10px; font-weight:500; color:var(--text-faint); }
+  .pd-opt-chip.active .pd-opt-chip-price{ color:rgba(255,255,255,0.75); }
+  .pd-opt-chip-kcal{ font-size:10px; font-weight:500; font-style:italic; color:var(--text-faint); }
+  .pd-opt-chip.active .pd-opt-chip-kcal{ color:rgba(255,255,255,0.6); }
+  .pd-opt-chip-disabled{
+    cursor:not-allowed; background:var(--card); border-color:var(--line-strong); color:var(--text-faint);
+  }
+  .pd-opt-chip-disabled .pd-opt-chip-label{ text-decoration:line-through; }
+  .pd-opt-chip-oos{ font-size:9.5px; font-weight:700; letter-spacing:0.03em; text-transform:uppercase; color:var(--text-faint); }
+
+  /* Running selection summary shown just above the qty/Add to Cart
+     row — e.g. "Iced, Regular, BOSS, Oat Milk, No Added Sugar" —
+     updated live by refreshPdPricing() in script.js. Truncates with
+     an ellipsis instead of wrapping so it never pushes the buttons
+     below it around as selections change. */
+  .pd-opt-summary{
+    font-size:12px; color:var(--text-faint); margin-bottom:8px;
+    white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+  }
+
+  /* The actions row (qty/Add to Cart/wishlist) used to pin to the
+     bottom of the viewport via position:sticky. Because it sat inside
+     a column that's a different height than the image column next to
+     it, the sticky bar would visibly hunt/jump as you scrolled — it
+     kept "catching up" to wherever the shorter column's bottom edge
+     currently was. Now it's a normal card sitting in the page flow
+     right after the description/options, so scrolling feels calm and
+     predictable, and it gets a bit of framing (background, border,
+     shadow) so it still reads as a distinct, important zone rather
+     than blending into the rest of the copy. */
+  .pd-actions-wrap{
+    margin:22px 0 28px; padding:20px 22px;
+    background:var(--card); border:1px solid var(--line-strong); border-radius:var(--radius-lg);
+    box-shadow:var(--shadow);
+    animation:pdActionsIn 0.5s var(--ease-premium) both;
+  }
+  @keyframes pdActionsIn{
+    from{ opacity:0; transform:translateY(10px); }
+    to{ opacity:1; transform:translateY(0); }
+  }
+  @media (max-width:520px){
+    .pd-actions-wrap{ padding:18px; }
+  }
+
+  /* ---- Selected-options line shown under a customized cart line, on
+     the mini cart dropdown, the full cart page, and the checkout
+     summary — populated from a cart item's optionsSummary. ---- */
+  .cart-dd-item-opts{ font-size:11px; color:var(--text-faint); margin:2px 0 4px; }
+  .cart-item-opts{ font-size:12px; color:var(--text-faint); margin-top:3px; }
+  .sum-row-opts{ color:var(--text-faint); font-weight:400; }
+
   /* ---------- Cart page ---------- */
   .cart-layout{ display:grid; grid-template-columns: 1.7fr 1fr; gap:40px; padding:30px 0 70px; align-items:start; }
 
@@ -1179,7 +1479,7 @@
 
   .order-summary{
     background:#fff; border:1px solid var(--line); border-radius:var(--radius-lg);
-    padding:28px; position:sticky; top:100px; box-shadow:var(--shadow);
+    padding:28px; box-shadow:var(--shadow);
   }
   .order-summary h3{ font-family:'Lora',serif; font-size:17.5px; margin-bottom:20px; letter-spacing:0.01em; }
   .sum-row{ display:flex; justify-content:space-between; font-size:13.5px; color:var(--text-soft); margin-bottom:13px; }
@@ -1222,7 +1522,6 @@
     display:flex; flex-direction:column; gap:4px;
     background:#fff; border:1px solid var(--line); border-radius:var(--radius);
     padding:10px; box-shadow:var(--shadow-sm);
-    position:sticky; top:90px;
   }
   .admin-tab{
     display:block; width:100%; text-align:left;
@@ -1279,7 +1578,14 @@
     transition:border-color 0.2s ease, box-shadow 0.2s ease;
   }
   .admin-search-input:focus{ border-color:var(--sage); box-shadow:var(--ring); }
-  .admin-category-filter{ min-width:172px; cursor:pointer; font-weight:600; color:var(--text); }
+  .admin-category-filter{
+    min-width:172px; cursor:pointer; font-weight:600; color:var(--text);
+    appearance:none; -webkit-appearance:none; -moz-appearance:none;
+    padding-right:36px;
+    background-image:url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none"><path d="M6 9l6 6 6-6" stroke="%23a86f41" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>');
+    background-repeat:no-repeat; background-position:right 12px center; background-size:13px;
+  }
+  .admin-category-filter:hover{ border-color:var(--line-strong); }
 
   .admin-cat-badge{
     display:inline-block; padding:5px 12px; border-radius:100px;
@@ -1343,17 +1649,55 @@
   .cc-existing-row-name{ font-weight:600; font-size:13.5px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
   .cc-existing-row-count{ font-size:11.5px; color:var(--text-soft); flex-shrink:0; }
 
-  .admin-status-select{
-    padding:8px 12px; border-radius:20px; border:1px solid transparent;
-    font-size:12px; font-weight:600; outline:none; cursor:pointer;
-    background:var(--card); color:var(--text);
-    transition:background 0.2s ease, color 0.2s ease;
+  /* ---------- Admin: launch-popup product picker ---------- */
+  .promo-pick-selected{ display:flex; flex-wrap:wrap; gap:6px; margin-bottom:8px; }
+  .promo-pick-selected:empty{ display:none; }
+  .promo-pick-chip{
+    display:inline-flex; align-items:center; gap:7px;
+    padding:5px 6px 5px 12px; border-radius:100px;
+    background:var(--sage); color:#fff; font-size:12px; font-weight:600;
+    max-width:220px;
   }
-  .admin-status-pending{ background:rgba(192,133,82,0.16); color:var(--cta-dark); }
-  .admin-status-preparing{ background:rgba(124,147,166,0.18); color:#4d6b82; }
-  .admin-status-ready{ background:rgba(124,152,133,0.18); color:#4f6c57; }
-  .admin-status-completed{ background:rgba(46,43,39,0.08); color:var(--ink); }
-  .admin-status-cancelled{ background:var(--danger-tint); color:var(--danger-dark); }
+  .promo-pick-chip-name{ overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .promo-pick-chip button{
+    display:flex; align-items:center; justify-content:center; flex-shrink:0;
+    width:17px; height:17px; border-radius:50%; background:rgba(255,255,255,0.25);
+    color:#fff; font-size:13px; line-height:1; transition:background 0.15s ease;
+  }
+  .promo-pick-chip button:hover{ background:rgba(255,255,255,0.45); }
+
+  .promo-pick-search{ width:100%; margin-bottom:8px; }
+
+  .promo-pick-list{
+    display:flex; flex-direction:column; gap:4px; max-height:180px; overflow-y:auto;
+    border:1px solid var(--line); border-radius:10px; padding:8px; background:#fff;
+  }
+  .promo-pick-row{
+    display:flex; align-items:center; gap:10px; padding:7px 8px; border-radius:8px;
+    cursor:pointer; transition:background 0.15s ease, opacity 0.2s ease;
+  }
+  .promo-pick-row:hover{ background:var(--card); }
+  .promo-pick-row.disabled{ opacity:0.4; pointer-events:none; }
+  .promo-pick-row input[type="checkbox"]{ width:16px; height:16px; accent-color:var(--sage); cursor:pointer; flex-shrink:0; }
+  .promo-pick-row img{ width:32px; height:32px; border-radius:6px; object-fit:cover; flex-shrink:0; background:var(--card); }
+  .promo-pick-row-name{ flex:1; font-size:13px; font-weight:600; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .promo-pick-row-price{ font-size:12px; color:var(--text-soft); flex-shrink:0; }
+
+  .admin-status-select{
+    padding:8px 30px 8px 12px; border-radius:20px; border:1px solid transparent;
+    font-size:12px; font-weight:600; outline:none; cursor:pointer;
+    background-color:var(--card); color:var(--text);
+    transition:background-color 0.2s ease, color 0.2s ease, box-shadow 0.2s ease;
+    appearance:none; -webkit-appearance:none; -moz-appearance:none;
+    background-image:url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none"><path d="M6 9l6 6 6-6" stroke="%23000000" stroke-opacity="0.45" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>');
+    background-repeat:no-repeat; background-position:right 10px center; background-size:12px;
+  }
+  .admin-status-select:hover{ box-shadow:inset 0 0 0 1px rgba(0,0,0,0.12); }
+  .admin-status-pending{ background-color:rgba(192,133,82,0.16); color:var(--cta-dark); }
+  .admin-status-preparing{ background-color:rgba(124,147,166,0.18); color:#4d6b82; }
+  .admin-status-ready{ background-color:rgba(124,152,133,0.18); color:#4f6c57; }
+  .admin-status-completed{ background-color:rgba(46,43,39,0.08); color:var(--ink); }
+  .admin-status-cancelled{ background-color:var(--danger-tint); color:var(--danger-dark); }
 
   .admin-customer-link{
     background:none; border:none; padding:0; font:inherit; font-weight:600;
@@ -1424,6 +1768,7 @@
   }
   .order-detail-item:last-child{ border-bottom:none; padding-bottom:0; }
   .order-detail-item-name{ font-weight:600; font-size:13.5px; }
+  .order-detail-item-opts{ font-size:11.5px; color:var(--text-faint); margin-top:3px; }
   .order-detail-item-meta{ font-size:12px; color:var(--text-soft); margin-top:3px; }
   .order-detail-item-total{ font-weight:700; font-size:13.5px; white-space:nowrap; font-family:'Poppins',sans-serif; }
 
@@ -1468,6 +1813,80 @@
   .order-status-ready{ background:rgba(124,152,133,0.18); color:#4f6c57; }
   .order-status-completed{ background:rgba(46,43,39,0.08); color:var(--ink); }
   .order-status-cancelled{ background:var(--danger-tint); color:var(--danger-dark); }
+
+  /* ---------- Saved Addresses (My Addresses page) ---------- */
+  .addresses-list{ display:flex; flex-direction:column; gap:12px; margin-top:24px; }
+
+  .address-card{
+    background:#fff; border:1px solid var(--line); border-radius:var(--radius);
+    padding:16px 20px; box-shadow:var(--shadow-sm);
+    display:flex; align-items:flex-start; justify-content:space-between; gap:16px;
+    flex-wrap:wrap;
+  }
+  .address-card.is-default{ border-color:var(--sage); }
+  .address-card-main{ flex:1; min-width:200px; }
+  .address-card-label-row{ display:flex; align-items:center; gap:10px; margin-bottom:4px; }
+  .address-card-label{ font-family:'Lora',serif; font-weight:600; font-size:15px; color:var(--ink); }
+  .address-default-badge{
+    font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:0.05em;
+    color:var(--sage); background:rgba(124,152,133,0.14); padding:3px 9px; border-radius:100px;
+  }
+  .address-card-text{ font-size:13px; color:var(--text-soft); line-height:1.5; margin:0; }
+  .address-card-actions{ display:flex; align-items:center; gap:14px; flex-shrink:0; }
+
+  /* Bare, underline-on-hover text link — used for secondary actions
+     that don't need a full button treatment (address card actions,
+     "use my current location", the address-form's "Search" pairing). */
+  .link-btn{
+    background:none; border:none; padding:0; font:inherit;
+    font-size:12.5px; font-weight:600; color:var(--cta-dark); cursor:pointer;
+    text-decoration:none;
+  }
+  .link-btn:hover{ text-decoration:underline; }
+  .link-btn-danger{ color:var(--danger); }
+
+  /* ---------- Address form modal (map + fields) ---------- */
+  .address-form-modal{ max-width:520px; }
+  .address-form-body{ padding-top:6px; }
+  #addressForm .form-group{ margin-bottom:16px; }
+  .address-input-row{ display:flex; gap:8px; }
+  .address-input-row input{ flex:1; }
+  .address-input-row .btn{ flex-shrink:0; }
+
+  #afUseCurrentLocationBtn{ display:block; margin-bottom:14px; }
+
+  .address-map-wrap{ margin-bottom:18px; }
+  #addressMap{
+    width:100%; height:280px; border-radius:var(--radius);
+    border:1px solid var(--line); overflow:hidden;
+  }
+  .address-map-hint{ font-size:11.5px; color:var(--text-faint); margin-top:8px; }
+
+  .af-default-check{
+    display:flex; align-items:center; gap:8px;
+    font-size:13px; color:var(--text-soft); cursor:pointer;
+  }
+  .af-default-check input{ width:auto; }
+
+  /* ---------- Checkout's saved-address picker ---------- */
+  .saved-address-picker{
+    display:flex; flex-wrap:wrap; gap:8px;
+    margin-bottom:12px;
+  }
+  .address-chip{
+    display:flex; flex-direction:column; align-items:flex-start; gap:2px;
+    background:var(--card); border:1px solid var(--line); border-radius:var(--radius-sm);
+    padding:9px 14px; max-width:220px; text-align:left; cursor:pointer;
+    transition:border-color 0.2s ease, background 0.2s ease;
+  }
+  .address-chip:hover{ border-color:var(--line-strong); }
+  .address-chip.active{ border-color:var(--sage); background:rgba(124,152,133,0.1); }
+  .address-chip-label{ font-size:12px; font-weight:700; color:var(--ink); }
+  .address-chip-text{
+    font-size:11px; color:var(--text-faint); line-height:1.4;
+    overflow:hidden; text-overflow:ellipsis; white-space:nowrap; max-width:190px;
+  }
+  .address-chip-add{ color:var(--cta-dark); font-weight:600; justify-content:center; align-items:center; }
 
   /* ---------- FAQs ---------- */
   .faq-intro{ font-size:14.5px; color:var(--text-soft); max-width:560px; margin-top:14px; line-height:1.6; }
@@ -1656,6 +2075,18 @@
   .form-group input:focus, .form-group select:focus, .form-group textarea:focus{
     border-color:var(--sage); box-shadow:var(--ring);
   }
+  /* Native selects otherwise look identical to flat text — no menu
+     indicator. Give every admin form select the same chevron +
+     hover affordance the public-facing .sort-select already uses,
+     so it reads as "clickable dropdown" instead of plain text. */
+  .form-group select{
+    appearance:none; -webkit-appearance:none; -moz-appearance:none;
+    cursor:pointer; font-weight:600; color:var(--ink);
+    padding-right:38px;
+    background-image:url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none"><path d="M6 9l6 6 6-6" stroke="%23a86f41" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>');
+    background-repeat:no-repeat; background-position:right 14px center; background-size:13px;
+  }
+  .form-group select:hover{ border-color:var(--line-strong); }
   .form-hint{ font-size:11.5px; color:var(--text-faint); margin-top:8px; }
 
   /* ---------- Admin image upload field ---------- */
@@ -1711,6 +2142,132 @@
     transition:border-color 0.2s ease, box-shadow 0.2s ease;
   }
   .size-price-input:focus{ border-color:var(--sage); box-shadow:var(--ring); }
+
+  /* ---------- Admin: option groups builder (drinks only) ---------- */
+  .opt-groups-builder{ display:flex; flex-direction:column; gap:16px; margin-bottom:12px; }
+
+  .drink-details-grid{ display:grid; grid-template-columns:1fr 1fr; gap:14px; }
+  .drink-details-grid-4{ grid-template-columns:repeat(4,1fr); }
+  @media (max-width:640px){
+    .drink-details-grid, .drink-details-grid-4{ grid-template-columns:1fr 1fr; }
+  }
+
+  /* Empty state — a quiet dashed card rather than one bare line of text,
+     so "nothing here yet" reads as an intentional state, not a gap. */
+  .opt-groups-empty{
+    display:flex; flex-direction:column; align-items:center; text-align:center; gap:10px;
+    padding:28px 20px; border:1px dashed var(--line-strong); border-radius:14px;
+    color:var(--text-faint); background:var(--bg);
+  }
+  .opt-groups-empty svg{ color:var(--text-faint); }
+  .opt-groups-empty p{ font-size:12.5px; line-height:1.6; margin:0; }
+
+  /* Each option group is its own elevated card — white against the
+     form's cream background, with a soft shadow instead of a flat
+     border, so a stack of several groups reads as distinct, orderly
+     units rather than one long run-on block of inputs. */
+  .opt-group-card{
+    padding:18px; background:#fff; border:1px solid var(--line); border-radius:14px;
+    box-shadow:var(--shadow-sm);
+  }
+  .opt-group-card-top{ display:flex; align-items:center; justify-content:space-between; margin-bottom:12px; }
+  .opt-group-index{
+    font-size:11px; font-weight:700; letter-spacing:0.08em; text-transform:uppercase; color:var(--sage);
+    font-family:'Poppins',sans-serif;
+  }
+  .opt-group-label-input{
+    width:100%; padding:11px 14px; border-radius:10px; border:1px solid var(--line-strong);
+    font-size:14px; font-weight:600; outline:none; background:var(--bg); margin-bottom:14px;
+    transition:border-color 0.2s ease, box-shadow 0.2s ease;
+  }
+  .opt-group-label-input:focus{ border-color:var(--sage); box-shadow:var(--ring); background:#fff; }
+
+  /* Single/Multiple choice as a segmented pill toggle instead of a
+     bare <select> — reads at a glance and matches the chip language
+     used everywhere else on the product page this builder feeds. */
+  .opt-group-type-row{ display:flex; align-items:center; gap:14px; flex-wrap:wrap; margin-bottom:16px; }
+  .opt-type-toggle{ display:inline-flex; background:var(--card); border-radius:100px; padding:3px; gap:2px; }
+  .opt-type-btn{
+    padding:8px 16px; border-radius:100px; border:none; background:none; cursor:pointer;
+    font-size:12px; font-weight:600; color:var(--text-soft); font-family:'Poppins',sans-serif;
+    transition:0.2s var(--ease-premium); white-space:nowrap;
+  }
+  .opt-type-btn.active{ background:var(--ink); color:#fff; }
+  .opt-max-field{
+    display:flex; align-items:center; gap:8px; font-size:12px; font-weight:600; color:var(--text-soft);
+    cursor:text;
+  }
+  .opt-group-max-input{
+    width:56px; padding:7px 8px; border-radius:8px; border:1px solid var(--line-strong);
+    font-size:13px; outline:none; background:#fff; text-align:center;
+  }
+  .opt-group-max-input:focus{ border-color:var(--sage); box-shadow:var(--ring); }
+
+  /* Each choice is its own compact card with a stable grid: the label
+     always spans full width, price/kcal sit in bordered input-groups
+     with their unit baked into the field instead of a floating
+     placeholder, and the two toggles + remove button line up on their
+     own row. Stacks to one column on narrow admin panels (see the
+     screenshot this replaced) and settles into a single aligned row
+     once there's room — same structure either way, just reflowed. */
+  .opt-choice-rows{ display:flex; flex-direction:column; gap:10px; margin-bottom:14px; }
+  .opt-choice-row{
+    display:grid; gap:8px 10px; align-items:center;
+    grid-template-columns:1fr 1fr;
+    grid-template-areas:
+      "label label"
+      "price kcal"
+      "toggles remove";
+    padding:12px; background:var(--bg); border:1px solid var(--line); border-radius:11px;
+  }
+  .opt-choice-label-input{
+    grid-area:label; width:100%; padding:8px 11px; border-radius:9px; border:1px solid var(--line-strong);
+    font-size:13px; font-weight:600; outline:none; background:#fff;
+    transition:border-color 0.2s ease, box-shadow 0.2s ease;
+  }
+  .opt-choice-label-input:focus{ border-color:var(--sage); box-shadow:var(--ring); }
+  .opt-choice-price-wrap, .opt-choice-kcal-wrap{
+    grid-area:price; display:flex; align-items:stretch; border:1px solid var(--line-strong);
+    border-radius:9px; background:#fff; overflow:hidden;
+  }
+  .opt-choice-kcal-wrap{ grid-area:kcal; }
+  .opt-choice-price-wrap span, .opt-choice-kcal-wrap span{
+    display:flex; align-items:center; padding:0 9px; font-size:11px; font-weight:700;
+    color:var(--text-faint); background:var(--card); white-space:nowrap;
+  }
+  .opt-choice-price-input, .opt-choice-kcal-input{
+    flex:1; min-width:0; width:100%; padding:8px 8px; border:none; outline:none;
+    font-size:12.5px; background:transparent;
+  }
+  .opt-choice-price-wrap:focus-within, .opt-choice-kcal-wrap:focus-within{ border-color:var(--sage); box-shadow:var(--ring); }
+  .opt-choice-toggles{ grid-area:toggles; display:flex; align-items:center; gap:14px; flex-wrap:wrap; }
+  .opt-toggle-pill{
+    display:flex; align-items:center; gap:6px; font-size:11.5px; font-weight:600; color:var(--text-soft);
+    cursor:pointer; user-select:none; white-space:nowrap;
+  }
+  .opt-toggle-pill input{ width:14px; height:14px; accent-color:var(--sage); cursor:pointer; }
+  .opt-choice-remove{
+    grid-area:remove; justify-self:end; display:inline-flex; align-items:center; justify-content:center;
+    width:26px; height:26px; background:#fff; border:1px solid var(--line-strong); border-radius:8px;
+    color:var(--text-faint); cursor:pointer; transition:background .18s ease, color .18s ease, border-color .18s ease;
+  }
+  .opt-choice-remove:hover{ background:var(--danger); color:#fff; border-color:var(--danger); }
+
+  @media (min-width:640px){
+    .opt-choice-row{
+      grid-template-columns:2fr 96px 96px auto 28px;
+      grid-template-areas:"label price kcal toggles remove";
+    }
+  }
+
+  /* Number inputs in the builder are typed, not scrolled — same
+     reasoning as the Price/Stock fields above. */
+  .opt-group-max-input, .opt-choice-price-input, .opt-choice-kcal-input{ -moz-appearance:textfield; }
+  .opt-group-max-input::-webkit-outer-spin-button, .opt-group-max-input::-webkit-inner-spin-button,
+  .opt-choice-price-input::-webkit-outer-spin-button, .opt-choice-price-input::-webkit-inner-spin-button,
+  .opt-choice-kcal-input::-webkit-outer-spin-button, .opt-choice-kcal-input::-webkit-inner-spin-button{
+    -webkit-appearance:none; margin:0;
+  }
 
   /* The Price and Stock fields (and every per-size stock row) are
      meant to be typed, not spun/scrolled — scrolling the mouse wheel
@@ -2061,8 +2618,7 @@
     .cat-grid{ grid-template-columns:repeat(2,1fr); }
     .product-grid, .menu-grid{ grid-template-columns:repeat(2,1fr); }
     .review-grid{ grid-template-columns:1fr; }
-    .footer-grid{ grid-template-columns:1fr 1fr; row-gap:30px; }
-    .ftr-top{ grid-template-columns:1fr 1fr; row-gap:30px; }
+    .ftr-top{ grid-template-columns:1fr 1fr; row-gap:36px; }
     .ftr-brand{ grid-column:1/-1; }
     .pd-grid{ grid-template-columns:1fr; gap:30px; }
     .menu-layout{ grid-template-columns:1fr; gap:24px; }
@@ -2091,7 +2647,8 @@
     .hero{ padding:80px 0 90px; }
     .hero h1{ font-size:32px; }
     .cat-grid, .product-grid, .menu-grid{ grid-template-columns:1fr; }
-    .footer-grid{ grid-template-columns:1fr; }
+    .ftr-top{ grid-template-columns:1fr; row-gap:32px; padding-bottom:40px; }
+    .ftr-brand{ grid-column:auto; }
     .form-row{ grid-template-columns:1fr; }
     .section-head{ flex-direction:column; align-items:flex-start; }
     .admin-stats{ grid-template-columns:1fr; }
@@ -2154,12 +2711,12 @@
 
 .promo-modal{
   position:relative;
-  width:100%; max-width:440px;
+  width:100%; max-width:480px;
   background:linear-gradient(160deg, var(--card) 0%, var(--bg) 100%);
   border:1px solid var(--line);
   border-radius:var(--radius-lg);
   box-shadow:var(--shadow-lift);
-  padding:44px 38px 36px;
+  padding:40px 38px 36px;
   text-align:center;
   overflow:hidden;
   transform:translateY(28px) scale(0.94);
@@ -2167,6 +2724,12 @@
   transition:transform 0.55s var(--ease-premium), opacity 0.5s var(--ease-premium);
 }
 .promo-overlay.open .promo-modal{ transform:translateY(0) scale(1); opacity:1; }
+/* A hovered stage card zooms in past its normal footprint (see
+   .promo-stage-card:hover below) — it needs to physically escape this
+   modal's overflow:hidden or the enlarge reads as a crop instead of a
+   zoom. Only relax it while a card is actually hovered, so the
+   decorative glow/sparkles stay clipped the rest of the time. */
+.promo-modal:has(.promo-stage-card:hover){ overflow:visible; }
 
 /* Soft rotating glow behind the content — reads as premium light,
    not a gimmick, since it stays slow and subtle. */
@@ -2212,6 +2775,15 @@
 }
 .promo-modal-close:hover{ background:var(--ink); color:#fff; transform:rotate(90deg); }
 
+/* Admin-only preview flag — makes it unmistakable this isn't the real
+   popup a visitor would see, in case it's ever screenshotted/shared. */
+.promo-preview-flag{
+  position:absolute; top:16px; left:16px; z-index:2;
+  padding:5px 11px; border-radius:100px;
+  background:var(--ink); color:var(--bg);
+  font-size:10.5px; font-weight:700; letter-spacing:0.04em; text-transform:uppercase;
+}
+
 .promo-badge{
   position:relative; z-index:1;
   width:76px; height:76px;
@@ -2243,6 +2815,138 @@
   letter-spacing:0.08em;
   color:#fff;
   text-transform:uppercase;
+}
+
+/* ---------- Promo 3D product showcase (the tilted card stack) ---------- */
+/* A little "fan of photos" — perspective on the outer stage, each
+   card individually rotated/pushed back in Z based on its distance
+   from center (--depth), so it reads as a real stack rather than
+   flat overlapping rectangles. Center card sits forward and upright;
+   side cards lean away and sit slightly behind. */
+.promo-stage{
+  position:relative; z-index:1;
+  height:186px; margin:6px auto 2px;
+  perspective:1100px;
+}
+/* Raised above the headline/copy/actions below it (all z-index:1
+   siblings within .promo-modal) only while a card is zoomed, so the
+   enlarged card renders in front of that text instead of being
+   painted over by it. */
+.promo-stage:has(.promo-stage-card:hover){ z-index:5; }
+.promo-stage-cards{
+  position:relative; width:100%; height:100%;
+  transform-style:preserve-3d;
+}
+/* Spotlight effect: once any card is hovered, dim and soften the
+   others so the zoomed one reads as the clear focus rather than
+   fighting its neighbors for attention. */
+.promo-stage-cards:has(.promo-stage-card:hover) .promo-stage-card:not(:hover){
+  opacity:0.4; filter:blur(1px) saturate(0.7);
+}
+.promo-stage-card{
+  position:absolute; top:0; left:50%;
+  width:128px; height:168px;
+  background:#fff; border-radius:16px;
+  box-shadow:0 18px 38px rgba(33,28,22,0.22), 0 2px 8px rgba(33,28,22,0.08);
+  overflow:hidden;
+  opacity:0;
+  z-index:var(--z, 1);
+  will-change:transform;
+  backface-visibility:hidden;
+  transform:
+    translate(calc(-50% + (var(--offsetx, 0) * 1px)), 16px)
+    translateZ(calc(var(--depth, 0) * -46px))
+    rotateY(calc(var(--angle, 0) * 1deg))
+    rotate(calc(var(--tilt, 0) * 1deg))
+    scale(calc(1 - (var(--depth, 0) * 0.09)));
+  animation:promoCardIn 0.75s var(--ease-premium) forwards;
+  animation-delay:calc(0.5s + (var(--i, 0) * 0.14s));
+  transition:transform 0.6s var(--ease-premium), box-shadow 0.5s var(--ease-premium), opacity 0.4s var(--ease-premium), filter 0.4s var(--ease-premium);
+}
+/* Only the real customer popup's cards are clickable — the admin
+   preview mirrors this hover/zoom effect for accuracy but has nothing
+   to navigate to, so it keeps the default cursor there. */
+#promoStageCards .promo-stage-card{ cursor:pointer; }
+.promo-stage-card:hover{
+  transform:
+    translate(calc(-50% + (var(--offsetx, 0) * 1px)), -8px)
+    translateZ(70px)
+    rotateY(0deg) rotate(0deg)
+    scale(1.55) !important;
+  box-shadow:0 30px 60px rgba(33,28,22,0.38);
+  z-index:40 !important;
+}
+@keyframes promoCardIn{
+  from{
+    opacity:0;
+    transform:
+      translate(calc(-50% + (var(--offsetx, 0) * 1px)), 60px)
+      translateZ(-90px)
+      rotateY(0deg) rotate(0deg)
+      scale(0.7);
+  }
+  to{ opacity:1; }
+}
+
+/* Gentle continuous bob lives on a CHILD element rather than the card
+   itself, so it composes with (instead of fighting) the card's own
+   fan-position transform above — two elements, two independent
+   transforms, no keyframe conflict. Paused on hover so the zoomed,
+   info-revealing card holds still long enough to actually read. */
+.promo-stage-card-float{
+  position:relative;
+  width:100%; height:100%;
+  animation:promoCardFloat 3.4s ease-in-out infinite;
+}
+.promo-stage-card:hover .promo-stage-card-float{ animation-play-state:paused; }
+@keyframes promoCardFloat{
+  0%, 100%{ transform:translateY(0); }
+  50%{ transform:translateY(-5px); }
+}
+
+.promo-stage-card-img{ width:100%; height:112px; background:var(--card); }
+.promo-stage-card-img img{ width:100%; height:100%; object-fit:cover; display:block; }
+.promo-stage-card-info{ padding:8px 10px; text-align:left; }
+.promo-stage-card-name{
+  display:block; font-size:11.5px; font-weight:600; color:var(--ink);
+  overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
+}
+.promo-stage-card-price{
+  display:block; font-size:11px; font-weight:600; color:var(--cta-dark);
+  font-family:'Lora', serif; margin-top:2px;
+}
+
+/* Brief-info reveal: hidden by default, fades/slides over the whole
+   card face (image + name/price) on hover so the customer gets a
+   description without leaving the popup. pointer-events:none so it
+   never steals the click that should open the product. Typography
+   matches how the rest of the site voices product copy — italic Lora
+   serif, the same treatment reviews and the hero's emphasis get —
+   instead of reading like a generic e-commerce tooltip. */
+.promo-stage-card-desc{
+  position:absolute; inset:0;
+  display:flex; flex-direction:column; justify-content:flex-end;
+  padding:12px;
+  background:linear-gradient(180deg, rgba(33,28,22,0) 26%, rgba(33,28,22,0.6) 58%, rgba(33,28,22,0.92) 100%);
+  opacity:0; transform:translateY(8px) scale(0.98);
+  transition:opacity 0.4s var(--ease-premium) 0.05s, transform 0.4s var(--ease-premium) 0.05s;
+  pointer-events:none;
+  text-align:left;
+}
+.promo-stage-card:hover .promo-stage-card-desc{ opacity:1; transform:translateY(0) scale(1); }
+.promo-stage-card-desc p{
+  margin:0; color:#F5EFE4; font-family:'Lora', serif; font-style:italic; font-weight:400;
+  font-size:12px; line-height:1.5;
+  display:-webkit-box; -webkit-line-clamp:4; -webkit-box-orient:vertical; overflow:hidden;
+}
+.promo-stage-card-cta{
+  display:block; margin-top:9px; font-size:10px; font-weight:600;
+  letter-spacing:var(--tracking-wide); text-transform:uppercase; color:var(--cta);
+}
+
+@media (max-width:520px){
+  .promo-stage{ height:164px; }
+  .promo-stage-cards{ transform:scale(0.85); transform-origin:center top; }
 }
 
 .promo-eyebrow{
@@ -2287,8 +2991,12 @@
 @media (prefers-reduced-motion: reduce){
   .promo-overlay, .promo-modal, .promo-badge, .promo-badge-ring,
   .promo-eyebrow, .promo-modal h3, .promo-modal-copy, .promo-modal-actions,
-  .promo-modal-glow, .promo-modal-sparkles span{
+  .promo-modal-glow, .promo-modal-sparkles span, .promo-stage-card-float{
     animation:none !important; transition:opacity 0.2s linear !important;
     opacity:1; transform:none;
   }
+  /* Cards keep their resting fan-position transform (it's not part of
+     the animation, just the element's normal style) — only the
+     fly-in motion and continuous bob are switched off above. */
+  .promo-stage-card{ animation:none !important; opacity:1; }
 }

@@ -1,331 +1,3 @@
-function blankPlaceholder(id, cat){
-  const MERCH = ['Accessories','Wearables','Shirts','Caps','Shorts','Socks','ToteBags','Bracelets','Keychains'];
-  const accent = cat === 'Tea' ? '#7C9885'
-    : cat === 'Cakes' ? '#B98A9A'
-    : MERCH.includes(cat) ? '#7C93A6'
-    : '#C08552';
-  const label = (cat || 'Crafts & Crumbs').toUpperCase();
-  const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 400">
-    <defs>
-      <linearGradient id="g${id}" x1="0" y1="0" x2="1" y2="1">
-        <stop offset="0" stop-color="#F7F5F1"/>
-        <stop offset="1" stop-color="#EFEAE1"/>
-      </linearGradient>
-    </defs>
-    <rect width="400" height="400" fill="url(#g${id})"/>
-    <rect x="16" y="16" width="368" height="368" fill="none" stroke="${accent}" stroke-width="1.4" stroke-dasharray="7 7" opacity="0.5"/>
-    <g transform="translate(160,148)" stroke="${accent}" stroke-width="2.4" fill="none" stroke-linecap="round" stroke-linejoin="round">
-      <rect x="0" y="0" width="80" height="60" rx="6"/>
-      <circle cx="18" cy="16" r="7"/>
-      <path d="M0 50l22-20 18 15 16-13 24 20"/>
-    </g>
-    <text x="200" y="252" text-anchor="middle" font-family="Poppins, sans-serif" font-size="11" letter-spacing="3" fill="${accent}" font-weight="600">${label}</text>
-    <text x="200" y="272" text-anchor="middle" font-family="Poppins, sans-serif" font-size="9" letter-spacing="1.5" fill="${accent}" font-weight="500" opacity="0.75">PHOTO COMING SOON</text>
-  </svg>`;
-  return 'data:image/svg+xml;utf8,' + encodeURIComponent(svg);
-}
-
-/* ================= DATA =================
-   SEED_PRODUCTS is only used to seed Firestore once (via the
-   Admin page's "Seed Starter Catalog" button). The live catalog
-   that the site actually renders from is the mutable PRODUCTS
-   array below, populated from Firestore at startup. */
-let PRODUCTS = [];
-// Flat delivery fee, admin-configurable (Admin > Settings). Starts at the
-// same value that used to be hardcoded here, and is overwritten by the
-// cached/live value from settings-service.js during init below.
-let DELIVERY_FEE = 60;
-const SEED_PRODUCTS = [
-  /* ---- Pastries: All-day Bakery ---- */
-  { id:'p13', name:'Classic Buttered Croissant', cat:'Pastries', price:120,
-    desc:'72-hour laminated dough, baked golden and flaky every morning.',
-    img:'croissant.jpg',
-    imgs:['croissant.jpg'],
-    ingredients:'Flour, cultured butter, yeast, sea salt.',
-    allergens:'Gluten (wheat), Milk. May contain traces of egg.' },
-  { id:'p14', name:'Sausage and Bacon Flatbread', cat:'Pastries', price:165,
-    desc:'Oven-baked flatbread topped with savory sausage, bacon, and melted cheese.',
-    img:'flatbread.png',
-    imgs:['flatbread.png'],
-    ingredients:'Flatbread dough, sausage, bacon, mozzarella, house sauce.',
-    allergens:'Gluten (wheat), Milk. May contain traces of soy.' },
-  { id:'p15', name:'Dark Chocolate Macadamia Cookie', cat:'Pastries', price:110,
-    desc:'Chewy cookie loaded with dark chocolate chunks and roasted macadamia nuts.',
-    img:'cookie.jpg',
-    imgs:['cookie.jpg'],
-    ingredients:'Flour, brown butter, dark chocolate chunks, roasted macadamia nuts.',
-    allergens:'Gluten (wheat), Milk, Tree Nuts (macadamia). May contain traces of soy and other nuts.' },
-  { id:'p16', name:'Apple Cinnamon Turnover', cat:'Pastries', price:125,
-    desc:'Flaky puff pastry folded around warm spiced apple filling, finished with icing.',
-    img:'turnover.jpg',
-    imgs:['turnover.jpg'],
-    ingredients:'Puff pastry, cinnamon spiced apples, vanilla icing drizzle.',
-    allergens:'Gluten (wheat), Milk, Egg.' },
-  { id:'p17', name:'Classic Cinnamon Roll', cat:'Pastries', price:130,
-    desc:'Soft swirled roll layered with cinnamon sugar, topped with sweet glaze.',
-    img:'cinnamonroll.jpg',
-    imgs:['cinnamonroll.jpg'],
-    ingredients:'Flour, butter, brown sugar, cinnamon, sweet glaze.',
-    allergens:'Gluten (wheat), Milk, Egg.' },
-
-  /* ---- Sandwiches & Pasta ---- */
-  { id:'p18', name:'Beef Shawarma', cat:'Sandwiches', price:0,
-    desc:'Warm pita rolled around marinated shaved beef, garlic sauce, and pickled vegetables.',
-    img:'beefshawarma.jpeg', imgs:['beefshawarma.jpeg'],
-    ingredients:'Pita bread, marinated beef, garlic sauce, pickles, lettuce, tomato.',
-    allergens:'Gluten (wheat). May contain traces of milk and sesame.' },
-  { id:'p19', name:'Chicken Kofta', cat:'Sandwiches', price:0,
-    desc:'Spiced grilled chicken kofta tucked into flatbread with garlic sauce and fresh vegetables.',
-    img:'chickenkofta.jpeg', imgs:['chickenkofta.jpeg'],
-    ingredients:'Ground chicken, Middle Eastern spice blend, flatbread, garlic sauce, vegetables.',
-    allergens:'Gluten (wheat). May contain traces of milk.' },
-  { id:'p20', name:'Grilled Cheese on Sourdough Bread', cat:'Sandwiches', price:0,
-    desc:'Buttery sourdough grilled until crisp with a melty blend of cheeses.',
-    img:'grilledcheese.jpeg', imgs:['grilledcheese.jpeg'],
-    ingredients:'Sourdough bread, butter, blended cheeses.',
-    allergens:'Gluten (wheat), Milk.' },
-  { id:'p21', name:'Classic Lasagna', cat:'Sandwiches', price:0,
-    desc:'Layers of pasta, slow-simmered meat sauce, and melted cheese baked until bubbling.',
-    img:'lasagna.jpg', imgs:['lasagna.jpg'],
-    ingredients:'Lasagna pasta sheets, meat sauce, bechamel, mozzarella, parmesan.',
-    allergens:'Gluten (wheat), Milk, Egg.' },
-  { id:'p22', name:'Penne Pesto with Mushroom', cat:'Sandwiches', price:0,
-    desc:'Penne pasta tossed in basil pesto with sauteed mushrooms and parmesan.',
-    img:'pennepesto.jpg', imgs:['pennepesto.jpg'],
-    ingredients:'Penne pasta, basil pesto, mushrooms, parmesan, olive oil.',
-    allergens:'Gluten (wheat), Milk, Tree Nuts (pine nuts in pesto).' },
-
-  /* ---- Cakes ---- */
-  { id:'p23', name:'Triple Chocolate Cake', cat:'Cakes', price:0,
-    desc:'Rich chocolate sponge layered with chocolate ganache and chocolate shavings.',
-    img:'triplechocolate.jpg', imgs:['triplechocolate.jpg'],
-    ingredients:'Flour, cocoa, dark chocolate, chocolate ganache, butter, eggs.',
-    allergens:'Gluten (wheat), Milk, Egg.' },
-  { id:'p24', name:'Blueberry Cheesecake', cat:'Cakes', price:0,
-    desc:'Creamy baked cheesecake topped with a sweet blueberry compote.',
-    img:'blueberry.jpg', imgs:['blueberry.jpg'],
-    ingredients:'Cream cheese, graham crust, eggs, fresh blueberries, sugar.',
-    allergens:'Gluten (wheat), Milk, Egg.' },
-  { id:'p25', name:'New York Cheesecake', cat:'Cakes', price:0,
-    desc:'Dense and creamy classic cheesecake with a buttery graham crust.',
-    img:'newyork.jpg', imgs:['newyork.jpg'],
-    ingredients:'Cream cheese, graham crust, eggs, vanilla, sugar.',
-    allergens:'Gluten (wheat), Milk, Egg.' },
-  { id:'p26', name:'Tiramisu Cake', cat:'Cakes', price:0,
-    desc:'Espresso soaked sponge layered with mascarpone cream and cocoa dust.',
-    img:'tiramisu.png', imgs:['tiramisu.png'],
-    ingredients:'Sponge cake, espresso, mascarpone cream, cocoa powder, eggs.',
-    allergens:'Gluten (wheat), Milk, Egg. Contains caffeine.' },
-  { id:'p27', name:'Ubelicious Cake', cat:'Cakes', price:0,
-    desc:'Soft ube sponge cake filled and topped with sweet ube frosting.',
-    img:'ubelicious.png', imgs:['ubelicious.png'],
-    ingredients:'Ube (purple yam), flour, butter, eggs, ube frosting.',
-    allergens:'Gluten (wheat), Milk, Egg.' },
-
-  /* ---- Drinks: Caffeine ---- */
-  { id:'p28', name:'Spanish Latte', cat:'Coffee', price:139,
-    desc:'Espresso balanced with steamed milk and sweetened condensed milk.',
-    img:'spanish latte.png', imgs:['spanish latte.png'],
-    ingredients:'Espresso, steamed milk, condensed milk.',
-    allergens:'Milk.',
-    sizes:[ { size:'12oz', price:139 }, { size:'16oz', price:159 }, { size:'20oz', price:179 } ] },
-  { id:'p29', name:'Iced Americano', cat:'Coffee', price:109,
-    desc:'Bold espresso shots poured over ice and cold water for a clean, crisp finish.',
-    img:'icedamericano.png', imgs:['icedamericano.png'],
-    ingredients:'Espresso, cold water, ice.',
-    allergens:'None known.',
-    sizes:[ { size:'12oz', price:109 }, { size:'16oz', price:129 }, { size:'20oz', price:149 } ] },
-  { id:'p30', name:'White Mocha', cat:'Coffee', price:149,
-    desc:'Espresso blended with steamed milk and sweet white chocolate sauce.',
-    img:'whitemocha.png', imgs:['whitemocha.png'],
-    ingredients:'Espresso, steamed milk, white chocolate sauce.',
-    allergens:'Milk.',
-    sizes:[ { size:'12oz', price:149 }, { size:'16oz', price:169 }, { size:'20oz', price:189 } ] },
-  { id:'p31', name:'Vanilla Sweet Cream', cat:'Coffee', price:139,
-    desc:'Espresso topped with a smooth vanilla sweet cream foam.',
-    img:'vanillacream.png', imgs:['vanillacream.png'],
-    ingredients:'Espresso, milk, vanilla syrup, sweet cream foam.',
-    allergens:'Milk.',
-    sizes:[ { size:'12oz', price:139 }, { size:'16oz', price:159 }, { size:'20oz', price:179 } ] },
-  { id:'p32', name:'Dark Caramel Macchiato', cat:'Coffee', price:149,
-    desc:'Espresso layered with steamed milk and finished with dark caramel drizzle.',
-    img:'darkcaramelmach.png', imgs:['darkcaramelmach.png'],
-    ingredients:'Espresso, steamed milk, vanilla syrup, dark caramel sauce.',
-    allergens:'Milk.',
-    sizes:[ { size:'12oz', price:149 }, { size:'16oz', price:169 }, { size:'20oz', price:189 } ] },
-
-  /* ---- Drinks: Non-Caffeine ---- */
-  { id:'p33', name:'Iced Matcha Latte', cat:'Non-Coffee', price:149,
-    desc:'Ceremonial matcha whisked with cold milk and poured over ice.',
-    img:'IcedGreenTeaLatte.jpg', imgs:['IcedGreenTeaLatte.jpg'],
-    ingredients:'Matcha powder, milk, light syrup, ice.',
-    allergens:'Milk.',
-    sizes:[ { size:'12oz', price:149 }, { size:'16oz', price:169 }, { size:'20oz', price:189 } ] },
-  { id:'p34', name:'Hot Chocolate', cat:'Non-Coffee', price:119,
-    desc:'Rich cocoa steamed with milk for a warm, comforting classic.',
-    img:'hot-chocolate.jpeg', imgs:['hot-chocolate.jpeg'],
-    ingredients:'Cocoa, milk, sugar.',
-    allergens:'Milk.',
-    sizes:[ { size:'12oz', price:119 }, { size:'16oz', price:139 }, { size:'20oz', price:159 } ] },
-  { id:'p35', name:'Chai Tea Cream', cat:'Non-Coffee', price:129,
-    desc:'Spiced chai tea blended with steamed milk and a light layer of cream.',
-    img:'chaiteacream.png', imgs:['chaiteacream.png'],
-    ingredients:'Chai tea concentrate, milk, warm spices, cream.',
-    allergens:'Milk.',
-    sizes:[ { size:'12oz', price:129 }, { size:'16oz', price:149 }, { size:'20oz', price:169 } ] },
-  { id:'p36', name:'Soy Milk', cat:'Non-Coffee', price:99,
-    desc:'A smooth, plant-based milk option served warm or over ice.',
-    img:'soy milk.jpg', imgs:['soy milk.jpg'],
-    ingredients:'Soy milk.',
-    allergens:'Soy.',
-    sizes:[ { size:'12oz', price:99 }, { size:'16oz', price:119 }, { size:'20oz', price:139 } ] },
-  { id:'p37', name:'Oat Milk', cat:'Non-Coffee', price:109,
-    desc:'Creamy, naturally sweet oat milk, our go-to dairy-free option.',
-    img:'oatmilk.png', imgs:['oatmilk.png'],
-    ingredients:'Oat milk.',
-    allergens:'Oats. May contain traces of gluten.',
-    sizes:[ { size:'12oz', price:109 }, { size:'16oz', price:129 }, { size:'20oz', price:149 } ] },
-
-  /* ---- Drinks: Tea ---- */
-  { id:'p38', name:'Iced Hibiscus Tea with Honey Pearls', cat:'Tea', price:119,
-    desc:'Tart hibiscus tea served cold with chewy honey glazed pearls.',
-    img:'hibiscustea.png', imgs:['hibiscustea.png'],
-    ingredients:'Hibiscus tea, honey pearls, ice.',
-    allergens:'None known.',
-    sizes:[ { size:'12oz', price:119 }, { size:'16oz', price:139 }, { size:'20oz', price:159 } ] },
-  { id:'p39', name:'Classic Organic Earl Grey', cat:'Tea', price:99,
-    desc:'Organic black tea leaves infused with fragrant bergamot.',
-    img:'earlgrey.png', imgs:['earlgrey.png'],
-    ingredients:'Organic Earl Grey tea leaves.',
-    allergens:'None known.',
-    sizes:[ { size:'12oz', price:99 }, { size:'16oz', price:119 }, { size:'20oz', price:139 } ] },
-  { id:'p40', name:'Iced Matcha with a Shot of Espresso', cat:'Tea', price:149,
-    desc:'Iced matcha latte with a bold shot of espresso stirred through.',
-    img:'matchaespresso.png', imgs:['matchaespresso.png'],
-    ingredients:'Matcha powder, milk, espresso, ice.',
-    allergens:'Milk. Contains caffeine.',
-    sizes:[ { size:'12oz', price:149 }, { size:'16oz', price:169 }, { size:'20oz', price:189 } ] },
-  { id:'p41', name:'Black Tea', cat:'Tea', price:89,
-    desc:'A straightforward, full-bodied classic black tea, hot or iced.',
-    img:'blacktea.png', imgs:['blacktea.png'],
-    ingredients:'Black tea leaves.',
-    allergens:'None known.',
-    sizes:[ { size:'12oz', price:89 }, { size:'16oz', price:109 }, { size:'20oz', price:129 } ] },
-  { id:'p42', name:'Grapefruit Honey Iced Tea', cat:'Tea', price:109,
-    desc:'Black tea brightened with grapefruit and a touch of honey, served over ice.',
-    img:'grapefruittea.png', imgs:['grapefruittea.png'],
-    ingredients:'Black tea, grapefruit, honey, ice.',
-    allergens:'None known.',
-    sizes:[ { size:'12oz', price:109 }, { size:'16oz', price:129 }, { size:'20oz', price:149 } ] },
-
-  /* ---- Merchandise: Wearables ---- */
-  { id:'w-shirt-1', name:'Classic Logo Shirt', cat:'Shirts', price:449,
-    desc:'Soft cotton shirt with the Crafts and Crumbs logo, made for everyday wear.',
-    img:blankPlaceholder('w-shirt-1','Shirts'), imgs:[blankPlaceholder('w-shirt-1','Shirts')],
-    sizes:['XS','S','M','L','XL','XXL'],
-    fit:'Regular Fit', },
-  { id:'w-shirt-2', name:'Cropped Tee', cat:'Shirts', price:399,
-    desc:'Relaxed cropped tee with a small embroidered Crafts and Crumbs mark.',
-    img:blankPlaceholder('w-shirt-2','Shirts'), imgs:[blankPlaceholder('w-shirt-2','Shirts')],
-    sizes:['XS','S','M','L'],
-    fit:'Cropped Fit', },
-  { id:'w-shirt-3', name:'Oversized Shirt', cat:'Shirts', price:549,
-    desc:'Boxy, oversized fit shirt in heavyweight cotton with back print.',
-    img:blankPlaceholder('w-shirt-3','Shirts'), imgs:[blankPlaceholder('w-shirt-3','Shirts')],
-    sizes:['S','M','L','XL','XXL'],
-    fit:'Oversized Fit', },
-
-  { id:'w-cap-1', name:'Classic Cap', cat:'Caps', price:349,
-    desc:'Adjustable cap embroidered with the Crafts and Crumbs mark.',
-    img:blankPlaceholder('w-cap-1','Caps'), imgs:[blankPlaceholder('w-cap-1','Caps')],
-    sizes:['One Size'],
-    fit:'Adjustable', },
-  { id:'w-cap-2', name:'Trucker Cap', cat:'Caps', price:379,
-    desc:'Mesh-back trucker cap with a snapback closure and woven patch.',
-    img:blankPlaceholder('w-cap-2','Caps'), imgs:[blankPlaceholder('w-cap-2','Caps')],
-    sizes:['One Size'],
-    fit:'Adjustable', },
-  { id:'w-cap-3', name:'Bucket Hat', cat:'Caps', price:399,
-    desc:'Cotton twill bucket hat with a subtle embroidered logo.',
-    img:blankPlaceholder('w-cap-3','Caps'), imgs:[blankPlaceholder('w-cap-3','Caps')],
-    sizes:['One Size'],
-    fit:'Adjustable', },
-
-  { id:'w-short-1', name:'Classic Shorts', cat:'Shorts', price:399,
-    desc:'Comfortable everyday shorts featuring the Crafts and Crumbs branding.',
-    img:blankPlaceholder('w-short-1','Shorts'), imgs:[blankPlaceholder('w-short-1','Shorts')],
-    sizes:['XS','S','M','L','XL','XXL'],
-    fit:'Regular Fit', },
-  { id:'w-short-2', name:'Jogger Shorts', cat:'Shorts', price:499,
-    desc:'Fleece jogger shorts with an elastic waistband and side pockets.',
-    img:blankPlaceholder('w-short-2','Shorts'), imgs:[blankPlaceholder('w-short-2','Shorts')],
-    sizes:['XS','S','M','L','XL'],
-    fit:'Relaxed Fit', },
-  { id:'w-short-3', name:'Cargo Shorts', cat:'Shorts', price:549,
-    desc:'Utility cargo shorts with side pockets and an embroidered tag.',
-    img:blankPlaceholder('w-short-3','Shorts'), imgs:[blankPlaceholder('w-short-3','Shorts')],
-    sizes:['S','M','L','XL','XXL'],
-    fit:'Relaxed Fit', },
-
-  { id:'w-socks-1', name:'Crew Socks', cat:'Socks', price:159,
-    desc:'Cozy crew socks with a cafe-inspired print.',
-    img:blankPlaceholder('w-socks-1','Socks'), imgs:[blankPlaceholder('w-socks-1','Socks')],
-    sizes:['S','M','L'], },
-  { id:'w-socks-2', name:'Ankle Socks', cat:'Socks', price:149,
-    desc:'Low-cut ankle socks with a woven logo band.',
-    img:blankPlaceholder('w-socks-2','Socks'), imgs:[blankPlaceholder('w-socks-2','Socks')],
-    sizes:['S','M','L'], },
-  { id:'w-socks-3', name:'Knit Socks', cat:'Socks', price:179,
-    desc:'Ribbed knit socks in warm, cafe-inspired tones.',
-    img:blankPlaceholder('w-socks-3','Socks'), imgs:[blankPlaceholder('w-socks-3','Socks')],
-    sizes:['S','M','L'], },
-
-  { id:'w-tote-1', name:'Canvas Tote', cat:'ToteBags', price:0,
-    desc:'Sturdy canvas tote for carrying home your coffee and pastry haul.',
-    img:blankPlaceholder('w-tote-1','ToteBags'), imgs:[blankPlaceholder('w-tote-1','ToteBags')], },
-  { id:'w-tote-2', name:'Mini Tote', cat:'ToteBags', price:0,
-    desc:'Compact mini tote, sized for a quick coffee run.',
-    img:blankPlaceholder('w-tote-2','ToteBags'), imgs:[blankPlaceholder('w-tote-2','ToteBags')], },
-  { id:'w-tote-3', name:'Zip Tote', cat:'ToteBags', price:0,
-    desc:'Zippered tote with an inner pocket, built for everyday errands.',
-    img:blankPlaceholder('w-tote-3','ToteBags'), imgs:[blankPlaceholder('w-tote-3','ToteBags')], },
-
-
-  /* ---- Merchandise: Bracelets ---- */
-  { id:'p48', name:'Beads Bracelet', cat:'Bracelets', price:0,
-    desc:'Handstrung beaded bracelet in cafe inspired colors.',
-    img:'beads.png', imgs:['beads.png'], },
-  { id:'p49', name:'Charm Bracelet', cat:'Bracelets', price:0,
-    desc:'Delicate bracelet finished with a small charm.',
-    img:'charm.png', imgs:['charm.png'], },
-  { id:'p50', name:'Slider Bracelet', cat:'Bracelets', price:0,
-    desc:'Adjustable slider clasp bracelet for a comfortable fit.',
-    img:'slider.png', imgs:['slider.png'], },
-  { id:'p51', name:'Pearl Bracelet', cat:'Bracelets', price:0,
-    desc:'Dainty bracelet strung with freshwater style pearls.',
-    img:'pearl.png', imgs:['pearl.png'], },
-  { id:'p52', name:'Hololith Bracelet', cat:'Bracelets', price:0,
-    desc:'Bracelet featuring holographic beads that catch the light.',
-    img:'hololith.png', imgs:['hololith.png'], },
-
-  /* ---- Merchandise: Keychains ---- */
-  { id:'p53', name:'Mini Ceramic Mug Keychain', cat:'Keychains', price:0,
-    desc:'A tiny hand-glazed ceramic mug charm for your keys or bag.',
-    img:'ceramicmug.png', imgs:['ceramicmug.png'], },
-  { id:'p54', name:'Acrylic Boba Tea Keychain', cat:'Keychains', price:0,
-    desc:'A playful acrylic charm shaped like a boba tea cup.',
-    img:'acrylicboba.png', imgs:['acrylicboba.png'], },
-  { id:'p55', name:'Fuzzy Wire Croissant Keychain', cat:'Keychains', price:0,
-    desc:'A soft, fuzzy wire croissant charm, handmade and huggable.',
-    img:'croissantkeychain.png', imgs:['croissantkeychain.png'], },
-  { id:'p56', name:'Crochet Cake Keychain', cat:'Keychains', price:0,
-    desc:'A tiny crocheted slice of cake, stitched by hand.',
-    img:'crochetcake.png', imgs:['crochetcake.png'], },
-  { id:'p57', name:'Lasagna Resin Keychain', cat:'Keychains', price:0,
-    desc:'A miniature resin lasagna charm, cast to look good enough to eat.',
-    img:'lasagnaresin.png', imgs:['lasagnaresin.png'], },
-];
-
 const SIZE_CHARTS = {
   Shirts: {
     unit: 'cm',
@@ -379,14 +51,8 @@ const CATEGORIES = [
 let cart = []; // {id, qty, size}
 let cartOwnerUid = null; // uid whose cart is currently loaded into `cart` — null while signed out
 
-/* Raw combo records from Firestore (name, desc, img, drinkId, pastryId,
-   discountPercent, active) and the "product-shaped" versions derived
-   from them — see buildComboProducts() further down. Kept as separate
-   arrays from PRODUCTS/PRODUCTS-derived state rather than merged in,
-   so the Menu/Merch grids and the admin Products table never
-   accidentally pick up a combo as if it were a real catalog item. */
-let COMBOS = [];
-let COMBO_PRODUCTS = [];
+/* COMBOS / COMBO_PRODUCTS moved to shared-catalog.js — see
+   buildComboProducts() there. */
 
 function persistCart(){
   if(!cartOwnerUid) return;
@@ -435,6 +101,11 @@ async function syncCartToAccount(realUser){
 let currentProductId = SEED_PRODUCTS[0].id;
 let pdQty = 1;
 let pdSize = null;
+/* Currently-selected choices on the product detail page's option
+   groups (bean, milk, syrup, etc — see getOptionGroups below).
+   Shape: { [groupId]: [choiceId, ...] }. Reset each time
+   renderProductDetail() opens a product. */
+let pdOptions = {};
 let menuFilter = 'Coffee';
 let menuSearch = '';
 let menuSort = 'featured';
@@ -483,28 +154,12 @@ const MERCH_SIDEBAR = [
   ]},
 ];
 
-/* Wearable categories that price flat but track stock per size (see
-   the seed data above, where each has a `sizes: ['XS','S',...]`
-   array). Used by the admin Add/Edit form's stock-per-size UI and by
-   the "Flatten Size Pricing" legacy cleanup tool — it does NOT include
-   Coffee/Non-Coffee/Tea, which intentionally DO price per size
-   (12oz/16oz/20oz) and must never be "flattened" back to one price. */
-const SIZED_CATEGORIES = ['Shirts', 'Caps', 'Shorts', 'Socks'];
-const CAT_LABELS = {
-  'Coffee': { group:'Drinks', sub:'Caffeine' },
-  'Non-Coffee': { group:'Drinks', sub:'Non-Caffeine' },
-  'Tea': { group:'Drinks', sub:'Tea' },
-  'Pastries': { group:'Food', sub:'Pastries' },
-  'Sandwiches': { group:'Food', sub:'Sandwiches & Pasta' },
-  'Cakes': { group:'Food', sub:'Cakes' },
-  'Shirts': { group:'Wearables', sub:'Shirts' },
-  'Caps': { group:'Wearables', sub:'Caps' },
-  'Shorts': { group:'Wearables', sub:'Shorts' },
-  'Socks': { group:'Wearables', sub:'Socks' },
-  'ToteBags': { group:'Wearables', sub:'Tote Bags' },
-  'Bracelets': { group:'Merchandise', sub:'Bracelets' },
-  'Keychains': { group:'Merchandise', sub:'Keychains' },
-};
+/* SIZED_CATEGORIES moved to shared-catalog.js (loaded before this
+   file). Wearable categories that price flat but track stock per
+   size — used by the admin Add/Edit form's stock-per-size UI and the
+   "Flatten Size Pricing" legacy cleanup tool. Does NOT include
+   Coffee/Non-Coffee/Tea, which intentionally DO price per size. */
+/* CAT_LABELS moved to shared-catalog.js. */
 
 /* Flattens a sidebar's groups down to the plain list of category keys
    it contains — used to tell, given a product's `cat`, whether it
@@ -550,7 +205,7 @@ function productMatchesQuery(p, query){
    list (rather than only folded into CAT_LABELS) so the admin
    dashboard can tell "built-in" and "custom" categories apart if it
    ever needs to (e.g. only custom ones are deletable). */
-let CUSTOM_CATEGORIES = [];
+/* CUSTOM_CATEGORIES moved to shared-catalog.js. */
 
 /* Folds one category doc — see categories-service.js for the shape —
    into every piece of config a category needs to participate in:
@@ -561,17 +216,18 @@ let CUSTOM_CATEGORIES = [];
    global scope), and the Menu/Merchandise sidebar it should appear
    on. Safe to call more than once with the same category — it just
    no-ops after the first time (CAT_LABELS[c.id] already set). */
+/* applyCustomCategory()/removeCustomCategoryEffects(): thin storefront
+   wrappers around the shared applyCustomCategoryCore()/
+   removeCustomCategoryEffectsCore() (see shared-catalog.js). The only
+   thing these versions add on top of Core is keeping MENU_SIDEBAR/
+   MERCH_SIDEBAR (customer-nav-only data) in sync — that's why this
+   wrapper stays here instead of moving to the shared file. admin.js
+   calls the Core versions directly, since the standalone admin app has
+   no storefront sidebar to update. */
 function applyCustomCategory(c){
-  if(CAT_LABELS[c.id]) return;
-  CAT_LABELS[c.id] = { group: c.group, sub: c.label };
-
-  if(c.pricingType === 'sized-price'){
-    if(!DRINK_CATEGORIES.includes(c.id)) DRINK_CATEGORIES.push(c.id);
-  } else if(c.pricingType === 'sized-stock'){
-    if(!SIZED_CATEGORIES.includes(c.id)) SIZED_CATEGORIES.push(c.id);
-    DEFAULT_SIZES_BY_CATEGORY[c.id] = (c.sizes && c.sizes.length) ? c.sizes : ['One Size'];
-  }
-  if(c.hasFoodFields && !FOOD_CATEGORIES.includes(c.id)) FOOD_CATEGORIES.push(c.id);
+  const isNew = !CAT_LABELS[c.id];
+  applyCustomCategoryCore(c);
+  if(!isNew) return; // already applied (and sidebar already has it too)
 
   const sidebar = c.page === 'merch' ? MERCH_SIDEBAR : MENU_SIDEBAR;
   let groupEntry = sidebar.find(g => g.group === c.group);
@@ -589,29 +245,17 @@ function applyCustomCategories(categories){
 }
 
 /* Reverses applyCustomCategory — unwinds every place a category id
-   was folded into when it was added, so deleting it actually removes
-   it from dropdowns/sidebars instead of leaving stale references
-   behind. Only ever called on entries from CUSTOM_CATEGORIES; built-in
-   categories never go through this. */
+   was folded into when it was added, including the sidebar entry (the
+   part removeCustomCategoryEffectsCore alone doesn't touch). Only ever
+   called on entries from CUSTOM_CATEGORIES; built-in categories never
+   go through this. */
 function removeCustomCategoryEffects(c){
-  delete CAT_LABELS[c.id];
-  delete DEFAULT_SIZES_BY_CATEGORY[c.id];
-
-  const di = DRINK_CATEGORIES.indexOf(c.id);
-  if(di > -1) DRINK_CATEGORIES.splice(di, 1);
-  const si = SIZED_CATEGORIES.indexOf(c.id);
-  if(si > -1) SIZED_CATEGORIES.splice(si, 1);
-  const fi = FOOD_CATEGORIES.indexOf(c.id);
-  if(fi > -1) FOOD_CATEGORIES.splice(fi, 1);
+  removeCustomCategoryEffectsCore(c);
 
   const sidebar = c.page === 'merch' ? MERCH_SIDEBAR : MENU_SIDEBAR;
   const groupEntry = sidebar.find(g => g.group === c.group);
   if(groupEntry){
     groupEntry.items = groupEntry.items.filter(it => it.cat !== c.id);
-    // Drop the whole group heading once it has nothing left under it —
-    // only happens for a group the admin invented from scratch, since
-    // built-in groups (Drinks/Food/Wearables) always keep their
-    // built-in items regardless.
     if(!groupEntry.items.length){
       const gi = sidebar.indexOf(groupEntry);
       if(gi > -1) sidebar.splice(gi, 1);
@@ -620,7 +264,7 @@ function removeCustomCategoryEffects(c){
 }
 
 /* ================= HELPERS ================= */
-const peso = n => '₱' + n.toLocaleString('en-PH');
+/* peso() moved to shared-catalog.js. */
 const findProduct = id => PRODUCTS.find(p => p.id === id) || COMBO_PRODUCTS.find(p => p.id === id);
 const escapeHtml = str => $('<div>').text(str == null ? '' : str).html();
 
@@ -633,17 +277,7 @@ const escapeHtml = str => $('<div>').text(str == null ? '' : str).html();
      price, stock tracked per size
    `stock: null` means stock isn't tracked for that size at all, which
    the storefront treats as always available (never crossed out). */
-function getSizeOptions(p){
-  if(!p.sizes) return [];
-  return p.sizes.map(s => {
-    if(typeof s === 'string') return { size: s, price: p.price, stock: null };
-    return {
-      size: s.size,
-      price: typeof s.price === 'number' ? s.price : p.price,
-      stock: typeof s.stock === 'number' ? s.stock : null
-    };
-  });
-}
+/* getSizeOptions() moved to shared-catalog.js. */
 
 /* True when a specific size is out of stock — only ever true when
    that size actually has stock tracked (stock isn't null) and it's
@@ -683,34 +317,239 @@ function getPriceForSize(p, sizeLabel){
 
 /* The price to show before a size is picked — the lowest of the
    available sizes, e.g. a latte that runs ₱139–₱179 just shows ₱139. */
-function getDisplayPrice(p){
-  const opts = getSizeOptions(p);
-  if(!opts.length) return p.price;
-  return Math.min(...opts.map(o => o.price));
+/* getDisplayPrice() / hasVariablePricing() moved to shared-catalog.js. */
+
+/* ================= PRODUCT CUSTOMIZATION (OPTION GROUPS) ================= */
+/* A product can optionally carry `optionGroups`, an array admin-defined
+   groups like "Choose your bean" or "Topping" — see admin.js's option
+   group builder for the exact shape written to Firestore:
+     { id, label, type:'single'|'multi', max (multi only),
+       choices: [{ id, label, price, kcal, available, default }] }
+   Only drinks (Coffee/Non-Coffee/Tea) get these today, but nothing
+   here assumes that — any product with optionGroups gets the UI. */
+function getOptionGroups(p){
+  return Array.isArray(p.optionGroups) ? p.optionGroups : [];
 }
 
-/* True when at least two sizes are actually priced differently — true
-   for every drink (12oz/16oz/20oz each cost more) and false for
-   wearables (one flat price regardless of size), which is what
-   decides whether each size chip needs its own price shown. */
-function hasVariablePricing(p){
-  const opts = getSizeOptions(p);
-  if(opts.length < 2) return false;
-  return new Set(opts.map(o => o.price)).size > 1;
+/* Every group (single or multi) is expected to have real, priced
+   choices for its "nothing extra" state too (e.g. "No Topping",
+   "Standard", "No Added Sugar") — same pattern the ZUS reference used.
+   That means picking sensible defaults is just: for a single-select
+   group, whichever available choice is flagged `default` (or the
+   first available one); for multi-select, every available choice
+   flagged `default`. Nothing needs special-casing for "no selection". */
+function defaultPdOptions(p){
+  const out = {};
+  getOptionGroups(p).forEach(g => {
+    const avail = g.choices.filter(c => c.available !== false);
+    if(g.type === 'multi'){
+      out[g.id] = avail.filter(c => c.default).map(c => c.id);
+    } else {
+      const def = avail.find(c => c.default) || avail[0];
+      out[g.id] = def ? [def.id] : [];
+    }
+  });
+  return out;
+}
+
+function optionsPriceDelta(p, options){
+  let delta = 0;
+  getOptionGroups(p).forEach(g => {
+    (options[g.id] || []).forEach(cid => {
+      const choice = g.choices.find(c => c.id === cid);
+      if(choice) delta += (choice.price || 0);
+    });
+  });
+  return delta;
+}
+
+/* Base price (from the selected size, or the display price for
+   unsized products) plus whatever the selected options add. This is
+   the single source of truth for what the customer is about to pay —
+   used by the pd page's live price, the Add to Cart button, and what
+   ultimately gets stored on the cart line as `unitPrice`. */
+function computePdUnitPrice(p, size, options){
+  const base = size ? getPriceForSize(p, size) : getDisplayPrice(p);
+  return base + optionsPriceDelta(p, options || {});
+}
+
+/* Same idea as optionsPriceDelta, but for calories — the product's own
+   base `calories` (admin-set, drinks only), SIZE-SCALED to whatever
+   size is currently selected (see scaleForSize), plus whatever the
+   selected options add on top (add-ins like an extra shot cost the
+   same calories no matter what size cup they go in, so those are
+   added AFTER scaling, not scaled themselves). Returns null (not 0)
+   when there's genuinely no calorie data at all, so the caller can
+   hide the subtitle entirely rather than showing a misleading
+   "0 kcal". */
+function computePdCalories(p, options, size){
+  const hasBase = typeof p.calories === 'number';
+  let total = hasBase ? scaleForSize(p, p.calories, size) : 0;
+  let hasAny = hasBase;
+  getOptionGroups(p).forEach(g => {
+    (options[g.id] || []).forEach(cid => {
+      const choice = g.choices.find(c => c.id === cid);
+      if(choice && typeof choice.kcal === 'number'){
+        total += choice.kcal;
+        hasAny = true;
+      }
+    });
+  });
+  return hasAny ? Math.round(total) : null;
+}
+
+/* A drink's nutrition numbers (calories + the macro table) are admin-
+   entered for ONE reference size — n.servingSize if set, otherwise
+   whatever the smallest size on the product is. A 20oz obviously has
+   more sugar in it than a 12oz of the exact same drink, so every
+   value scales in proportion to the selected size's volume relative
+   to that reference size. Returns 1 (no scaling) for anything that
+   isn't a plain "<number>oz" size, or when there's no size to compare
+   against at all (unsized drinks, or nothing selected yet) — those
+   just show the admin's numbers as-is. */
+function pdSizeOz(sizeStr){
+  if(!sizeStr) return null;
+  const m = String(sizeStr).match(/(\d+(?:\.\d+)?)\s*oz/i);
+  return m ? parseFloat(m[1]) : null;
+}
+function scaleForSize(p, value, size){
+  if(typeof value !== 'number') return value;
+  const n = p.nutrition || {};
+  const refOz = pdSizeOz(n.servingSize) || pdSizeOz((getSizeOptions(p)[0] || {}).size);
+  const selOz = pdSizeOz(size);
+  if(!refOz || !selOz) return value;
+  return value * (selOz / refOz);
+}
+
+/* The small "16oz • 120 kcal" line under the product name — drinks
+   only, and only the parts that actually have data (a tea with no
+   calories set just shows the size, not a blank " • kcal"). */
+function pdSubtitleText(p, size, options){
+  if(!DRINK_CATEGORIES.includes(p.cat)) return '';
+  const parts = [];
+  if(size) parts.push(size);
+  const kcal = computePdCalories(p, options || {}, size);
+  if(kcal !== null) parts.push(`~${kcal} kcal`);
+  return parts.join(' • ');
+}
+
+/* "Iced, Regular, BOSS, Oat Milk, No Added Sugar, Normal Ice, No Topping"
+   — the one-line summary shown on the sticky action bar, on cart lines,
+   and saved onto the order. Groups with nothing selected (shouldn't
+   normally happen since every group has a default) are just skipped. */
+function optionsSummaryText(p, options){
+  if(!options) return '';
+  const parts = [];
+  getOptionGroups(p).forEach(g => {
+    const ids = options[g.id] || [];
+    const labels = ids.map(cid => {
+      const choice = g.choices.find(c => c.id === cid);
+      return choice ? choice.label : null;
+    }).filter(Boolean);
+    if(labels.length) parts.push(labels.join(' + '));
+  });
+  return parts.join(', ');
+}
+
+/* Stable string key for a set of selected options, order-independent —
+   used to tell whether two cart lines for the same product/size are
+   actually the same customization (should merge quantities) or
+   different ones (should stay as separate lines). */
+function optionsKey(options){
+  if(!options) return '';
+  return Object.keys(options).sort()
+    .map(k => k + ':' + [...(options[k] || [])].sort().join('+'))
+    .join('|');
+}
+
+/* Renders every option group for the current product as chip rows —
+   single-select groups behave like the existing size chips (one
+   active choice), multi-select groups toggle on/off up to `max`. */
+function renderPdOptionGroups(p, options){
+  const groups = getOptionGroups(p);
+  if(!groups.length) return '';
+  return `
+    <div class="pd-options">
+      ${groups.map(g => {
+        const selected = options[g.id] || [];
+        return `
+          <div class="pd-opt-group" data-opt-group="${g.id}">
+            <div class="pd-opt-head">
+              <h4>${g.label}</h4>
+              <span class="pd-opt-tag">${g.type === 'multi' ? `Select up to ${g.max || g.choices.length}` : '* Pick 1'}</span>
+            </div>
+            <div class="pd-opt-choice-row">
+              ${g.choices.map(c => {
+                const avail = c.available !== false;
+                const isSel = selected.includes(c.id);
+                return `
+                  <button type="button" class="pd-opt-chip${isSel ? ' active' : ''}${!avail ? ' pd-opt-chip-disabled' : ''}"
+                    data-opt-choice data-group="${g.id}" data-choice="${c.id}" ${!avail ? 'disabled' : ''}>
+                    <span class="pd-opt-chip-label">${c.label}</span>
+                    ${c.price ? `<span class="pd-opt-chip-price">(+${peso(c.price)})</span>` : ''}
+                    ${c.kcal ? `<span class="pd-opt-chip-kcal">~ ${c.kcal} kcal</span>` : ''}
+                    ${!avail ? '<span class="pd-opt-chip-oos">Unavailable</span>' : ''}
+                  </button>
+                `;
+              }).join('')}
+            </div>
+          </div>
+        `;
+      }).join('')}
+    </div>
+  `;
+}
+
+/* Re-reads pdOptions/pdSize/pdQty and repaints everything on the pd
+   page that depends on them — the live price, the Add to Cart button
+   label, and the running selection summary. Called after every size,
+   option, or qty change so those three never fall out of sync with
+   each other (the same class of bug fixed earlier in the cart). */
+/* Clamps the description to 3 lines by default and only reveals the
+   See More/See Less toggle if the text actually overflows that height
+   — a short one-line description never shows a pointless toggle. */
+function initPdDescToggle(){
+  const $desc = $('#pdDesc');
+  const $btn = $('#pdDescToggle');
+  if(!$desc.length || !$btn.length) return;
+  $desc.addClass('pd-desc-clamped');
+  $btn.text('See More').hide();
+  requestAnimationFrame(() => {
+    if($desc[0].scrollHeight > $desc[0].clientHeight + 2) $btn.show();
+  });
+}
+
+$(document).on('click', '#pdDescToggle', function(){
+  const nowClamped = $('#pdDesc').toggleClass('pd-desc-clamped').hasClass('pd-desc-clamped');
+  $(this).text(nowClamped ? 'See More' : 'See Less');
+});
+
+function refreshPdPricing(p){
+  const unit = computePdUnitPrice(p, pdSize, pdOptions);
+  const oos = pdSize ? isSizeOutOfStock(p, pdSize) : isProductOutOfStock(p);
+  $('#pdPriceDisplayValue').text(peso(unit));
+  if(p.comboMeta && pdSize) $('.combo-price-original-pd').text(comboOriginalPriceForSize(p, pdSize));
+  $('#pdAddBtn').prop('disabled', oos).text(oos ? 'Out of Stock' : `Add to Cart · ${peso(unit * pdQty)}`);
+  $('#pdBuyNowBtn').prop('disabled', oos);
+  $('#pdOptSummary').text(optionsSummaryText(p, pdOptions));
+  const subtitle = pdSubtitleText(p, pdSize, pdOptions);
+  $('#pdSubtitle').text(subtitle).toggle(!!subtitle);
+  // Nutrition table scales with size and add-ons too (see
+  // renderPdNutrition) — re-render it in place on every size/option
+  // change so it never shows stale numbers from the previous
+  // selection. Whether the section exists at all is fixed per
+  // product (it depends only on whether the admin filled in any
+  // calories/nutrition, not on which size/options are picked), so
+  // this only ever needs to update content, never add or remove
+  // the section itself.
+  const $nutrition = $('#pdNutritionSection');
+  if($nutrition.length) $nutrition.replaceWith(renderPdNutrition(p, pdSize, pdOptions));
 }
 
 /* Drinks show a range across their three sizes (e.g. "₱139–₱179");
    everything else (one flat price, sized or not) shows a single
    number. */
-function priceLabel(p){
-  if(hasVariablePricing(p)){
-    const opts = getSizeOptions(p);
-    const min = Math.min(...opts.map(o => o.price));
-    const max = Math.max(...opts.map(o => o.price));
-    return `${peso(min)}–${peso(max)}`;
-  }
-  return peso(getDisplayPrice(p));
-}
+/* priceLabel() moved to shared-catalog.js. */
 
 /* Shared by the Menu and Merchandise grids. "Featured" keeps the
    catalog's natural order but pulls best sellers to the front — it's
@@ -818,6 +657,344 @@ function renderWishlistPage(){
   initReveal();
 }
 
+/* ================= SAVED ADDRESSES ================= */
+/* Same account-scoped caching pattern as wishlist above: myAddresses
+   holds the signed-in customer's saved delivery addresses, kept in
+   sync with whoever's actually logged in via addressesOwnerUid so a
+   log-out/log-in (or switching accounts) never leaks one customer's
+   addresses into another's view. */
+let myAddresses = [];
+let addressesOwnerUid = null;
+let editingAddressId = null;      // set while the address form is editing an existing one
+let addressFormContext = 'page';  // 'page' (My Addresses) or 'checkout' — where to return focus after saving
+let addressFormMap = null;        // Leaflet map instance, created once and reused across opens
+let addressFormMarker = null;
+
+// Quezon City — sensible default center since that's where the shop is.
+const ADDRESS_MAP_DEFAULT = { lat: 14.6760, lng: 121.0437 };
+
+/* Called from authStateReady alongside syncCartToAccount/syncWishlistToAccount. */
+async function syncAddressesToAccount(realUser){
+  if(realUser){
+    if(addressesOwnerUid === realUser.uid) return;
+    myAddresses = await window.CCAddresses.fetchAddresses(realUser.uid);
+    addressesOwnerUid = realUser.uid;
+    if($('.page[data-page="addresses"]').hasClass('active')) renderAddressesPage();
+    if($('.page[data-page="checkout"]').hasClass('active')) renderCheckoutAddressPicker();
+    return;
+  }
+  if(addressesOwnerUid === null) return;
+  addressesOwnerUid = null;
+  myAddresses = [];
+}
+
+async function reloadMyAddresses(){
+  if(!window.currentUser || window.currentUser.isAnonymous) return;
+  myAddresses = await window.CCAddresses.fetchAddresses(window.currentUser.uid);
+  if($('.page[data-page="addresses"]').hasClass('active')) renderAddressesPage();
+  if($('.page[data-page="checkout"]').hasClass('active')) renderCheckoutAddressPicker();
+}
+
+function renderAddressesPage(){
+  const $list = $('#addressesList');
+  if(!myAddresses.length){
+    $list.html(`
+      <div class="empty-favorites">
+        <div class="empty-favorites-icon">
+          <svg width="26" height="26" viewBox="0 0 24 24" fill="none"><path d="M12 21s-5.5-6-5.5-10.5A5.5 5.5 0 0 1 12 5a5.5 5.5 0 0 1 5.5 5.5C17.5 15 12 21 12 21z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/><circle cx="12" cy="10.5" r="2" stroke="currentColor" stroke-width="1.5"/></svg>
+        </div>
+        <h3>No saved addresses yet</h3>
+        <p>Add one now so checkout only takes a tap next time.</p>
+        <div class="empty-favorites-actions">
+          <button class="btn btn-primary" id="emptyAddAddressBtn">Add Your First Address</button>
+        </div>
+      </div>
+    `);
+    return;
+  }
+  $list.html(myAddresses.map(addressCard).join(''));
+}
+
+function addressCard(a){
+  return `
+    <div class="address-card${a.isDefault ? ' is-default' : ''}" data-address-id="${a.id}">
+      <div class="address-card-main">
+        <div class="address-card-label-row">
+          <span class="address-card-label">${a.label || 'Address'}</span>
+          ${a.isDefault ? '<span class="address-default-badge">Default</span>' : ''}
+        </div>
+        <p class="address-card-text">${a.address}</p>
+      </div>
+      <div class="address-card-actions">
+        ${!a.isDefault ? `<button type="button" class="link-btn" data-address-set-default="${a.id}">Set as default</button>` : ''}
+        <button type="button" class="link-btn" data-address-edit="${a.id}">Edit</button>
+        <button type="button" class="link-btn link-btn-danger" data-address-delete="${a.id}">Delete</button>
+      </div>
+    </div>
+  `;
+}
+
+$(document).on('click', '#addAddressBtn, #emptyAddAddressBtn', function(){
+  openAddressForm({ editing: null, context: 'page' });
+});
+
+$(document).on('click', '[data-address-edit]', function(){
+  const a = myAddresses.find(x => x.id === $(this).data('address-edit'));
+  if(a) openAddressForm({ editing: a, context: 'page' });
+});
+
+$(document).on('click', '[data-address-set-default]', async function(){
+  const id = $(this).data('address-set-default');
+  try{
+    await window.CCAddresses.setDefaultAddress(window.currentUser.uid, id);
+    await reloadMyAddresses();
+    showToast('Default address updated.', 'success');
+  } catch(err){
+    console.error(err);
+    showToast('Could not update your default address. Please try again.', 'error');
+  }
+});
+
+$(document).on('click', '[data-address-delete]', async function(){
+  const id = $(this).data('address-delete');
+  const a = myAddresses.find(x => x.id === id);
+  const ok = await showConfirm({
+    title: 'Delete this address?',
+    message: `"${a ? a.label || a.address : 'This address'}" will be removed from your account.`,
+    confirmText: 'Delete',
+    danger: true
+  });
+  if(!ok) return;
+  try{
+    await window.CCAddresses.deleteAddress(window.currentUser.uid, id);
+    await reloadMyAddresses();
+    showToast('Address deleted.', 'success');
+  } catch(err){
+    console.error(err);
+    showToast('Could not delete that address. Please try again.', 'error');
+  }
+});
+
+/* ---------- Address form modal (map + fields, shared by My Addresses & Checkout) ---------- */
+
+function openAddressForm({ editing, context }){
+  editingAddressId = editing ? editing.id : null;
+  addressFormContext = context;
+  $('#addressFormTitle').text(editing ? 'Edit Address' : 'Add Address');
+  $('#afLabel').val(editing ? (editing.label || '') : '');
+  $('#afAddress').val(editing ? (editing.address || '') : '');
+  $('#afIsDefault').prop('checked', editing ? !!editing.isDefault : myAddresses.length === 0);
+  $('#addressFormOverlay').addClass('open');
+
+  const startLat = editing && editing.lat ? editing.lat : ADDRESS_MAP_DEFAULT.lat;
+  const startLng = editing && editing.lng ? editing.lng : ADDRESS_MAP_DEFAULT.lng;
+
+  // The overlay needs to actually be visible (display != none, full
+  // size) before Leaflet can measure its container, or the map tiles
+  // render into a collapsed 0x0 box — a short delay covers the CSS
+  // transition that fades/scales the modal in.
+  setTimeout(() => initOrResetAddressMap(startLat, startLng), 60);
+}
+
+function closeAddressForm(){
+  $('#addressFormOverlay').removeClass('open');
+  editingAddressId = null;
+}
+
+function initOrResetAddressMap(lat, lng){
+  if(!addressFormMap){
+    addressFormMap = L.map('addressMap').setView([lat, lng], 14);
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      maxZoom: 19,
+      attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+    }).addTo(addressFormMap);
+    addressFormMarker = L.marker([lat, lng], { draggable: true }).addTo(addressFormMap);
+
+    // Dragging the pin is the "map drives the address field" half of
+    // the sync — only fires once per drag (not continuously), which
+    // keeps this comfortably within Nominatim's fair-use rate limit.
+    addressFormMarker.on('dragend', function(){
+      const pos = addressFormMarker.getLatLng();
+      reverseGeocodeToField(pos.lat, pos.lng);
+    });
+    // Clicking anywhere else on the map moves the pin there too.
+    addressFormMap.on('click', function(e){
+      addressFormMarker.setLatLng(e.latlng);
+      reverseGeocodeToField(e.latlng.lat, e.latlng.lng);
+    });
+  } else {
+    addressFormMap.setView([lat, lng], 14);
+    addressFormMarker.setLatLng([lat, lng]);
+  }
+  addressFormMap.invalidateSize();
+}
+
+/* OpenStreetMap's free Nominatim service, used for both directions of
+   the address<->pin sync. No API key. Its usage policy asks for no
+   more than ~1 request/second and no automated bulk use — both
+   comfortably satisfied here since every call is a single customer's
+   own deliberate action (a drag-end, a location-search tap, or the
+   "use my current location" button), never a loop or a keystroke
+   handler. */
+async function reverseGeocodeToField(lat, lng){
+  $('#afAddress').attr('placeholder', 'Looking up address...');
+  try{
+    const res = await fetch(`https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${lat}&lon=${lng}`);
+    const data = await res.json();
+    if(data && data.display_name) $('#afAddress').val(data.display_name);
+  } catch(err){
+    console.warn('Reverse geocoding failed — leaving the address field as-is.', err);
+  } finally {
+    $('#afAddress').attr('placeholder', 'Street, Barangay, City');
+  }
+}
+
+async function forwardGeocodeFromField(){
+  const query = $('#afAddress').val().trim();
+  if(!query) return;
+  const $btn = $('#afSearchBtn');
+  $btn.prop('disabled', true).text('Searching...');
+  try{
+    const res = await fetch(`https://nominatim.openstreetmap.org/search?format=jsonv2&limit=1&q=${encodeURIComponent(query)}`);
+    const results = await res.json();
+    if(!results.length){
+      showToast('Could not find that address on the map. You can still drag the pin manually.', 'warning');
+      return;
+    }
+    const { lat, lon } = results[0];
+    addressFormMarker.setLatLng([lat, lon]);
+    addressFormMap.setView([lat, lon], 15);
+  } catch(err){
+    console.error(err);
+    showToast('Address search failed. Please try again.', 'error');
+  } finally {
+    $btn.prop('disabled', false).text('Search');
+  }
+}
+
+$(document).on('click', '#afSearchBtn', forwardGeocodeFromField);
+$(document).on('keydown', '#afAddress', function(e){
+  if(e.key === 'Enter'){ e.preventDefault(); forwardGeocodeFromField(); }
+});
+
+$(document).on('click', '#afUseCurrentLocationBtn', function(){
+  if(!navigator.geolocation){
+    showToast('Your browser does not support location access.', 'warning');
+    return;
+  }
+  const $btn = $(this);
+  $btn.prop('disabled', true).text('Locating...');
+  navigator.geolocation.getCurrentPosition(
+    (pos) => {
+      const { latitude, longitude } = pos.coords;
+      addressFormMarker.setLatLng([latitude, longitude]);
+      addressFormMap.setView([latitude, longitude], 16);
+      reverseGeocodeToField(latitude, longitude);
+      $btn.prop('disabled', false).text('Use my current location');
+    },
+    () => {
+      showToast('Could not access your location. You can still drop the pin manually.', 'warning');
+      $btn.prop('disabled', false).text('Use my current location');
+    }
+  );
+});
+
+$(document).on('click', '#addressFormClose, #addressFormCancel', closeAddressForm);
+$(document).on('click', '#addressFormOverlay', function(e){
+  if(e.target.id === 'addressFormOverlay') closeAddressForm();
+});
+
+$(document).on('submit', '#addressForm', async function(e){
+  e.preventDefault();
+  if(!window.currentUser || window.currentUser.isAnonymous){
+    showToast('Please log in to save an address.', 'warning');
+    return;
+  }
+  const address = $('#afAddress').val().trim();
+  if(!address){
+    showToast('Enter a delivery address first.', 'warning');
+    return;
+  }
+  const pos = addressFormMarker.getLatLng();
+  const fields = {
+    label: $('#afLabel').val().trim(),
+    address,
+    lat: pos.lat,
+    lng: pos.lng,
+    isDefault: $('#afIsDefault').is(':checked')
+  };
+
+  const $btn = $('#addressFormSubmit');
+  $btn.prop('disabled', true).text('Saving...');
+  try{
+    const uid = window.currentUser.uid;
+    let savedId;
+    if(editingAddressId){
+      await window.CCAddresses.updateAddress(uid, editingAddressId, fields);
+      savedId = editingAddressId;
+    } else {
+      savedId = await window.CCAddresses.addAddress(uid, fields);
+    }
+    await reloadMyAddresses();
+    closeAddressForm();
+    showToast(editingAddressId ? 'Address updated.' : 'Address saved.', 'success');
+    // Opened from checkout's "+ Add new address" chip — select the
+    // address that was just saved instead of leaving the picker on
+    // whatever was chosen before.
+    if(addressFormContext === 'checkout') selectCheckoutAddress(savedId);
+  } catch(err){
+    console.error(err);
+    showToast('Could not save that address. Please try again.', 'error');
+  } finally {
+    $btn.prop('disabled', false).text('Save Address');
+  }
+});
+
+/* ---------- Checkout's saved-address picker ---------- */
+
+let checkoutSelectedAddressId = null;
+
+function renderCheckoutAddressPicker(){
+  const $picker = $('#coSavedAddressPicker');
+  const loggedIn = window.currentUser && !window.currentUser.isAnonymous;
+  if(!loggedIn){
+    $picker.hide().html('');
+    return;
+  }
+  $picker.show().html(`
+    ${myAddresses.map(a => `
+      <button type="button" class="address-chip${a.id === checkoutSelectedAddressId ? ' active' : ''}" data-checkout-address="${a.id}">
+        <span class="address-chip-label">${a.label || 'Address'}</span>
+        <span class="address-chip-text">${a.address}</span>
+      </button>
+    `).join('')}
+    <button type="button" class="address-chip address-chip-add" data-checkout-address-new="1">+ Add new address</button>
+  `);
+  // Nothing picked yet this session — default to the customer's
+  // default address so returning customers don't have to tap at all.
+  if(!checkoutSelectedAddressId){
+    const def = myAddresses.find(a => a.isDefault);
+    if(def) selectCheckoutAddress(def.id);
+  }
+}
+
+function selectCheckoutAddress(id){
+  const a = myAddresses.find(x => x.id === id);
+  if(!a) return;
+  checkoutSelectedAddressId = id;
+  $('#coAddress').val(a.address);
+  $('#coSavedAddressPicker .address-chip').removeClass('active');
+  $(`#coSavedAddressPicker [data-checkout-address="${id}"]`).addClass('active');
+}
+
+$(document).on('click', '[data-checkout-address]', function(){
+  selectCheckoutAddress($(this).data('checkout-address'));
+});
+
+$(document).on('click', '[data-checkout-address-new]', function(){
+  openAddressForm({ editing: null, context: 'checkout' });
+});
+
 /* ================= COMBOS ================= */
 /* Turns each raw combo doc (name, desc, img, drinkId, pastryId,
    discountPercent, active) into a "product" — same {sizes, price,
@@ -835,40 +1012,7 @@ function renderWishlistPage(){
    the combo silently drops off the storefront rather than crashing or
    showing a broken card. Re-run whenever PRODUCTS or COMBOS changes
    (product prices/stock updated, or a combo added/edited/toggled). */
-function buildComboProducts(){
-  COMBO_PRODUCTS = COMBOS.filter(c => c.active).map(c => {
-    const drink = PRODUCTS.find(p => p.id === c.drinkId);
-    const pastry = PRODUCTS.find(p => p.id === c.pastryId);
-    if(!drink || !pastry) return null;
-
-    const drinkOpts = getSizeOptions(drink).length ? getSizeOptions(drink) : [{ size: null, price: drink.price, stock: null }];
-    const discount = Number(c.discountPercent) || 0;
-    const originalSizes = drinkOpts.map(o => ({ size: o.size, price: o.price + pastry.price }));
-    const sizes = originalSizes.map(o => ({ size: o.size, price: Math.round(o.price * (1 - discount / 100)) }));
-
-    const stocks = [drink.stock, pastry.stock].filter(s => typeof s === 'number');
-    const stock = stocks.length ? Math.min(...stocks) : null;
-
-    return {
-      id: 'combo_' + c.id,
-      name: c.name,
-      desc: c.desc || `${drink.name} + ${pastry.name}`,
-      img: c.img,
-      imgs: [c.img],
-      cat: 'Combo',
-      sizes: drinkOpts[0].size ? sizes : undefined,
-      price: Math.min(...sizes.map(s => s.price)),
-      stock,
-      comboMeta: {
-        comboId: c.id,
-        drinkId: drink.id,
-        pastryId: pastry.id,
-        discountPercent: discount,
-        originalSizes
-      }
-    };
-  }).filter(Boolean);
-}
+/* buildComboProducts() moved to shared-catalog.js. */
 
 async function loadCombosFromFirestore(){
   try{
@@ -907,7 +1051,7 @@ function comboCard(p, i=0){
   return `
     <div class="product-card combo-card reveal${oos ? ' oos' : ''}" style="--i:${i}">
       <div class="product-img" data-open-product="${p.id}">
-        <img src="${p.img}" alt="${p.name}">
+        <img src="${resolveImageSrc(p.img)}" alt="${p.name}">
         <span class="combo-discount-badge">${p.comboMeta.discountPercent}% off</span>
         ${oos ? '<span class="oos-badge">Out of Stock</span>' : ''}
         <button type="button" class="wishlist-btn ${saved ? 'active' : ''}" data-wishlist-toggle="${p.id}" aria-label="${saved ? 'Remove from favorites' : 'Save to favorites'}">
@@ -963,7 +1107,15 @@ $(document).on('click', '[data-wishlist-toggle]', function(e){
      'warning' — caramel alert, "please do X" prompts
      'error'   — red alert, something failed
      'info'    — dusty-blue info, neutral status updates
-   duration is how long it stays up (ms) before auto-dismissing. */
+
+   Calls are QUEUED, not clobbered: if the admin (or a customer) fires
+   several actions in quick succession — e.g. deleting a few products,
+   or updating two order statuses back to back — each message gets its
+   own full, uninterrupted turn on screen instead of the newest one
+   silently overwriting/cutting off the previous one mid-animation.
+   duration is how long that toast stays up (ms) before the next one
+   in the queue takes over; error/warning default longer than routine
+   success/info messages since they need more time to actually read. */
 const TOAST_ICONS = {
   success: '<path d="M4 12l5 5L20 6"/>',
   cart:    '<path d="M17 8h1a4 4 0 1 1 0 8h-1"/><path d="M3 8h14v7a4 4 0 0 1-4 4H7a4 4 0 0 1-4-4z"/>',
@@ -971,29 +1123,78 @@ const TOAST_ICONS = {
   error:   '<circle cx="12" cy="12" r="9"/><path d="M9.5 9.5l5 5"/><path d="M14.5 9.5l-5 5"/>',
   info:    '<circle cx="12" cy="12" r="9"/><path d="M12 11v5"/><path d="M12 8h.01"/>'
 };
+const TOAST_DEFAULT_DURATIONS = { success:2400, cart:2400, info:2600, warning:3200, error:3800 };
 
-function showToast(msg, type='success', duration=2400){
-  const $t = $('#toast');
-  const $veil = $('#toastVeil');
+const _toastQueue = [];
+let _toastActive = false;
+let _toastHideTimer = null;
+
+function showToast(msg, type='success', duration){
   const iconType = TOAST_ICONS[type] ? type : 'success';
+  const ms = duration || TOAST_DEFAULT_DURATIONS[iconType] || 2400;
 
-  $('#toastMsg').text(msg);
-  $t.attr('class', 'toast show type-' + iconType);
-  $('#toastIconSvg').html(TOAST_ICONS[iconType]);
-  $veil.addClass('show');
+  // Collapse an exact repeat that's still waiting in line (e.g. a
+  // double-click firing the same handler twice) instead of showing
+  // the identical message back to back.
+  const last = _toastQueue[_toastQueue.length - 1];
+  if(last && last.msg === msg && last.type === iconType) return;
 
-  clearTimeout(showToast._t);
-  showToast._t = setTimeout(() => {
-    $t.removeClass('show').addClass('hide');
-    $veil.removeClass('show');
-  }, duration);
+  _toastQueue.push({ msg, type: iconType, ms });
+  if(!_toastActive) _advanceToastQueue();
 }
 
-function addToCart(id, qty=1, size=null){
-  const existing = cart.find(c => c.id === id && c.size === size);
-  if(existing){ existing.qty += qty; } else { cart.push({id, qty, size}); }
+function _advanceToastQueue(){
+  const next = _toastQueue.shift();
+  if(!next){ _toastActive = false; return; }
+  _toastActive = true;
+
+  const $t = $('#toast');
+  const $veil = $('#toastVeil');
+
+  clearTimeout(_toastHideTimer);
+  // If a toast is still visibly mid-exit, let it finish its own
+  // transition before the next one pops in, so they never visually
+  // collide — but never leave the admin waiting more than a beat.
+  const wasShowing = $t.hasClass('show');
+  $t.removeClass('show hide');
+
+  const present = () => {
+    $('#toastMsg').text(next.msg);
+    $t.attr('class', 'toast show type-' + next.type);
+    $t.attr('aria-live', next.type === 'error' ? 'assertive' : 'polite');
+    $('#toastIconSvg').html(TOAST_ICONS[next.type]);
+    $veil.addClass('show');
+
+    _toastHideTimer = setTimeout(() => {
+      $t.removeClass('show').addClass('hide');
+      $veil.removeClass('show');
+      // give the exit animation room to finish before the next toast
+      setTimeout(_advanceToastQueue, 260);
+    }, next.ms);
+  };
+
+  if(wasShowing) requestAnimationFrame(() => requestAnimationFrame(present));
+  else present();
+}
+
+function addToCart(id, qty=1, size=null, options=null, unitPrice=null, silent=false){
+  const p = findProduct(id);
+  const finalUnitPrice = unitPrice != null ? unitPrice : (size ? getPriceForSize(p, size) : getDisplayPrice(p));
+  const key = optionsKey(options);
+  const existing = cart.find(c => c.id === id && c.size === size && optionsKey(c.options) === key);
+  if(existing){
+    existing.qty += qty;
+  } else {
+    cart.push({
+      id, qty, size,
+      options: options || null,
+      unitPrice: finalUnitPrice,
+      optionsSummary: options ? optionsSummaryText(p, options) : null
+    });
+  }
   updateCartCount();
-  const label = findProduct(id).name + (size ? ` (${size})` : '');
+  if(silent) return;
+  const label = p.name + (size ? ` (${size})` : '');
   showToast('Added to cart · ' + label, 'cart');
 }
 
@@ -1025,18 +1226,20 @@ function renderCartDropdown(){
     return;
   }
 
-  $items.html(cart.map(c => {
+  $items.html(cart.filter(c => findProduct(c.id)).map(c => {
     const p = findProduct(c.id);
-    const lineKey = `${c.id}::${c.size || ''}`;
+    const lineKey = cartLineKey(c);
+    const unit = typeof c.unitPrice === 'number' ? c.unitPrice : getPriceForSize(p, c.size);
     return `
       <div class="cart-dd-item">
-        <img src="${p.img}" alt="${p.name}">
+        <img src="${resolveImageSrc(p.img)}" alt="${p.name}">
         <div>
           <div class="cart-dd-name">${p.name}${c.size ? ` <span class="cart-dd-size">(${c.size})</span>` : ''}</div>
+          ${c.optionsSummary ? `<div class="cart-dd-item-opts">${c.optionsSummary}</div>` : ''}
           <div class="cart-dd-meta">
-            <span>${c.qty} × ${peso(getPriceForSize(p, c.size))}</span>
+            <span>${c.qty} × ${peso(unit)}</span>
             <span style="display:flex; align-items:center; gap:8px;">
-              ${peso(getPriceForSize(p, c.size)*c.qty)}
+              ${peso(unit*c.qty)}
               <button class="cart-dd-remove" data-cart-remove="${lineKey}" aria-label="Remove item">
                 <svg width="13" height="13" viewBox="0 0 24 24" fill="none"><path d="M6 6l12 12M18 6L6 18" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
               </button>
@@ -1082,7 +1285,11 @@ $(document).on('keydown', function(e){
 });
 
 function cartTotal(){
-  return cart.reduce((s,c)=> s + getPriceForSize(findProduct(c.id), c.size) * c.qty, 0);
+  return cart.reduce((s,c)=> {
+    if(typeof c.unitPrice === 'number') return s + c.unitPrice * c.qty;
+    const p = findProduct(c.id);
+    return p ? s + getPriceForSize(p, c.size) * c.qty : s;
+  }, 0);
 }
 
 /* ================= NAVIGATION ================= */
@@ -1129,15 +1336,10 @@ function navigate(pageName){
     renderMerchPage();
   }
 
-  if(pageName === 'admin' && window.currentRole !== 'admin'){
-    showToast('Admin access only. Please log in as an admin.', 'warning');
-    $('.page').removeClass('active');
-    $('.page[data-page="home"]').addClass('active');
-    return;
-  }
-  if(pageName === 'admin' && typeof renderAdminDashboard === 'function'){
-    renderAdminDashboard();
-  }
+  /* The 'admin' page/route no longer exists on the customer site —
+     the admin dashboard is now a standalone app at /admin (see
+     admin/index.html) with its own login, so there's nothing left
+     here to gate. */
   if(pageName === 'checkout' && !window.currentUser){
     showToast('Please log in to check out.', 'warning');
     $('.page').removeClass('active');
@@ -1156,11 +1358,19 @@ function navigate(pageName){
     $('.page[data-page="login"]').addClass('active');
     return;
   }
+  if(pageName === 'addresses' && (!window.currentUser || window.currentUser.isAnonymous)){
+    showToast('Please log in to manage your addresses.', 'warning');
+    $('.page').removeClass('active');
+    $('.page[data-page="login"]').addClass('active');
+    return;
+  }
   if(pageName === 'product') renderProductDetail();
   if(pageName === 'cart') renderCart();
   if(pageName === 'checkout') renderCheckoutSummary();
+  if(pageName === 'checkout') renderCheckoutAddressPicker();
   if(pageName === 'order-history') renderOrderHistory();
   if(pageName === 'wishlist') renderWishlistPage();
+  if(pageName === 'addresses') renderAddressesPage();
   if(pageName === 'about'){
     navigate('home');
     setTimeout(()=> $('.about-split')[0]?.scrollIntoView({behavior:'smooth'}), 50);
@@ -1301,7 +1511,7 @@ function renderCategories(){
   const isMerch = c => ['Wearables','Bracelets','Keychains'].includes(c.key);
   const html = CATEGORIES.map((c,i) => `
     <div class="cat-card reveal" style="--i:${i}" ${isMerch(c) ? `data-nav="merchandise"` : `data-menu-filter="${c.key}"`}>
-      <div class="cat-img"><img src="${c.img}" alt="${c.title}"></div>
+      <div class="cat-img"><img src="${resolveImageSrc(c.img)}" alt="${c.title}"></div>
       <div class="cat-body">
         <span class="emoji">${c.emoji}</span>
         <h3>${c.title}</h3>
@@ -1328,7 +1538,7 @@ function productCard(p, i=0){
   return `
     <div class="product-card reveal${oos ? ' oos' : ''}" style="--i:${i}">
       <div class="product-img" data-open-product="${p.id}">
-        <img src="${p.img}" alt="${p.name}">
+        <img src="${resolveImageSrc(p.img)}" alt="${p.name}">
         ${oos ? '<span class="oos-badge">Out of Stock</span>' : ''}
         <button type="button" class="wishlist-btn ${saved ? 'active' : ''}" data-wishlist-toggle="${p.id}" aria-label="${saved ? 'Remove from favorites' : 'Save to favorites'}">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="${saved ? 'currentColor' : 'none'}"><path d="M12 21s-7.5-4.6-10-9.3C.6 8.1 2.4 4.5 6 4c2-.3 3.7.7 6 3 2.3-2.3 4-3.3 6-3 3.6.5 5.4 4.1 4 7.7C19.5 16.4 12 21 12 21z" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/></svg>
@@ -1363,7 +1573,7 @@ function bestSellerCard(p, i){
     <div class="product-card best-card${oos ? ' oos' : ''}" style="--i:${i}">
       <div class="product-img" data-open-product="${p.id}">
         <span class="bestseller-tag">${String(i+1).padStart(2,'0')}</span>
-        <img src="${p.img}" alt="${p.name}">
+        <img src="${resolveImageSrc(p.img)}" alt="${p.name}">
         ${oos ? '<span class="oos-badge">Out of Stock</span>' : ''}
         <div class="best-card-shade"></div>
       </div>
@@ -1787,7 +1997,7 @@ $(document).on('change', '#merchSort', function(){
    product with `ingredients` — food AND drinks), or both together for
    a sized drink. Other merch (totes, bracelets, keychains) gets
    neither. */
-function renderPdSecondary(p){
+function renderPdSecondary(p, size, options){
   const chart = SIZE_CHARTS[p.cat];
   let sizingHtml = '';
   if(p.sizes && p.sizes.length){
@@ -1832,6 +2042,7 @@ function renderPdSecondary(p){
       </div>
     `;
   }
+  const optionsHtml = renderPdOptionGroups(p, options || {});
   let infoHtml = '';
   if(p.ingredients){
     infoHtml = `
@@ -1847,7 +2058,58 @@ function renderPdSecondary(p){
       </div>
     `;
   }
-  return sizingHtml + infoHtml;
+  const aboutHtml = renderPdAbout(p);
+  const nutritionHtml = renderPdNutrition(p, size, options);
+  return sizingHtml + optionsHtml + infoHtml + aboutHtml + nutritionHtml;
+}
+
+/* "About the Drink" — a short fun-fact/backstory blurb, admin-set per
+   product (Drink Details in the Add/Edit form). Drinks only, and only
+   when the admin actually wrote something. */
+function renderPdAbout(p){
+  if(!DRINK_CATEGORIES.includes(p.cat) || !p.aboutText) return '';
+  return `
+    <div class="pd-about">
+      <h4>About the Drink</h4>
+      <p>${p.aboutText}</p>
+    </div>
+  `;
+}
+
+/* Nutrition table — serving size + calories (from the base product,
+   same number used in the header subtitle) plus whatever macro fields
+   the admin filled in. Rows with no value are skipped rather than
+   shown as blank/"—", and the whole section is skipped if there's
+   nothing to show at all. LIVE: every number here scales with the
+   currently selected size (see scaleForSize) and the calories line
+   also includes any selected add-on's own kcal — refreshPdPricing
+   re-renders this same block on every size/option change so it never
+   falls out of sync with the price and subtitle above it. */
+function renderPdNutrition(p, size, options){
+  if(!DRINK_CATEGORIES.includes(p.cat)) return '';
+  const n = p.nutrition || {};
+  const calories = computePdCalories(p, options || {}, size);
+  const round1 = (v) => Math.round(v * 10) / 10;
+  const rows = [
+    ['Serving Size', size || n.servingSize],
+    ['Calories', calories !== null ? `${calories} kcal` : null],
+    ['Carbohydrates', n.carbs ? `${round1(scaleForSize(p, n.carbs, size))} g` : null],
+    ['Sugar', n.sugar ? `${round1(scaleForSize(p, n.sugar, size))} g` : null],
+    ['Protein', n.protein ? `${round1(scaleForSize(p, n.protein, size))} g` : null],
+    ['Fat', n.fat ? `${round1(scaleForSize(p, n.fat, size))} g` : null],
+    ['Sodium', n.sodium ? `${Math.round(scaleForSize(p, n.sodium, size))} mg` : null],
+  ].filter(([, val]) => val !== null && val !== undefined && val !== '');
+  if(!rows.length) return '';
+  return `
+    <div class="pd-nutrition" id="pdNutritionSection">
+      <h4>Nutrition</h4>
+      <table class="pd-nutrition-table">
+        <tbody>
+          ${rows.map(([label, val]) => `<tr><td>${label}</td><td>${val}</td></tr>`).join('')}
+        </tbody>
+      </table>
+    </div>
+  `;
 }
 
 function renderProductDetail(){
@@ -1855,47 +2117,58 @@ function renderProductDetail(){
   pdQty = 1;
   const pdOpts = getSizeOptions(p);
   pdSize = pdOpts.length === 1 ? pdOpts[0].size : null;
+  pdOptions = defaultPdOptions(p);
   $('#pdCrumb').text(p.name);
   const isMerch = ['Shirts','Caps','Shorts','Socks','ToteBags','Bracelets','Keychains'].includes(p.cat);
   const isCombo = p.cat === 'Combo';
   $('#pdSectionLink').text(isCombo ? 'Home' : isMerch ? 'Merchandise' : 'Menu')
     .attr('data-nav', isCombo ? 'home' : isMerch ? 'merchandise' : 'menu')
     .data('nav', isCombo ? 'home' : isMerch ? 'merchandise' : 'menu');
-  const startPrice = pdSize ? getPriceForSize(p, pdSize) : getDisplayPrice(p);
+  const startPrice = computePdUnitPrice(p, pdSize, pdOptions);
   // Sized products: judge the currently-selected size. Unsized products,
   // and sized products where every size is out of stock (so nothing was
   // pre-selected), fall back to isProductOutOfStock — same check the
   // grid cards and admin dashboard use, so this page never disagrees.
   const startOos = pdSize ? isSizeOutOfStock(p, pdSize) : isProductOutOfStock(p);
+  const hasOptions = getOptionGroups(p).length > 0;
   $('#pdContent').html(`
     <div>
-      <div class="pd-main-img"><img id="pdMainImg" src="${p.imgs[0]}" alt="${p.name}"></div>
+      <div class="pd-main-img"><img id="pdMainImg" src="${resolveImageSrc(p.imgs[0])}" alt="${p.name}"></div>
       <div class="pd-thumbs">
-        ${p.imgs.map((im,i)=>`<img src="${im}" class="${i===0?'active':''}" data-thumb="${im}" alt="${p.name} view ${i+1}">`).join('')}
+        ${p.imgs.map((im,i)=>`<img src="${resolveImageSrc(im)}" class="${i===0?'active':''}" data-thumb="${resolveImageSrc(im)}" alt="${p.name} view ${i+1}">`).join('')}
       </div>
     </div>
     <div>
       <div class="eyebrow">${isCombo ? `Combo · ${p.comboMeta.discountPercent}% off` : p.cat}</div>
       <h1 style="margin:10px 0 4px;">${p.name}</h1>
+      <p class="pd-subtitle" id="pdSubtitle">${pdSubtitleText(p, pdSize, pdOptions)}</p>
       <div class="pd-price" id="pdPriceDisplay">
         ${isCombo ? `<span class="combo-price-original combo-price-original-pd">${comboOriginalPriceLabel(p)}</span>` : ''}
         <span id="pdPriceDisplayValue">${peso(startPrice)}</span>
       </div>
-      <p class="pd-desc">${p.desc}${p.ingredients ? ' Made in small batches at our counter, using seasonal ingredients whenever we can.' : ''}</p>
-      ${renderPdSecondary(p)}
-      <div class="pd-actions">
-        <div class="qty-select" id="pdQtySelect">
-          <button data-qty-action="minus">−</button>
-          <span id="pdQtyVal">1</span>
-          <button data-qty-action="plus">+</button>
+      <p class="pd-desc pd-desc-clamped" id="pdDesc">${p.desc}${p.ingredients ? ' Made in small batches at our counter, using seasonal ingredients whenever we can.' : ''}</p>
+      <button type="button" class="pd-desc-toggle" id="pdDescToggle" style="display:none;">See More</button>
+      ${renderPdSecondary(p, pdSize, pdOptions)}
+      <div class="pd-actions-wrap" id="pdActionsWrap">
+        ${hasOptions ? `<div class="pd-opt-summary" id="pdOptSummary">${optionsSummaryText(p, pdOptions)}</div>` : ''}
+        <div class="pd-actions">
+          <div class="qty-select" id="pdQtySelect">
+            <button data-qty-action="minus">−</button>
+            <span id="pdQtyVal">1</span>
+            <button data-qty-action="plus">+</button>
+          </div>
+          <div class="pd-actions-btns">
+            <button class="btn btn-outline" id="pdBuyNowBtn" data-pd-buy-now="${p.id}" ${startOos ? 'disabled' : ''}>Buy Now</button>
+            <button class="btn btn-primary" id="pdAddBtn" data-pd-add="${p.id}" ${startOos ? 'disabled' : ''}>${startOos ? 'Out of Stock' : `Add to Cart · ${peso(startPrice)}`}</button>
+          </div>
+          <button type="button" class="wishlist-btn pd-wishlist-btn ${isWishlisted(p.id) ? 'active' : ''}" data-wishlist-toggle="${p.id}" aria-label="Save to favorites">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="${isWishlisted(p.id) ? 'currentColor' : 'none'}"><path d="M12 21s-7.5-4.6-10-9.3C.6 8.1 2.4 4.5 6 4c2-.3 3.7.7 6 3 2.3-2.3 4-3.3 6-3 3.6.5 5.4 4.1 4 7.7C19.5 16.4 12 21 12 21z" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/></svg>
+          </button>
         </div>
-        <button class="btn btn-primary" id="pdAddBtn" data-pd-add="${p.id}" ${startOos ? 'disabled' : ''}>${startOos ? 'Out of Stock' : `Add to Cart · ${peso(startPrice)}`}</button>
-        <button type="button" class="wishlist-btn pd-wishlist-btn ${isWishlisted(p.id) ? 'active' : ''}" data-wishlist-toggle="${p.id}" aria-label="Save to favorites">
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="${isWishlisted(p.id) ? 'currentColor' : 'none'}"><path d="M12 21s-7.5-4.6-10-9.3C.6 8.1 2.4 4.5 6 4c2-.3 3.7.7 6 3 2.3-2.3 4-3.3 6-3 3.6.5 5.4 4.1 4 7.7C19.5 16.4 12 21 12 21z" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/></svg>
-        </button>
       </div>
     </div>
   `);
+  initPdDescToggle();
 
   // A combo's "you may also like" is the two real products it's made
   // of — showing random catalog items here instead would be confusing
@@ -2160,11 +2433,7 @@ $(document).on('click', '[data-pd-size]:not([disabled])', function(){
   $('#pdSizeRow .size-chip').removeClass('active');
   $(this).addClass('active');
   const p = findProduct(currentProductId);
-  const unitPrice = getPriceForSize(p, pdSize);
-  const oos = isSizeOutOfStock(p, pdSize);
-  $('#pdPriceDisplayValue').text(peso(unitPrice));
-  if(p.comboMeta) $('.combo-price-original-pd').text(comboOriginalPriceForSize(p, pdSize));
-  $('#pdAddBtn').prop('disabled', oos).text(oos ? 'Out of Stock' : `Add to Cart · ${peso(unitPrice * pdQty)}`);
+  refreshPdPricing(p);
 });
 
 $(document).on('click', '#pdSizeGuideToggle', function(){
@@ -2182,32 +2451,83 @@ $(document).on('click', '[data-qty-action]', function(){
   if($(this).data('qty-action') === 'plus') pdQty++;
   else pdQty = Math.max(1, pdQty - 1);
   $('#pdQtyVal').text(pdQty);
-  const unitPrice = pdSize ? getPriceForSize(p, pdSize) : getDisplayPrice(p);
-  const oos = pdSize ? isSizeOutOfStock(p, pdSize) : false;
-  if(!oos) $('#pdAddBtn').text(`Add to Cart · ${peso(unitPrice * pdQty)}`);
+  refreshPdPricing(p);
 });
 
-$(document).on('click', '[data-pd-add]', function(){
-  const p = findProduct($(this).data('pd-add'));
-  // Unsized products (flat stock) and sized products where every size
-  // is out of stock never get a pdSize selected, so neither check below
-  // would catch them — guard with the same product-level check the
-  // grid cards and admin dashboard use.
+/* Single-select groups swap the one active choice; multi-select groups
+   toggle on/off, capped at the group's `max` (default: unlimited). */
+$(document).on('click', '[data-opt-choice]:not([disabled])', function(){
+  const p = findProduct(currentProductId);
+  const groupId = $(this).data('group');
+  const choiceId = $(this).data('choice');
+  const group = getOptionGroups(p).find(g => g.id === groupId);
+  if(!group) return;
+
+  if(group.type === 'multi'){
+    const sel = pdOptions[groupId] ? pdOptions[groupId].slice() : [];
+    const idx = sel.indexOf(choiceId);
+    if(idx > -1){
+      sel.splice(idx, 1);
+    } else {
+      const max = group.max || Infinity;
+      if(sel.length >= max){
+        showToast(`You can only select up to ${max} for ${group.label}.`, 'warning');
+        return;
+      }
+      sel.push(choiceId);
+    }
+    pdOptions[groupId] = sel;
+  } else {
+    pdOptions[groupId] = [choiceId];
+  }
+
+  $(`.pd-opt-group[data-opt-group="${groupId}"] .pd-opt-chip`).removeClass('active');
+  (pdOptions[groupId] || []).forEach(cid => {
+    $(`.pd-opt-group[data-opt-group="${groupId}"] [data-choice="${cid}"]`).addClass('active');
+  });
+  refreshPdPricing(p);
+});
+
+/* Shared by Add to Cart and Buy Now — every out-of-stock/size-required
+   check lives here once so the two buttons can never disagree about
+   whether this selection is actually purchasable. Returns null (after
+   showing the relevant toast) when it isn't, or {unit, opts} when it is. */
+function validatePdSelection(p){
   if(!pdSize && isProductOutOfStock(p)){
     showToast('This item is out of stock.', 'warning');
-    return;
+    return null;
   }
   if(p.sizes && p.sizes.length > 1 && !pdSize){
     showToast('Please select a size first', 'warning');
-    return;
+    return null;
   }
   if(pdSize && isSizeOutOfStock(p, pdSize)){
     showToast('That size is out of stock.', 'warning');
-    return;
+    return null;
   }
-  addToCart(p.id, pdQty, pdSize);
+  const unit = computePdUnitPrice(p, pdSize, pdOptions);
+  const opts = getOptionGroups(p).length ? pdOptions : null;
+  return { unit, opts };
+}
+
+$(document).on('click', '[data-pd-add]', function(){
+  const p = findProduct($(this).data('pd-add'));
+  const selection = validatePdSelection(p);
+  if(!selection) return;
+  addToCart(p.id, pdQty, pdSize, selection.opts, selection.unit);
   const mainImg = document.getElementById('pdMainImg');
   if(mainImg) flyToCart(mainImg);
+});
+
+/* Adds the current selection to the cart (silently — no "Added to
+   cart" toast, since the very next thing is jumping to Checkout) and
+   heads straight there, same as tapping Add to Cart then Checkout. */
+$(document).on('click', '[data-pd-buy-now]', function(){
+  const p = findProduct($(this).data('pd-buy-now'));
+  const selection = validatePdSelection(p);
+  if(!selection) return;
+  addToCart(p.id, pdQty, pdSize, selection.opts, selection.unit, true);
+  navigate('checkout');
 });
 
 /* ================= RENDER: CART ================= */
@@ -2229,15 +2549,17 @@ function renderCart(){
     return;
   }
 
-  const itemsHtml = cart.map(c => {
+  const itemsHtml = cart.filter(c => findProduct(c.id)).map(c => {
     const p = findProduct(c.id);
-    const lineKey = `${c.id}::${c.size || ''}`;
+    const lineKey = cartLineKey(c);
+    const unit = typeof c.unitPrice === 'number' ? c.unitPrice : getPriceForSize(p, c.size);
     return `
       <div class="cart-item">
-        <img src="${p.img}" alt="${p.name}">
+        <img src="${resolveImageSrc(p.img)}" alt="${p.name}">
         <div>
           <div class="cart-item-name">${p.name}</div>
-          <div class="cart-item-meta">${p.cat}${c.size ? ` · Size: ${c.size}` : ''} · ${peso(getPriceForSize(p, c.size))} each</div>
+          <div class="cart-item-meta">${p.cat}${c.size ? ` · Size: ${c.size}` : ''} · ${peso(unit)} each</div>
+          ${c.optionsSummary ? `<div class="cart-item-opts">${c.optionsSummary}</div>` : ''}
         </div>
         <div class="qty-select" data-cart-qty="${lineKey}">
           <button data-cart-action="minus">−</button>
@@ -2245,7 +2567,7 @@ function renderCart(){
           <button data-cart-action="plus">+</button>
         </div>
         <div style="display:flex; align-items:center; gap:14px;">
-          <span class="price cart-item-price">${peso(getPriceForSize(p, c.size)*c.qty)}</span>
+          <span class="price cart-item-price">${peso(unit*c.qty)}</span>
           <button class="remove-btn" data-cart-remove="${lineKey}" aria-label="Remove item">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M6 6l12 12M18 6L6 18" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
           </button>
@@ -2283,14 +2605,18 @@ function renderCart(){
   `);
 }
 
+function cartLineKey(c){
+  return `${c.id}::${c.size || ''}::${encodeURIComponent(optionsKey(c.options))}`;
+}
+
 function parseLineKey(key){
-  const [id, size] = String(key).split('::');
-  return { id, size: size || null };
+  const [id, size, optsEnc] = String(key).split('::');
+  return { id, size: size || null, optsKey: optsEnc ? decodeURIComponent(optsEnc) : '' };
 }
 
 $(document).on('click', '[data-cart-action]', function(){
-  const { id, size } = parseLineKey($(this).closest('[data-cart-qty]').data('cart-qty'));
-  const item = cart.find(c => c.id === id && c.size === size);
+  const { id, size, optsKey } = parseLineKey($(this).closest('[data-cart-qty]').data('cart-qty'));
+  const item = cart.find(c => c.id === id && c.size === size && optionsKey(c.options) === optsKey);
   if(!item) return;
   if($(this).data('cart-action') === 'plus') item.qty++;
   else item.qty = Math.max(1, item.qty - 1);
@@ -2300,8 +2626,8 @@ $(document).on('click', '[data-cart-action]', function(){
 });
 
 $(document).on('click', '[data-cart-remove]', function(){
-  const { id, size } = parseLineKey($(this).data('cart-remove'));
-  cart = cart.filter(c => !(c.id === id && c.size === size));
+  const { id, size, optsKey } = parseLineKey($(this).data('cart-remove'));
+  cart = cart.filter(c => !(c.id === id && c.size === size && optionsKey(c.options) === optsKey));
   persistCart();
   updateCartCount();
   renderCart();
@@ -2381,10 +2707,11 @@ function renderCheckoutSummary(){
   const subtotal = cartTotal();
   const delivery = fulfillment === 'delivery' && subtotal > 0 ? DELIVERY_FEE : 0;
   const total = subtotal + delivery;
-  const lines = cart.map(c=>{
+  const lines = cart.filter(c => findProduct(c.id)).map(c=>{
     const p = findProduct(c.id);
+    const unit = typeof c.unitPrice === 'number' ? c.unitPrice : getPriceForSize(p, c.size);
     const label = p.name + (c.size ? ` (${c.size})` : '') + ` × ${c.qty}`;
-    return `<div class="sum-row"><span>${label}</span><span>${peso(getPriceForSize(p, c.size)*c.qty)}</span></div>`;
+    return `<div class="sum-row"><span>${label}${c.optionsSummary ? `<br><small class="sum-row-opts">${c.optionsSummary}</small>` : ''}</span><span>${peso(unit*c.qty)}</span></div>`;
   }).join('') || '<div class="sum-row"><span>Your cart is empty</span><span></span></div>';
 
   $('#checkoutSummary').html(`
@@ -2402,12 +2729,22 @@ async function placeOrder(){
   if(cart.length === 0) return;
 
   const $form = $('.checkout-layout .form-card').first();
+  const selectedAddress = myAddresses.find(a => a.id === checkoutSelectedAddressId);
   const customer = {
     name: $form.find('input[type="text"]').val().trim(),
     phone: $form.find('input[type="tel"]').val().trim(),
     email: $form.find('input[type="email"]').val().trim(),
     address: fulfillment === 'delivery' ? $('#addressGroup input').val().trim() : ''
   };
+  // Only attach lat/lng when the address on the form still matches the
+  // saved address it came from — if the customer hand-edited the text
+  // after picking a saved address, the old pin no longer describes
+  // where they typed, so it's better to send no coordinates than a
+  // wrong one.
+  if(fulfillment === 'delivery' && selectedAddress && selectedAddress.address === customer.address){
+    customer.lat = selectedAddress.lat;
+    customer.lng = selectedAddress.lng;
+  }
   if(!customer.name || !customer.phone){
     showToast('Please fill in your name and phone number.', 'warning');
     return;
@@ -2418,7 +2755,11 @@ async function placeOrder(){
   const total = subtotal + deliveryFee;
   const items = cart.map(c => {
     const p = findProduct(c.id);
-    return { id: p.id, name: p.name, price: getPriceForSize(p, c.size), qty: c.qty, size: c.size || null };
+    const unit = typeof c.unitPrice === 'number' ? c.unitPrice : getPriceForSize(p, c.size);
+    return {
+      id: p.id, name: p.name, price: unit, qty: c.qty, size: c.size || null,
+      options: c.options || null, optionsSummary: c.optionsSummary || null
+    };
   });
   const paymentMethod = payOptLabel($('.pay-opt.active'));
 
@@ -2438,6 +2779,7 @@ async function placeOrder(){
     cart = [];
     persistCart();
     updateCartCount();
+    checkoutSelectedAddressId = null;
     navigate('confirmation');
     // Best-effort — the order is already placed at this point, so an
     // email hiccup shouldn't show as a checkout failure to the customer.
@@ -2705,6 +3047,7 @@ document.addEventListener('authStateReady', function(e){
   const realUser = user && !user.isAnonymous ? user : null;
   syncCartToAccount(realUser);
   syncWishlistToAccount(realUser);
+  syncAddressesToAccount(realUser);
   $('#accountStatusDot').toggle(!!realUser);
   $('#accountBtn').attr('title', realUser ? `Signed in as ${realUser.displayName || realUser.email}` : 'Not signed in — click to log in')
     .toggleClass('signed-in', !!realUser);
@@ -2729,6 +3072,7 @@ function renderAccountDropdown(user, otpVerified){
     ${!otpVerified ? `<button type="button" class="account-dd-unverified" id="accountDdVerifyBtn">Email not verified — tap to verify</button>` : ''}
     <div class="account-dd-divider"></div>
     <button type="button" class="account-dd-link" id="accountDdOrdersBtn">Order History</button>
+    <button type="button" class="account-dd-link" id="accountDdAddressesBtn">My Addresses</button>
     <button type="button" class="account-dd-link" id="accountDdWishlistBtn">Favorites</button>
     <button class="btn btn-outline account-dd-logout" id="accountLogoutBtn">Log Out</button>
   `);
@@ -2737,6 +3081,11 @@ function renderAccountDropdown(user, otpVerified){
 $(document).on('click', '#accountDdOrdersBtn', function(){
   $('#accountDropdownWrap').removeClass('open');
   navigate('order-history');
+});
+
+$(document).on('click', '#accountDdAddressesBtn', function(){
+  $('#accountDropdownWrap').removeClass('open');
+  navigate('addresses');
 });
 
 $(document).on('click', '#accountDdWishlistBtn', function(){
@@ -3048,29 +3397,21 @@ function renderAll(){
   renderMerchPage();
   buildComboProducts();
   renderFeaturedCombos();
+  // Products may have still been loading the first time the cart dropdown
+  // (or the cart/checkout page) rendered, which would have left it showing
+  // "empty" even though items existed. Re-paint it now that PRODUCTS /
+  // COMBO_PRODUCTS are populated.
+  renderCartDropdown();
+  rerenderActiveCartPage();
 }
 
-async function loadProductsFromFirestore(){
-  try{
-    const live = await window.CCProducts.fetchAllProducts();
-    if(live.length){
-      PRODUCTS = live;
-    } else {
-      // Firestore is empty (not seeded yet) — fall back to the
-      // built-in seed list so the site still renders for a demo.
-      PRODUCTS = SEED_PRODUCTS;
-      console.warn('Firestore "products" collection is empty. Go to the Admin page and click "Seed Starter Catalog" to populate it.');
-    }
-  } catch(err){
-    console.error('Could not load products from Firestore, using local seed data instead.', err);
-    PRODUCTS = SEED_PRODUCTS;
-  }
-}
+/* loadProductsFromFirestore() moved to shared-catalog.js. */
 
 async function loadSettingsFromFirestore(){
   try{
     const settings = await window.CCSettings.fetchSettings();
     DELIVERY_FEE = settings.deliveryFee;
+    PROMO_POPUP_CONFIG = settings.promoPopup;
   } catch(err){
     console.error('Could not load settings from Firestore, using the default delivery fee instead.', err);
   }
@@ -3102,6 +3443,7 @@ $(async function(){
   const cachedSettings = window.CCSettings.getCachedSettings();
   if(cachedSettings){
     DELIVERY_FEE = cachedSettings.deliveryFee;
+    if(cachedSettings.promoPopup) PROMO_POPUP_CONFIG = cachedSettings.promoPopup;
   }
   const cachedCategories = window.CCCategories.getCachedCategories();
   if(cachedCategories && cachedCategories.length){
@@ -3114,15 +3456,27 @@ $(async function(){
   await loadSettingsFromFirestore();
   await loadCombosFromFirestore();
   renderAll();
+  initPromoOverlay();
 });
 /* ================= PROMO LAUNCH BANNER ================= */
-/* Fancy "New" popup shown once per browser session on page load.
-   sessionStorage (not localStorage) so it reappears on a fresh visit/tab
-   but doesn't nag on every reload within the same session. */
-(function initPromoOverlay(){
+/* Fancy "New" popup shown once per browser session on page load, its
+   content driven by whatever the admin last saved (see the Launch
+   Popup panel in admin.js) via the shared resolvePromoProducts()/
+   applyPromoPopupContent() in shared-catalog.js. sessionStorage (not
+   localStorage) so it reappears on a fresh visit/tab but doesn't nag
+   on every reload within the same session.
+
+   Called from the main $(async function(){...}) init flow below,
+   once loadSettingsFromFirestore()/loadProductsFromFirestore() have
+   populated PROMO_POPUP_CONFIG/PRODUCTS — not on raw page parse —
+   since there's nothing real to show before then. */
+function initPromoOverlay(){
   const PROMO_KEY = 'cc_promo_seen_v1';
   const $overlay = $('#promoOverlay');
   if(!$overlay.length) return;
+
+  const cfg = PROMO_POPUP_CONFIG || PROMO_POPUP_DEFAULTS;
+  if(cfg.enabled === false) return;
 
   function closePromo(){
     $overlay.removeClass('open');
@@ -3131,19 +3485,32 @@ $(async function(){
 
   let seen = false;
   try{ seen = sessionStorage.getItem(PROMO_KEY) === '1'; } catch(err){ /* private mode — just show it */ }
+  if(seen) return;
 
-  if(!seen){
-    // Slight delay so it arrives after the hero's own entrance animation
-    // has had a moment to breathe, rather than competing with it.
-    setTimeout(() => $overlay.addClass('open'), 900);
-  }
+  applyPromoPopupContent(cfg, resolvePromoProducts(cfg), {
+    badge: '#promoBadgeText', eyebrow: '#promoEyebrow', title: '#promoModalTitle',
+    copy: '#promoModalCopy', cta: '#promoModalCta', dismiss: '#promoModalDismiss',
+    stage: '#promoStage', cards: '#promoStageCards'
+  });
+
+  // Slight delay so it arrives after the hero's own entrance animation
+  // has had a moment to breathe, rather than competing with it.
+  setTimeout(() => $overlay.addClass('open'), 900);
 
   $('#promoModalClose, #promoModalDismiss').on('click', closePromo);
   $('#promoModalCta').on('click', closePromo);
+  // Clicking a product card itself should close the popup and let it
+  // proceed like any other product link — the existing global
+  // [data-open-product] handler (bound elsewhere, used by every
+  // product grid) already sets currentProductId and navigates on this
+  // same click; this just dismisses the popup out of the way first,
+  // since it's bound closer to the target and fires earlier in the
+  // bubble phase.
+  $('#promoStageCards').on('click', '.promo-stage-card', closePromo);
   $overlay.on('click', function(e){
     if(e.target === this) closePromo();
   });
   $(document).on('keydown', function(e){
     if(e.key === 'Escape' && $overlay.hasClass('open')) closePromo();
   });
-})();
+}

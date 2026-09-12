@@ -1,9 +1,3 @@
-/* =========================================================
-   Crafts & Crumbs — products-service.js
-   All Firestore reads/writes for the "products" collection
-   live here. script.js calls these instead of touching a
-   hardcoded array.
-========================================================= */
 import { db } from "./firebase-config.js";
 import {
   collection, getDocs, getDoc, doc, setDoc, addDoc, updateDoc, deleteDoc, deleteField, increment
@@ -12,10 +6,6 @@ import {
 const PRODUCTS_COL = "products";
 const CACHE_KEY = "cc_products_cache_v2";
 
-/* Synchronous read of whatever product list was cached from the
-   last successful Firestore fetch. Lets the UI paint immediately
-   on repeat visits instead of waiting on a network round trip.
-   Returns null if nothing has been cached yet (first-ever visit). */
 export function getCachedProducts(){
   try{
     const raw = localStorage.getItem(CACHE_KEY);
@@ -29,17 +19,9 @@ function setCachedProducts(products){
   try{
     localStorage.setItem(CACHE_KEY, JSON.stringify(products));
   } catch(err){
-    // Storage full/unavailable (private browsing, etc.) — safe to ignore,
-    // it just means we skip the fast-path cache next time.
   }
 }
 
-/* Keeps the localStorage cache in sync with individual admin writes
-   (add/update/delete), so the "paint instantly from cache" fast-path
-   on the next page load never shows a price/product that's already
-   been changed in Firestore. Without this, an admin edit was only
-   reflected in the cache after the NEXT full fetchAllProducts() call,
-   which meant an old price could still flash briefly on page reload. */
 function patchCachedProduct(id, fields, fieldsToDelete){
   const cached = getCachedProducts();
   if(!cached) return;
@@ -64,10 +46,6 @@ function removeCachedProduct(id){
   setCachedProducts(cached.filter(p => p.id !== id));
 }
 
-/* Reads every product from Firestore. Returns [] if the
-   collection is empty (e.g. before seeding has been run).
-   Also refreshes the local cache on success so the next page
-   load can render instantly before this fetch even starts. */
 export async function fetchAllProducts(){
   const snap = await getDocs(collection(db, PRODUCTS_COL));
   const products = snap.docs.map(d => ({ id: d.id, ...d.data() }));
@@ -261,4 +239,222 @@ export async function flattenSizePricing(sizedCategories){
   return updated;
 }
 
-window.CCProducts = { fetchAllProducts, addProduct, updateProduct, deleteProduct, seedProducts, getCachedProducts, decrementStock, cleanupLegacyFoodFields, flattenSizePricing };
+/* =========================================================
+   AUTO-FILL DRINK CUSTOMIZATIONS
+   Walks every existing drink product (Coffee/Non-Coffee/Tea) and
+   fills in whatever customization/detail fields it's still missing —
+   option groups (Sweetness Level, Ice Level, and Milk Type when the
+   drink actually contains milk), calories, an "about" blurb, and a
+   nutrition breakdown — WITHOUT touching a field that's already
+   there. An admin who already customized one drink's option groups,
+   or already wrote their own calories/about text, keeps exactly what
+   they wrote; this only ever fills the gaps, the same spirit as
+   cleanupLegacyFoodFields/flattenSizePricing above. Every field this
+   adds is fully editable afterward from the regular Edit form (the
+   Option Groups Builder, Calories/About/Nutrition fields). */
+
+function ddSlug(str){
+  return String(str).toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
+}
+
+function buildDefaultOptionGroups(product){
+  const hasMilk = /\bmilk\b/i.test(product.ingredients || '') || /\bmilk\b/i.test(product.name || '');
+  const slug = ddSlug(product.id);
+  const groups = [
+    {
+      id: `group-sweetness-${slug}`,
+      label: 'Sweetness Level',
+      type: 'single',
+      max: null,
+      choices: ['100% Sweet', '75% Sweet', '50% Sweet', '25% Sweet', 'No Sugar'].map((label, i) => ({
+        id: `choice-sweet-${i}-${slug}`, label, price: 0, kcal: null, available: true, default: i === 0
+      }))
+    },
+    {
+      id: `group-ice-${slug}`,
+      label: 'Ice Level',
+      type: 'single',
+      max: null,
+      choices: ['Regular Ice', 'Less Ice', 'No Ice'].map((label, i) => ({
+        id: `choice-ice-${i}-${slug}`, label, price: 0, kcal: null, available: true, default: i === 0
+      }))
+    }
+  ];
+  if(hasMilk){
+    groups.push({
+      id: `group-milk-${slug}`,
+      label: 'Milk Type',
+      type: 'single',
+      max: null,
+      choices: [
+        { id: `choice-milk-0-${slug}`, label: 'Whole Milk', price: 0, kcal: null, available: true, default: true },
+        { id: `choice-milk-1-${slug}`, label: 'Oat Milk', price: 20, kcal: null, available: true, default: false },
+        { id: `choice-milk-2-${slug}`, label: 'Soy Milk', price: 20, kcal: null, available: true, default: false },
+        { id: `choice-milk-3-${slug}`, label: 'Almond Milk', price: 25, kcal: null, available: true, default: false }
+      ]
+    });
+  }
+  return groups;
+}
+
+function estimateDrinkCalories(product){
+  const hasMilk = /\bmilk\b/i.test(product.ingredients || '') || /\bmilk\b/i.test(product.name || '');
+  if(product.cat === 'Tea') return hasMilk ? 190 : 90;
+  if(product.cat === 'Non-Coffee') return hasMilk ? 190 : 100;
+  return hasMilk ? 170 : 90; // Coffee
+}
+
+function estimateDrinkNutrition(product, calories){
+  const hasMilk = /\bmilk\b/i.test(product.ingredients || '') || /\bmilk\b/i.test(product.name || '');
+  const opts = Array.isArray(product.sizes) ? product.sizes.map(s => typeof s === 'string' ? s : s.size) : [];
+  return {
+    servingSize: opts[1] || opts[0] || '16oz',
+    carbs: Math.round(calories / 8),
+    sugar: Math.round(calories / 9),
+    protein: hasMilk ? 4 : 0,
+    fat: hasMilk ? 4 : 0,
+    sodium: hasMilk ? 70 : 15
+  };
+}
+
+function buildDefaultAboutText(product){
+  const base = product.desc ? product.desc.trim().replace(/\.$/, '') : product.name;
+  return `${base}. Adjust the sweetness, ice, and milk to your liking using the options above.`;
+}
+
+/* drinkCategories is passed in from admin.js's DRINK_CATEGORIES, same
+   reasoning as cleanupLegacyFoodFields taking foodCategories, so the
+   two lists can't drift apart. Returns the ids of every drink that
+   was actually changed (a drink that already has every field is
+   left completely untouched and doesn't count). */
+export async function fillMissingDrinkDetails(drinkCategories){
+  const snap = await getDocs(collection(db, PRODUCTS_COL));
+  const updated = [];
+  for(const docSnap of snap.docs){
+    const data = docSnap.data();
+    if(!drinkCategories.includes(data.cat)) continue;
+    const product = { id: docSnap.id, ...data };
+
+    const fields = {};
+    if(!Array.isArray(data.optionGroups) || !data.optionGroups.length){
+      fields.optionGroups = buildDefaultOptionGroups(product);
+    }
+    if(typeof data.calories !== 'number'){
+      fields.calories = estimateDrinkCalories(product);
+    }
+    if(!data.aboutText){
+      fields.aboutText = buildDefaultAboutText(product);
+    }
+    if(!data.nutrition || !Object.keys(data.nutrition).length){
+      fields.nutrition = estimateDrinkNutrition(product, fields.calories !== undefined ? fields.calories : data.calories);
+    }
+
+    if(!Object.keys(fields).length) continue; // already fully filled in
+
+    await updateDoc(doc(db, PRODUCTS_COL, docSnap.id), fields);
+    patchCachedProduct(docSnap.id, fields);
+    updated.push(docSnap.id);
+  }
+  return updated;
+}
+
+/* =========================================================
+   NORMALIZE DRINK SIZES TO 16oz / 20oz / 24oz
+   Rewrites every Coffee/Non-Coffee/Tea product's `sizes` array to
+   exactly three entries — 16oz, 20oz, 24oz — each priced ₱20 apart,
+   using whatever that drink's cheapest existing size was priced at
+   as the new 16oz price (so nobody's drink randomly gets cheaper or
+   pricier, it just gets re-labeled onto the three-size scale). A
+   product that's missing sizes entirely, or only has one or two, is
+   just as broken for the customer-facing size selector as one with
+   the wrong labels — both get fixed here the same way. Drinks that
+   already have exactly 16oz/20oz/24oz are left completely alone. */
+export async function normalizeDrinkSizes(drinkCategories){
+  const snap = await getDocs(collection(db, PRODUCTS_COL));
+  const updated = [];
+  for(const docSnap of snap.docs){
+    const data = docSnap.data();
+    if(!drinkCategories.includes(data.cat)) continue;
+
+    const existingOpts = Array.isArray(data.sizes)
+      ? data.sizes.map(s => typeof s === 'string' ? { size: s, price: data.price } : s)
+      : [];
+    const currentLabels = existingOpts.map(o => o.size).filter(Boolean);
+    const alreadyCorrect = currentLabels.length === 3 &&
+      ['16oz', '20oz', '24oz'].every(sz => currentLabels.includes(sz));
+    if(alreadyCorrect) continue;
+
+    const basePrice = existingOpts.length
+      ? Math.min(...existingOpts.map(o => typeof o.price === 'number' ? o.price : data.price))
+      : (typeof data.price === 'number' ? data.price : 0);
+    const newSizes = [
+      { size: '16oz', price: basePrice },
+      { size: '20oz', price: basePrice + 20 },
+      { size: '24oz', price: basePrice + 40 }
+    ];
+
+    await updateDoc(doc(db, PRODUCTS_COL, docSnap.id), { sizes: newSizes, price: basePrice });
+    patchCachedProduct(docSnap.id, { sizes: newSizes, price: basePrice });
+    updated.push(docSnap.id);
+  }
+  return updated;
+}
+
+/* =========================================================
+   FIX BROKEN PRODUCT IMAGES
+   Some products — mostly ones seeded before SEED_PRODUCTS in
+   shared-catalog.js was updated to generate a proper placeholder for
+   every item — still carry a bare local filename in `img`/`imgs`
+   (e.g. "croissant.jpg", "shirt1.png") left over from before Cloudinary
+   uploads existed. Those never resolve to anything on this host, so
+   the browser just shows a broken-image icon everywhere that product
+   appears — the grid, the product page, and the Launch Popup preview.
+
+   This walks every product and, for any `img`/`imgs` entry that isn't
+   a real URL (doesn't start with "http" or "data:" — Cloudinary URLs
+   and the generated SVG placeholders both pass, bare filenames don't),
+   swaps in the same blankPlaceholder() generator the seed data now
+   uses, so it renders a clean "photo coming soon" placeholder instead
+   of nothing. blankPlaceholder lives in shared-catalog.js — a plain
+   script (not a module) — so it's reached here via window, same as
+   this file's own exports are reached from admin.js.
+
+   This only ever repairs a genuinely missing image reference; it
+   never touches an already-good Cloudinary URL, generated
+   placeholder, OR a bare local filename (e.g. "croissant.jpg") —
+   those are valid site-root-relative paths to real static assets,
+   just ones that need resolveImageSrc() (shared-catalog.js) to
+   resolve correctly from a nested route like /admin/. An earlier
+   version of this function treated any non-http(s)/data: string as
+   "broken" and overwrote it with a placeholder — which silently
+   destroyed real, working image references on every product using a
+   bare filename, on both apps, the first time this tool ran. Don't
+   revert to that check. Returns the ids of every product actually
+   changed. */
+function isBrokenImageRef(src){
+  return !src || (typeof src === 'string' && src.trim() === '');
+}
+
+export async function fixBrokenProductImages(){
+  const snap = await getDocs(collection(db, PRODUCTS_COL));
+  const fixed = [];
+  for(const docSnap of snap.docs){
+    const data = docSnap.data();
+    const placeholder = window.blankPlaceholder(docSnap.id, data.cat);
+    const fields = {};
+
+    if(isBrokenImageRef(data.img)){
+      fields.img = placeholder;
+    }
+    if(Array.isArray(data.imgs) && data.imgs.some(isBrokenImageRef)){
+      fields.imgs = data.imgs.map(src => isBrokenImageRef(src) ? placeholder : src);
+    }
+
+    if(!Object.keys(fields).length) continue; // already fine — real URL, bare filename, or generated placeholder
+    await updateDoc(doc(db, PRODUCTS_COL, docSnap.id), fields);
+    patchCachedProduct(docSnap.id, fields);
+    fixed.push(docSnap.id);
+  }
+  return fixed;
+}
+window.CCProducts = { fetchAllProducts, addProduct, updateProduct, deleteProduct, seedProducts, getCachedProducts, decrementStock, cleanupLegacyFoodFields, flattenSizePricing, fillMissingDrinkDetails, normalizeDrinkSizes, fixBrokenProductImages };

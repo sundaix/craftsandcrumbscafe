@@ -3,21 +3,16 @@ let adminEditingId = null; // set while editing an existing product, null when a
 let adminProductSearch = '';    // current text in the Products search box
 let adminCategoryFilter = 'All'; // current selection in the category filter dropdown
 
-const FOOD_CATEGORIES = ['Coffee', 'Non-Coffee', 'Tea', 'Pastries', 'Sandwiches', 'Cakes'];
+/* Mirrors the product being added/edited's optionGroups field while the
+   form is open — see renderOptionGroupsBuilder() below for the shape
+   and the whole "OPTION GROUPS BUILDER" section for how it's edited. */
+let apOptionGroups = [];
 
-/* Default size list offered for each sized category when adding a new
-   product, or when switching an existing product to one of these
-   categories. Editing a product that already has its own size list
-   keeps that list instead (see renderSizePriceRows). */
-const DEFAULT_SIZES_BY_CATEGORY = {
-  Shirts: ['XS','S','M','L','XL','XXL'],
-  Shorts: ['XS','S','M','L','XL','XXL'],
-  Socks: ['S','M','L'],
-  Caps: ['One Size'],
-};
-
-const DRINK_CATEGORIES = ['Coffee', 'Non-Coffee', 'Tea'];
-const DRINK_SIZES = ['12oz', '16oz', '20oz'];
+/* FOOD_CATEGORIES, DRINK_CATEGORIES, SIZED_CATEGORIES, and
+   DEFAULT_SIZES_BY_CATEGORY moved to shared-catalog.js (loaded before
+   this file) — script.js reads them too, so they can't be declared
+   here as well. */
+const DRINK_SIZES = ['16oz', '20oz', '24oz'];
 
 const ADMIN_CATEGORY_BADGE_CLASS = {
   'Drinks': 'drinks',
@@ -93,20 +88,30 @@ $(document).on('click', '[data-admin-category-delete]', async function(){
   const msg = count
     ? `${count} product${count === 1 ? '' : 's'} still use${count === 1 ? 's' : ''} "${c.label}". They won't be deleted, but they'll need a new category assigned or they may not show up correctly. Delete "${c.label}" anyway?`
     : `Delete category "${c.label}"? This can't be undone.`;
-  if(!window.confirm(msg)) return;
+  const ok = await showConfirm({
+    title: 'Delete category?',
+    message: msg,
+    confirmText: 'Delete',
+    danger: true
+  });
+  if(!ok) return;
 
   const $btn = $(this);
   $btn.prop('disabled', true);
   try{
     await window.CCCategories.deleteCategory(id);
     CUSTOM_CATEGORIES = CUSTOM_CATEGORIES.filter(x => x.id !== id);
-    removeCustomCategoryEffects(c);
+    removeCustomCategoryEffectsCore(c);
     renderExistingCategoriesList();
     renderAdminCategorySelects();
-    renderMenuSidebar();
-    renderMerchSidebar();
-    renderMenuPage();
-    renderMerchPage();
+    // These four are customer-storefront renderers — they only exist
+    // when admin.js happens to be running inside the full customer
+    // page (script.js loaded). On the standalone admin app they're
+    // undefined, so this is guarded rather than called unconditionally.
+    if(typeof renderMenuSidebar === 'function') renderMenuSidebar();
+    if(typeof renderMerchSidebar === 'function') renderMerchSidebar();
+    if(typeof renderMenuPage === 'function') renderMenuPage();
+    if(typeof renderMerchPage === 'function') renderMerchPage();
     showToast(`Deleted "${c.label}".`, 'success');
   } catch(err){
     console.error(err);
@@ -174,10 +179,10 @@ $(document).on('submit', '#addCategoryForm', async function(e){
   try{
     await window.CCCategories.addCategory(category);
     CUSTOM_CATEGORIES.push(category);
-    applyCustomCategory(category);
+    applyCustomCategoryCore(category);
     renderAdminCategorySelects();
-    renderMenuSidebar();
-    renderMerchSidebar();
+    if(typeof renderMenuSidebar === 'function') renderMenuSidebar();
+    if(typeof renderMerchSidebar === 'function') renderMerchSidebar();
     closeCategoryModal();
     // Jump straight to the Add Product form with the new category
     // already selected — the whole point was to use it right away.
@@ -207,6 +212,7 @@ function renderAdminDashboard(){
   loadAndRenderAdminOrders();
   loadAndRenderAdminCombos();
   loadAndRenderAdminSettings();
+  loadAndRenderAdminPromo();
 }
 
 /* ================= TABS ================= */
@@ -297,7 +303,7 @@ function renderAdminProductsTable(){
       <tr data-product-row="${p.id}">
         <td class="admin-td-product">
           <div class="admin-td-product-inner">
-            <img src="${p.img}" alt="${p.name}">
+            <img src="${resolveImageSrc(p.img)}" alt="${p.name}">
             <span>${p.name}</span>
           </div>
         </td>
@@ -345,6 +351,23 @@ $(document).on('change', '#adminCategoryFilter', function(){
   renderAdminProductsTable();
 });
 
+/* Shared by the Edit and Duplicate handlers below — fills the
+   Calories/About/Nutrition fields from an existing product (or blanks
+   them for a fresh one). Kept separate from toggleFoodFields/
+   renderSizePriceRows since those two are also called on category
+   *change*, when there's no product to pull values from. */
+function populateDrinkDetailsFields(p){
+  const n = (p && p.nutrition) || {};
+  $('#apCalories').val(p && typeof p.calories === 'number' ? p.calories : '');
+  $('#apAboutText').val((p && p.aboutText) || '');
+  $('#apNutServing').val(n.servingSize || '');
+  $('#apNutCarbs').val(n.carbs != null ? n.carbs : '');
+  $('#apNutSugar').val(n.sugar != null ? n.sugar : '');
+  $('#apNutProtein').val(n.protein != null ? n.protein : '');
+  $('#apNutFat').val(n.fat != null ? n.fat : '');
+  $('#apNutSodium').val(n.sodium != null ? n.sodium : '');
+}
+
 /* Edit: pull the product into the Add/Edit form and switch to that tab */
 $(document).on('click', '[data-admin-edit]', function(){
   const id = $(this).data('admin-edit');
@@ -361,9 +384,10 @@ $(document).on('click', '[data-admin-edit]', function(){
   $('#apIngredients').val(p.ingredients || '');
   $('#apAllergens').val(p.allergens || '');
   $('#apStock').val(p.stock !== undefined && p.stock !== null ? p.stock : '');
+  populateDrinkDetailsFields(p);
   toggleFoodFields(p.cat);
   renderSizePriceRows(p.cat, p);
-  setImagePreview('apImgPreviewImg', 'apImgPreviewPlaceholder', p.img || '');
+  setImagePreview('apImgPreviewImg', 'apImgPreviewPlaceholder', resolveImageSrc(p.img) || '');
   $('#apImgUploadStatus').text('').removeClass('image-upload-error');
 
   $('#adminFormTitle').text(`Edit "${p.name}"`);
@@ -391,9 +415,10 @@ $(document).on('click', '[data-admin-duplicate]', function(){
   $('#apIngredients').val(p.ingredients || '');
   $('#apAllergens').val(p.allergens || '');
   $('#apStock').val(p.stock !== undefined && p.stock !== null ? p.stock : '');
+  populateDrinkDetailsFields(p);
   toggleFoodFields(p.cat);
   renderSizePriceRows(p.cat, p); // pre-checks the same sizes the original has — just adjust and save
-  setImagePreview('apImgPreviewImg', 'apImgPreviewPlaceholder', p.img || '');
+  setImagePreview('apImgPreviewImg', 'apImgPreviewPlaceholder', resolveImageSrc(p.img) || '');
   $('#apImgUploadStatus').text('').removeClass('image-upload-error');
 
   $('#adminFormTitle').text(`Duplicate "${p.name}"`);
@@ -430,10 +455,21 @@ function renderSizePriceRows(cat, existingProduct){
 
   $('#apSizesField').toggle(isStockSized);
   $('#apDrinkSizesField').toggle(isPriceSized);
+  $('#apOptionGroupsField').toggle(isPriceSized);
+  $('#apDrinkDetailsField').toggle(isPriceSized);
   $('#apPriceGroup').toggle(!isPriceSized);
   $('#apStockGroup').toggle(!isStockSized);
   $('#apStock').prop('required', !isStockSized);
   $('#apPrice').prop('required', !isPriceSized);
+
+  if(isPriceSized){
+    apOptionGroups = (existingProduct && existingProduct.cat === cat && Array.isArray(existingProduct.optionGroups))
+      ? JSON.parse(JSON.stringify(existingProduct.optionGroups))
+      : [];
+  } else {
+    apOptionGroups = [];
+  }
+  renderOptionGroupsBuilder();
 
   if(isStockSized){
     $('#apDrinkSizeRows').empty();
@@ -497,6 +533,136 @@ function renderSizePriceRows(cat, existingProduct){
   $('#apDrinkSizeRows').empty();
 }
 
+/* ================= OPTION GROUPS BUILDER (drinks only) ================= */
+/* Structural changes (add/remove group or choice, switching a group's
+   type) re-render the builder; per-field edits (labels, prices,
+   checkboxes) just patch apOptionGroups in place instead, so typing
+   in a label doesn't lose focus/cursor position on every keystroke. */
+function newOptionGroup(){
+  return { id: 'group-' + Date.now(), label: '', type: 'single', max: null, choices: [newOptionChoice()] };
+}
+function newOptionChoice(){
+  return { id: 'choice-' + Date.now() + '-' + Math.floor(Math.random()*1000), label: '', price: 0, kcal: null, available: true, default: false };
+}
+
+function renderOptionGroupsBuilder(){
+  const $wrap = $('#apOptionGroups');
+  if(!apOptionGroups.length){
+    $wrap.html(`
+      <div class="opt-groups-empty">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none"><path d="M4 6h16M4 12h10M4 18h7" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
+        <p>No customization options yet.<br>Add a group below to build a page like the size selector above.</p>
+      </div>
+    `);
+    return;
+  }
+  $wrap.html(apOptionGroups.map((g, gi) => `
+    <div class="opt-group-card">
+      <div class="opt-group-card-top">
+        <span class="opt-group-index">Group ${gi + 1}</span>
+        <button type="button" class="admin-icon-btn admin-icon-btn-danger opt-group-remove" data-og-remove="${gi}" aria-label="Remove group">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M6 6l12 12M18 6L6 18" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
+        </button>
+      </div>
+      <input type="text" class="opt-group-label-input" data-og="${gi}" placeholder="Group label, e.g. Choose your bean" value="${g.label || ''}">
+      <div class="opt-group-type-row">
+        <div class="opt-type-toggle" data-og="${gi}">
+          <button type="button" class="opt-type-btn${g.type !== 'multi' ? ' active' : ''}" data-og="${gi}" data-type="single">Single choice</button>
+          <button type="button" class="opt-type-btn${g.type === 'multi' ? ' active' : ''}" data-og="${gi}" data-type="multi">Multiple choice</button>
+        </div>
+        ${g.type === 'multi' ? `
+          <label class="opt-max-field">
+            <span>Max</span>
+            <input type="number" min="1" step="1" class="opt-group-max-input" data-og="${gi}" placeholder="—" value="${g.max || ''}">
+          </label>
+        ` : ''}
+      </div>
+      <div class="opt-choice-rows">
+        ${g.choices.map((c, ci) => `
+          <div class="opt-choice-row">
+            <input type="text" class="opt-choice-label-input" data-og="${gi}" data-oc="${ci}" placeholder="Choice label, e.g. Oat Milk" value="${c.label || ''}">
+            <div class="opt-choice-price-wrap">
+              <span>+₱</span>
+              <input type="number" step="1" class="opt-choice-price-input" data-og="${gi}" data-oc="${ci}" placeholder="0" value="${c.price || ''}">
+            </div>
+            <div class="opt-choice-kcal-wrap">
+              <input type="number" step="1" class="opt-choice-kcal-input" data-og="${gi}" data-oc="${ci}" placeholder="0" value="${c.kcal || ''}">
+              <span>kcal</span>
+            </div>
+            <div class="opt-choice-toggles">
+              <label class="opt-toggle-pill"><input type="checkbox" class="opt-choice-default-input" data-og="${gi}" data-oc="${ci}" ${c.default ? 'checked' : ''}><span>Default</span></label>
+              <label class="opt-toggle-pill"><input type="checkbox" class="opt-choice-avail-input" data-og="${gi}" data-oc="${ci}" ${c.available !== false ? 'checked' : ''}><span>Available</span></label>
+            </div>
+            <button type="button" class="opt-choice-remove" data-og="${gi}" data-oc-remove="${ci}" aria-label="Remove choice">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none"><path d="M6 6l12 12M18 6L6 18" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+            </button>
+          </div>
+        `).join('')}
+      </div>
+      <button type="button" class="btn btn-outline btn-sm opt-add-choice-btn" data-og="${gi}">+ Add Choice</button>
+    </div>
+  `).join(''));
+}
+
+$(document).on('click', '#apAddOptionGroupBtn', function(){
+  apOptionGroups.push(newOptionGroup());
+  renderOptionGroupsBuilder();
+});
+$(document).on('click', '.opt-group-remove', function(){
+  apOptionGroups.splice($(this).data('og-remove'), 1);
+  renderOptionGroupsBuilder();
+});
+$(document).on('click', '.opt-add-choice-btn', function(){
+  apOptionGroups[$(this).data('og')].choices.push(newOptionChoice());
+  renderOptionGroupsBuilder();
+});
+$(document).on('click', '.opt-choice-remove', function(){
+  const gi = $(this).data('og');
+  apOptionGroups[gi].choices.splice($(this).data('oc-remove'), 1);
+  renderOptionGroupsBuilder();
+});
+$(document).on('click', '.opt-type-btn', function(){
+  const gi = $(this).data('og');
+  const type = $(this).data('type');
+  if(apOptionGroups[gi].type === type) return;
+  apOptionGroups[gi].type = type;
+  renderOptionGroupsBuilder();
+});
+$(document).on('input', '.opt-group-label-input', function(){
+  apOptionGroups[$(this).data('og')].label = $(this).val();
+});
+$(document).on('input', '.opt-group-max-input', function(){
+  const v = parseInt($(this).val(), 10);
+  apOptionGroups[$(this).data('og')].max = isNaN(v) ? null : v;
+});
+$(document).on('input', '.opt-choice-label-input', function(){
+  apOptionGroups[$(this).data('og')].choices[$(this).data('oc')].label = $(this).val();
+});
+$(document).on('input', '.opt-choice-price-input', function(){
+  const v = Number($(this).val());
+  apOptionGroups[$(this).data('og')].choices[$(this).data('oc')].price = isNaN(v) ? 0 : v;
+});
+$(document).on('input', '.opt-choice-kcal-input', function(){
+  const v = parseInt($(this).val(), 10);
+  apOptionGroups[$(this).data('og')].choices[$(this).data('oc')].kcal = isNaN(v) ? null : v;
+});
+$(document).on('change', '.opt-choice-avail-input', function(){
+  apOptionGroups[$(this).data('og')].choices[$(this).data('oc')].available = this.checked;
+});
+$(document).on('change', '.opt-choice-default-input', function(){
+  const gi = $(this).data('og');
+  const group = apOptionGroups[gi];
+  if(group.type !== 'multi'){
+    // Single-select: only one choice can be the default — re-render
+    // so the other checkboxes visibly clear too.
+    group.choices.forEach(c => { c.default = false; });
+    if(this.checked) group.choices[$(this).data('oc')].default = true;
+    renderOptionGroupsBuilder();
+  } else {
+    group.choices[$(this).data('oc')].default = this.checked;
+  }
+});
+
 $(document).on('change', '#apCategory', function(){
   const cat = $(this).val();
   const existing = adminEditingId ? PRODUCTS.find(x => x.id === adminEditingId) : null;
@@ -510,7 +676,7 @@ $(document).on('change', '.size-toggle-input', function(){
   $(this).closest('.size-stock-row').find('.size-stock-input').prop('disabled', !checked);
 });
 
-$(document).on('wheel', '#apPrice, #apStock, .size-stock-input, .size-price-input', function(){
+$(document).on('wheel', '#apPrice, #apStock, .size-stock-input, .size-price-input, .opt-group-max-input, .opt-choice-price-input, .opt-choice-kcal-input', function(){
   $(this).blur();
 });
 
@@ -519,17 +685,23 @@ $(document).on('click', '[data-admin-delete]', async function(){
   const id = $(this).data('admin-delete');
   const p = PRODUCTS.find(x => x.id === id);
   if(!p) return;
-  if(!window.confirm(`Delete "${p.name}"? This can't be undone.`)) return;
+  const ok = await showConfirm({
+    title: `Delete "${p.name}"?`,
+    message: "This can't be undone.",
+    confirmText: 'Delete',
+    danger: true
+  });
+  if(!ok) return;
 
   try{
     await window.CCProducts.deleteProduct(id);
     PRODUCTS = PRODUCTS.filter(x => x.id !== id);
     renderAdminProductsTable();
     renderAdminOverviewStats();
-    renderMenuPage();
-    renderMerchPage();
+    if(typeof renderMenuPage === 'function') renderMenuPage();
+    if(typeof renderMerchPage === 'function') renderMerchPage();
     buildComboProducts();
-    renderFeaturedCombos();
+    if(typeof renderFeaturedCombos === 'function') renderFeaturedCombos();
     showToast(`Deleted "${p.name}".`, 'success');
   } catch(err){
     console.error(err);
@@ -649,6 +821,47 @@ $(document).on('submit', '#adminAddProductForm', async function(e){
     fields.ingredients = $('#apIngredients').val().trim() || 'Details coming soon.';
     fields.allergens = $('#apAllergens').val().trim() || 'Please ask our staff for full allergen details.';
   }
+  // Drop groups with no label and choices with no label — an admin
+  // clicking "+ Add Option Group" then changing their mind shouldn't
+  // save a half-empty group. A group left with zero real choices
+  // after that cleanup is dropped entirely too.
+  const cleanedOptionGroups = isPriceSized
+    ? apOptionGroups
+        .filter(g => g.label && g.label.trim())
+        .map(g => ({
+          id: g.id, label: g.label.trim(), type: g.type === 'multi' ? 'multi' : 'single',
+          max: g.type === 'multi' && g.max ? g.max : null,
+          choices: g.choices
+            .filter(c => c.label && c.label.trim())
+            .map(c => ({
+              id: c.id, label: c.label.trim(), price: c.price || 0,
+              kcal: c.kcal || null, available: c.available !== false, default: !!c.default
+            }))
+        }))
+        .filter(g => g.choices.length)
+    : [];
+  if(isPriceSized && cleanedOptionGroups.length) fields.optionGroups = cleanedOptionGroups;
+
+  // Calories/About/Nutrition — drinks only, and each piece only gets
+  // written if the admin actually filled it in (an empty number input
+  // stays out of `fields` entirely rather than saving 0/null, same
+  // spirit as cleanedOptionGroups above dropping empty groups).
+  if(isPriceSized){
+    const caloriesVal = parseInt($('#apCalories').val(), 10);
+    if(!isNaN(caloriesVal)) fields.calories = caloriesVal;
+
+    const aboutVal = $('#apAboutText').val().trim();
+    if(aboutVal) fields.aboutText = aboutVal;
+
+    const nutrition = {};
+    const servingVal = $('#apNutServing').val().trim();
+    if(servingVal) nutrition.servingSize = servingVal;
+    [['apNutCarbs','carbs'], ['apNutSugar','sugar'], ['apNutProtein','protein'], ['apNutFat','fat'], ['apNutSodium','sodium']].forEach(([inputId, key]) => {
+      const v = parseFloat($('#' + inputId).val());
+      if(!isNaN(v)) nutrition[key] = v;
+    });
+    if(Object.keys(nutrition).length) fields.nutrition = nutrition;
+  }
 
   if(adminEditingId){
     $btn.prop('disabled', true).text('Updating...');
@@ -665,6 +878,10 @@ $(document).on('submit', '#adminAddProductForm', async function(e){
       if(!isFood && prevProduct.ingredients !== undefined) fieldsToDelete.push('ingredients');
       if(!isFood && prevProduct.allergens !== undefined) fieldsToDelete.push('allergens');
       if(!isStockSized && !isPriceSized && prevProduct.sizes !== undefined) fieldsToDelete.push('sizes');
+      if(!fields.optionGroups && prevProduct.optionGroups !== undefined) fieldsToDelete.push('optionGroups');
+      if(!fields.calories && fields.calories !== 0 && prevProduct.calories !== undefined) fieldsToDelete.push('calories');
+      if(!fields.aboutText && prevProduct.aboutText !== undefined) fieldsToDelete.push('aboutText');
+      if(!fields.nutrition && prevProduct.nutrition !== undefined) fieldsToDelete.push('nutrition');
     }
     try{
       await window.CCProducts.updateProduct(adminEditingId, fields, fieldsToDelete);
@@ -677,10 +894,10 @@ $(document).on('submit', '#adminAddProductForm', async function(e){
       showToast(`Updated "${name}".`, 'success');
       resetAdminProductForm();
       renderAdminProductsTable();
-      renderMenuPage();
-      renderMerchPage();
+      if(typeof renderMenuPage === 'function') renderMenuPage();
+      if(typeof renderMerchPage === 'function') renderMerchPage();
       buildComboProducts();
-      renderFeaturedCombos();
+      if(typeof renderFeaturedCombos === 'function') renderFeaturedCombos();
       goToProductsSubtab('catalog');
     } catch(err){
       console.error(err);
@@ -705,10 +922,10 @@ $(document).on('submit', '#adminAddProductForm', async function(e){
     resetAdminProductForm();
     renderAdminProductsTable();
     renderAdminOverviewStats();
-    renderMenuPage();
-    renderMerchPage();
+    if(typeof renderMenuPage === 'function') renderMenuPage();
+    if(typeof renderMerchPage === 'function') renderMerchPage();
     buildComboProducts();
-    renderFeaturedCombos();
+    if(typeof renderFeaturedCombos === 'function') renderFeaturedCombos();
   } catch(err){
     console.error(err);
     showToast('Could not add product. Please try again.', 'error');
@@ -741,6 +958,50 @@ const ORDER_STALE_MINUTES = 15;
 
 let adminOrderStatusFilter = 'all'; // 'all' | one of ORDER_STATUSES
 let adminOrderSearch = '';          // current text in the orders search box
+
+/* Sort state for the orders table. key is one of 'createdAt' | 'customer' | 'total'.
+   Newest-first by date is the most useful default view for an admin
+   checking in on the shop, so that's where every session starts. */
+let adminOrderSort = { key: 'createdAt', dir: 'desc' };
+
+function sortOrders(list){
+  const { key, dir } = adminOrderSort;
+  const mult = dir === 'asc' ? 1 : -1;
+  return [...list].sort((a, b) => {
+    let av, bv;
+    if(key === 'total'){
+      av = a.totals?.total || 0;
+      bv = b.totals?.total || 0;
+    } else if(key === 'customer'){
+      av = (a.customer?.name || 'Guest').toLowerCase();
+      bv = (b.customer?.name || 'Guest').toLowerCase();
+    } else {
+      av = orderTimestampMs(a.createdAt) || 0;
+      bv = orderTimestampMs(b.createdAt) || 0;
+    }
+    if(av < bv) return -1 * mult;
+    if(av > bv) return 1 * mult;
+    return 0;
+  });
+}
+
+/* Reflects adminOrderSort onto the header row: clears stale arrows,
+   marks the active column, and points its arrow the right way. */
+function updateOrderSortHeaders(){
+  $('.sortable-th').removeClass('sort-active').find('.sort-arrow').text('↕');
+  const $active = $(`.sortable-th[data-sort-key="${adminOrderSort.key}"]`);
+  $active.addClass('sort-active').find('.sort-arrow').text(adminOrderSort.dir === 'asc' ? '↑' : '↓');
+}
+
+$(document).on('click', '.sortable-th', function(){
+  const key = $(this).data('sort-key');
+  if(adminOrderSort.key === key){
+    adminOrderSort.dir = adminOrderSort.dir === 'asc' ? 'desc' : 'asc';
+  } else {
+    adminOrderSort = { key, dir: key === 'customer' ? 'asc' : 'desc' };
+  }
+  renderAdminOrdersTable();
+});
 
 function orderTimestampMs(val){
   if(!val) return null;
@@ -816,12 +1077,29 @@ function getFilteredOrders(){
   return list;
 }
 
+/* Two initials from a customer name for the little avatar chip —
+   falls back to "?" for guest/blank names so the chip never renders empty. */
+function customerInitials(name){
+  const parts = (name || '').trim().split(/\s+/).filter(Boolean);
+  if(!parts.length) return '?';
+  const first = parts[0][0] || '';
+  const last = parts.length > 1 ? parts[parts.length - 1][0] : '';
+  return (first + last).toUpperCase();
+}
+
+function minutesWaiting(order){
+  const ms = orderTimestampMs(order.createdAt);
+  if(ms === null) return null;
+  return Math.max(1, Math.round((Date.now() - ms) / 60000));
+}
+
 function renderAdminOrdersTable(){
   if(!ADMIN_ORDERS.length){
     $('#adminOrdersBody').html(`<tr><td colspan="6" class="admin-empty-row">No orders yet.</td></tr>`);
     return;
   }
-  const filtered = getFilteredOrders();
+  const filtered = sortOrders(getFilteredOrders());
+  updateOrderSortHeaders();
   if(!filtered.length){
     const msg = adminOrderSearch
       ? 'No orders match your search.'
@@ -833,13 +1111,21 @@ function renderAdminOrdersTable(){
     const status = o.status || 'pending';
     const options = ORDER_STATUSES.map(s => `<option value="${s}" ${s === status ? 'selected' : ''}>${s.charAt(0).toUpperCase() + s.slice(1)}</option>`).join('');
     const stale = isOrderStale(o);
+    const name = o.customer?.name || 'Guest';
+    const isDelivery = o.fulfillment === 'delivery';
+    const waited = stale ? minutesWaiting(o) : null;
     return `
       <tr style="--i:${i}"${stale ? ' class="admin-order-row-stale"' : ''}>
-        <td>#${o.id.slice(0,6).toUpperCase()}</td>
-        <td class="admin-order-placed">${formatOrderTimestamp(o.createdAt)}${stale ? `<span class="admin-order-stale-flag" title="Pending for over ${ORDER_STALE_MINUTES} minutes">⚠</span>` : ''}</td>
-        <td><button class="admin-customer-link" data-order-view="${o.id}">${o.customer?.name || 'Guest'}</button></td>
-        <td>${o.fulfillment === 'delivery' ? 'Delivery' : 'Pickup'}</td>
-        <td>${peso(o.totals?.total || 0)}</td>
+        <td><span class="admin-order-id">#${o.id.slice(0,6).toUpperCase()}</span></td>
+        <td class="admin-order-placed">${formatOrderTimestamp(o.createdAt)}${stale ? `<span class="admin-order-stale-flag" title="Pending for over ${ORDER_STALE_MINUTES} minutes">⚠ ${waited}m</span>` : ''}</td>
+        <td>
+          <button class="admin-customer-link" data-order-view="${o.id}">
+            <span class="admin-avatar">${customerInitials(name)}</span>
+            <span>${name}</span>
+          </button>
+        </td>
+        <td><span class="fulfillment-badge fulfillment-${isDelivery ? 'delivery' : 'pickup'}">${isDelivery ? 'Delivery' : 'Pickup'}</span></td>
+        <td class="admin-order-total">${peso(o.totals?.total || 0)}</td>
         <td>
           <select class="admin-status-select admin-status-${status}" data-order-status="${o.id}">
             ${options}
@@ -885,6 +1171,7 @@ function openOrderDetailModal(orderId){
     <div class="order-detail-item">
       <div>
         <div class="order-detail-item-name">${it.name}${it.size ? ` <span class="cart-dd-size">(${it.size})</span>` : ''}</div>
+        ${it.optionsSummary ? `<div class="order-detail-item-opts">${it.optionsSummary}</div>` : ''}
         <div class="order-detail-item-meta">${it.qty} × ${peso(it.price)}</div>
       </div>
       <div class="order-detail-item-total">${peso(it.price * it.qty)}</div>
@@ -976,12 +1263,12 @@ $(document).on('click', '#adminSeedBtn', async function(){
   try{
     await window.CCProducts.seedProducts(SEED_PRODUCTS);
     await loadProductsFromFirestore();
-    renderCategories();
-    renderBestSellers();
-    renderMenuPage();
-    renderMerchPage();
+    if(typeof renderCategories === 'function') renderCategories();
+    if(typeof renderBestSellers === 'function') renderBestSellers();
+    if(typeof renderMenuPage === 'function') renderMenuPage();
+    if(typeof renderMerchPage === 'function') renderMerchPage();
     buildComboProducts();
-    renderFeaturedCombos();
+    if(typeof renderFeaturedCombos === 'function') renderFeaturedCombos();
     renderAdminProductsTable();
     renderAdminOverviewStats();
     $status.text(`Done — ${SEED_PRODUCTS.length} products are now in Firestore.`);
@@ -1007,10 +1294,10 @@ $(document).on('click', '#adminCleanupFieldsBtn', async function(){
   try{
     const cleanedIds = await window.CCProducts.cleanupLegacyFoodFields(FOOD_CATEGORIES);
     await loadProductsFromFirestore();
-    renderMenuPage();
-    renderMerchPage();
+    if(typeof renderMenuPage === 'function') renderMenuPage();
+    if(typeof renderMerchPage === 'function') renderMerchPage();
     buildComboProducts();
-    renderFeaturedCombos();
+    if(typeof renderFeaturedCombos === 'function') renderFeaturedCombos();
     renderAdminProductsTable();
     renderAdminOverviewStats();
     $status.text(cleanedIds.length
@@ -1041,12 +1328,12 @@ $(document).on('click', '#adminGraduatePricingBtn', async function(){
   try{
     const updatedIds = await window.CCProducts.flattenSizePricing(SIZED_CATEGORIES);
     await loadProductsFromFirestore();
-    renderCategories();
-    renderBestSellers();
-    renderMenuPage();
-    renderMerchPage();
+    if(typeof renderCategories === 'function') renderCategories();
+    if(typeof renderBestSellers === 'function') renderBestSellers();
+    if(typeof renderMenuPage === 'function') renderMenuPage();
+    if(typeof renderMerchPage === 'function') renderMerchPage();
     buildComboProducts();
-    renderFeaturedCombos();
+    if(typeof renderFeaturedCombos === 'function') renderFeaturedCombos();
     renderAdminProductsTable();
     renderAdminOverviewStats();
     $status.text(updatedIds.length
@@ -1057,6 +1344,117 @@ $(document).on('click', '#adminGraduatePricingBtn', async function(){
     $status.text('Something went wrong while updating. Check the console for details.');
   } finally {
     $btn.prop('disabled', false).text('Flatten Per-Size Pricing');
+  }
+});
+
+/* ================= NORMALIZE DRINK SIZES ================= */
+/* Rewrites every Coffee/Non-Coffee/Tea product onto exactly three
+   selectable sizes — 16oz, 20oz, 24oz — so the size selector on the
+   product page always has something real to show, no matter what
+   state that drink's `sizes` array was previously in. See
+   CCProducts.normalizeDrinkSizes for how the new prices are derived
+   from whatever the drink was already charging. */
+$(document).on('click', '#adminNormalizeSizesBtn', async function(){
+  const $btn = $(this);
+  const $status = $('#adminNormalizeSizesStatus');
+  $btn.prop('disabled', true).text('Fixing...');
+  $status.text('Scanning Coffee/Non-Coffee/Tea drinks for their size options...');
+  try{
+    const updatedIds = await window.CCProducts.normalizeDrinkSizes(DRINK_CATEGORIES);
+    await loadProductsFromFirestore();
+    if(typeof renderMenuPage === 'function') renderMenuPage();
+    renderAdminProductsTable();
+    renderAdminOverviewStats();
+    $status.text(updatedIds.length
+      ? `Done — fixed sizes on ${updatedIds.length} drink${updatedIds.length === 1 ? '' : 's'}: ${updatedIds.join(', ')}.`
+      : 'Done — every drink already has 16oz/20oz/24oz sizes.');
+  } catch(err){
+    console.error(err);
+    $status.text('Something went wrong while fixing sizes. Check the console for details.');
+  } finally {
+    $btn.prop('disabled', false).text('Fix Drink Sizes (16/20/24oz)');
+  }
+});
+
+/* ================= FIX BROKEN PRODUCT IMAGES ================= */
+/* Repairs products still carrying a bare local filename in img/imgs
+   (leftover from before Cloudinary uploads existed, or from a seed
+   run before SEED_PRODUCTS was fixed to use a real placeholder) —
+   these never resolve on this host and show as a broken-image icon
+   everywhere that product appears. Swaps in the same "photo coming
+   soon" placeholder the seed data now uses; never touches a product
+   that already has a real Cloudinary URL. See
+   CCProducts.fixBrokenProductImages for exactly how a broken
+   reference is detected. Admins can still upload a real photo for
+   any of these afterward through the normal Edit form — this just
+   stops the broken-icon in the meantime. */
+$(document).on('click', '#adminFixImagesBtn', async function(){
+  const missingCount = PRODUCTS.filter(p =>
+    !p.img || (Array.isArray(p.imgs) && p.imgs.some(src => !src))
+  ).length;
+  const ok = await showConfirm({
+    title: 'Fix missing product images?',
+    message: missingCount
+      ? `${missingCount} product${missingCount === 1 ? '' : 's'} currently ${missingCount === 1 ? 'has' : 'have'} no image at all — this will give ${missingCount === 1 ? 'it' : 'them'} a "photo coming soon" placeholder. Existing images (including plain filenames like "croissant.jpg") are left alone — those aren't broken, just upload a real photo whenever you're ready. Continue?`
+      : 'No products currently have a missing image — running this won\'t change anything. Continue anyway?',
+    confirmText: 'Fix Images',
+    danger: false
+  });
+  if(!ok) return;
+
+  const $btn = $(this);
+  const $status = $('#adminFixImagesStatus');
+  $btn.prop('disabled', true).text('Fixing...');
+  $status.text('Scanning every product for missing image references...');
+  try{
+    const fixedIds = await window.CCProducts.fixBrokenProductImages();
+    await loadProductsFromFirestore();
+    if(typeof renderMenuPage === 'function') renderMenuPage();
+    if(typeof renderMerchPage === 'function') renderMerchPage();
+    buildComboProducts();
+    if(typeof renderFeaturedCombos === 'function') renderFeaturedCombos();
+    renderAdminProductsTable();
+    renderAdminOverviewStats();
+    $status.text(fixedIds.length
+      ? `Done — placeholder added for ${fixedIds.length} product${fixedIds.length === 1 ? '' : 's'} with no image: ${fixedIds.join(', ')}. Upload real photos for these any time from Edit.`
+      : 'Done — no products were missing an image.');
+  } catch(err){
+    console.error(err);
+    $status.text('Something went wrong while fixing images. Check the console for details.');
+  } finally {
+    $btn.prop('disabled', false).text('Fix Broken Product Images');
+  }
+});
+
+/* ================= FILL IN DRINK CUSTOMIZATIONS ================= */
+/* Fills in whatever Coffee/Non-Coffee/Tea drink is still missing its
+   option groups (Sweetness Level, Ice Level, and Milk Type when the
+   drink contains milk), calories, about text, or nutrition — without
+   touching any of those fields on a drink that already has them. See
+   CCProducts.fillMissingDrinkDetails for exactly what gets generated
+   and why nothing already-filled-in is ever overwritten. Everything
+   it adds shows up as normal, editable fields on that drink's Edit
+   form afterward (the Option Groups Builder, and the Calories/About/
+   Nutrition inputs) — this is just a starting point, not a lock-in. */
+$(document).on('click', '#adminFillDrinkDetailsBtn', async function(){
+  const $btn = $(this);
+  const $status = $('#adminFillDrinkDetailsStatus');
+  $btn.prop('disabled', true).text('Filling...');
+  $status.text('Scanning Coffee/Non-Coffee/Tea drinks for missing customization details...');
+  try{
+    const updatedIds = await window.CCProducts.fillMissingDrinkDetails(DRINK_CATEGORIES);
+    await loadProductsFromFirestore();
+    if(typeof renderMenuPage === 'function') renderMenuPage();
+    renderAdminProductsTable();
+    renderAdminOverviewStats();
+    $status.text(updatedIds.length
+      ? `Done — filled in details on ${updatedIds.length} drink${updatedIds.length === 1 ? '' : 's'}: ${updatedIds.join(', ')}. Open any of them with Edit to adjust.`
+      : 'Done — every drink already has its customization details filled in.');
+  } catch(err){
+    console.error(err);
+    $status.text('Something went wrong while filling in details. Check the console for details.');
+  } finally {
+    $btn.prop('disabled', false).text('Fill In Drink Customizations');
   }
 });
 
@@ -1101,6 +1499,238 @@ $(document).on('submit', '#adminSettingsForm', async function(e){
   }
 });
 
+/* ================= LAUNCH POPUP ================= */
+/* PROMO_PICK_LIMIT now lives in shared-catalog.js (loaded before this
+   file) since resolvePromoProducts() there needs it too — don't
+   redeclare it here, that throws a SyntaxError that silently kills
+   this whole file (see the "no duplicate top-level names" rule). */
+
+/* Source of truth for the manual product picks — kept separate from
+   the checkbox DOM because the list gets re-rendered on every search
+   keystroke (only showing whatever matches), so a checked box that
+   scrolls out of view or gets filtered out would otherwise "forget"
+   its checked state. Selected ids persist here regardless of what
+   the search box currently shows. */
+let promoPickedIds = [];
+
+/* Reuses the same grouped-optgroup builder the product/category
+   dropdowns use elsewhere, so this stays in sync with custom
+   categories automatically. */
+function renderPromoCategorySelect(){
+  const $sel = $('#ppCategory');
+  const prev = $sel.val();
+  $sel.html(`<option value="">— None —</option>${buildCategoryOptgroupsHtml()}`);
+  if(prev) $sel.val(prev);
+}
+
+/* The "you've picked these" row, shown above the search box so the
+   admin never has to scroll/search to see what's currently selected —
+   each chip removes itself with one click. */
+function renderPromoSelectedChips(){
+  const $chips = $('#ppSelectedChips');
+  if(!promoPickedIds.length){ $chips.empty(); return; }
+  $chips.html(promoPickedIds.map(id => {
+    const p = PRODUCTS.find(x => x.id === id);
+    const name = p ? p.name : id;
+    return `
+      <span class="promo-pick-chip">
+        <span class="promo-pick-chip-name">${name}</span>
+        <button type="button" data-promo-unpick="${id}" aria-label="Remove ${name}">×</button>
+      </span>`;
+  }).join(''));
+}
+
+/* Filters by name as the admin types, instead of one long scrolling
+   list of the entire catalog — the whole point being it's now fast
+   to find one specific product instead of hunting through everything. */
+function renderPromoProductList(searchTerm){
+  const $list = $('#ppProductList');
+  if(!PRODUCTS.length){
+    $list.html('<p class="form-hint" style="margin:4px;">No products yet — add some from the Catalog tab first.</p>');
+    return;
+  }
+  const term = (searchTerm || '').trim().toLowerCase();
+  const filtered = term ? PRODUCTS.filter(p => p.name.toLowerCase().includes(term)) : PRODUCTS;
+  if(!filtered.length){
+    $list.html('<p class="form-hint" style="margin:4px;">No products match that search.</p>');
+    return;
+  }
+  $list.html(filtered.map(p => {
+    const thumb = (p.imgs && p.imgs[0]) || p.img || blankPlaceholder(p.id, p.cat);
+    const isPicked = promoPickedIds.includes(p.id);
+    const catMeta = (typeof CAT_LABELS !== 'undefined') ? CAT_LABELS[p.cat] : null;
+    const catLabel = (catMeta && catMeta.sub) || p.cat || '';
+    return `
+      <label class="promo-pick-row${isPicked ? ' is-picked' : ''}">
+        <input type="checkbox" value="${p.id}" data-promo-pick ${isPicked ? 'checked' : ''}>
+        <img class="promo-pick-row-thumb" src="${resolveImageSrc(thumb)}" alt="">
+        <span class="promo-pick-row-name" title="${p.name}">${p.name}</span>
+        <span class="promo-pick-row-cat">${catLabel}</span>
+        <span class="promo-pick-row-price">${priceLabel(p)}</span>
+      </label>`;
+  }).join(''));
+  updatePromoPickLimit();
+}
+
+/* Disables the remaining unchecked boxes once 3 are picked, rather
+   than only catching it as a submit-time error — immediate feedback
+   for a limit tied directly to how many cards the 3D stage lays out. */
+function updatePromoPickLimit(){
+  const count = promoPickedIds.length;
+  $('#ppPickCount').text(count ? `(${count}/${PROMO_PICK_LIMIT} selected)` : '');
+  $('[data-promo-pick]').each(function(){
+    const isChecked = promoPickedIds.includes(this.value);
+    $(this).closest('.promo-pick-row')
+      .toggleClass('disabled', !isChecked && count >= PROMO_PICK_LIMIT)
+      .toggleClass('is-picked', isChecked);
+  });
+}
+
+$(document).on('change', '[data-promo-pick]', function(){
+  const id = this.value;
+  if(this.checked){
+    if(promoPickedIds.length >= PROMO_PICK_LIMIT){ this.checked = false; return; }
+    promoPickedIds.push(id);
+  } else {
+    promoPickedIds = promoPickedIds.filter(x => x !== id);
+  }
+  renderPromoSelectedChips();
+  updatePromoPickLimit();
+});
+
+$(document).on('click', '[data-promo-unpick]', function(){
+  const id = $(this).attr('data-promo-unpick');
+  promoPickedIds = promoPickedIds.filter(x => x !== id);
+  // Uncheck the box too, in case it's currently visible under the
+  // active search term.
+  $(`[data-promo-pick][value="${id}"]`).prop('checked', false);
+  renderPromoSelectedChips();
+  updatePromoPickLimit();
+});
+
+$(document).on('input', '#ppProductSearch', function(){
+  renderPromoProductList($(this).val());
+});
+
+/* Enter picks the first visible match — lets a fast typist add a
+   product without reaching for the mouse. No-ops past the limit or
+   when nothing matches, same guard as the checkbox handler. */
+$(document).on('keydown', '#ppProductSearch', function(e){
+  if(e.key !== 'Enter') return;
+  e.preventDefault();
+  const $firstRow = $('#ppProductList .promo-pick-row:not(.disabled)').first();
+  const $checkbox = $firstRow.find('[data-promo-pick]');
+  if(!$checkbox.length || $checkbox.prop('checked')) return;
+  $checkbox.prop('checked', true).trigger('change');
+});
+
+async function loadAndRenderAdminPromo(){
+  renderPromoCategorySelect();
+  $('#ppProductSearch').val('');
+  try{
+    const settings = await window.CCSettings.fetchSettings();
+    const cfg = settings.promoPopup || window.CCSettings.DEFAULT_PROMO_POPUP;
+    $('#ppEnabled').prop('checked', cfg.enabled !== false);
+    $('#ppBadgeText').val(cfg.badgeText || 'New');
+    $('#ppEyebrow').val(cfg.eyebrow || 'Just Dropped');
+    $('#ppHeadline').val((cfg.headline || '').replace(/<br\s*\/?>/gi, '\n'));
+    $('#ppCopy').val(cfg.copy || '');
+    $('#ppCtaText').val(cfg.ctaText || 'Take a Look');
+    $('#ppDismissText').val(cfg.dismissText || 'Maybe later');
+    $('#ppCategory').val(cfg.category || '');
+    $('#ppSortMode').val(cfg.sortMode || 'featured');
+    promoPickedIds = (cfg.productIds || []).slice(0, PROMO_PICK_LIMIT);
+    renderPromoSelectedChips();
+    renderPromoProductList('');
+  } catch(err){
+    console.error('Could not load popup settings from Firestore.', err);
+    promoPickedIds = [];
+    renderPromoSelectedChips();
+    renderPromoProductList('');
+  }
+}
+
+$(document).on('submit', '#adminPromoForm', async function(e){
+  e.preventDefault();
+  const productIds = promoPickedIds.slice(0, PROMO_PICK_LIMIT);
+  const promoPopup = {
+    enabled: $('#ppEnabled').prop('checked'),
+    badgeText: $('#ppBadgeText').val().trim() || 'New',
+    eyebrow: $('#ppEyebrow').val().trim(),
+    headline: $('#ppHeadline').val().trim().replace(/\n/g, '<br>'),
+    copy: $('#ppCopy').val().trim(),
+    ctaText: $('#ppCtaText').val().trim() || 'Take a Look',
+    dismissText: $('#ppDismissText').val().trim() || 'Maybe later',
+    category: $('#ppCategory').val(),
+    sortMode: $('#ppSortMode').val(),
+    productIds
+  };
+
+  const $btn = $('#adminPromoSubmitBtn');
+  const $status = $('#adminPromoStatus');
+  $btn.prop('disabled', true).text('Saving...');
+  $status.text('');
+  try{
+    await window.CCSettings.updatePromoPopup(promoPopup);
+    // Update the in-memory config script.js reads when it decides
+    // whether/what to show, so a freshly-saved popup takes effect on
+    // this browser's very next fresh session without a redeploy.
+    PROMO_POPUP_CONFIG = { ...PROMO_POPUP_DEFAULTS, ...promoPopup };
+    $status.text('Saved — visitors will see this the next time the popup shows.');
+  } catch(err){
+    console.error(err);
+    $status.text('Something went wrong while saving. Check the console for details.');
+  } finally {
+    $btn.prop('disabled', false).text('Save Popup Settings');
+  }
+});
+
+/* Reads the form exactly as Save would, but skips Firestore entirely
+   and renders straight into the isolated #promoPreviewOverlay — so
+   the admin can check copy/layout/product picks before committing,
+   and so mid-edit previewing never marks the real popup "seen" for
+   this browser or saves anything half-finished. */
+function buildPromoPreviewConfig(){
+  return {
+    badgeText: $('#ppBadgeText').val().trim() || 'New',
+    eyebrow: $('#ppEyebrow').val().trim(),
+    headline: $('#ppHeadline').val().trim().replace(/\n/g, '<br>'),
+    copy: $('#ppCopy').val().trim(),
+    ctaText: $('#ppCtaText').val().trim() || 'Take a Look',
+    dismissText: $('#ppDismissText').val().trim() || 'Maybe later',
+    category: $('#ppCategory').val(),
+    sortMode: $('#ppSortMode').val(),
+    productIds: promoPickedIds.slice(0, PROMO_PICK_LIMIT)
+  };
+}
+
+function showPromoPopupPreview(){
+  const cfg = buildPromoPreviewConfig();
+  const products = resolvePromoProducts(cfg);
+  applyPromoPopupContent(cfg, products, {
+    badge: '#promoPreviewBadgeText', eyebrow: '#promoPreviewEyebrow', title: '#promoPreviewModalTitle',
+    copy: '#promoPreviewModalCopy', cta: '#promoPreviewModalCta', dismiss: '#promoPreviewModalDismiss',
+    stage: '#promoPreviewStage', cards: '#promoPreviewStageCards'
+  });
+  $('#promoPreviewOverlay').addClass('open');
+}
+
+function closePromoPopupPreview(){
+  $('#promoPreviewOverlay').removeClass('open');
+}
+
+$(document).on('click', '#adminPromoPreviewBtn', function(e){
+  e.preventDefault(); // lives inside the <form> — don't let it submit/save
+  showPromoPopupPreview();
+});
+$(document).on('click', '#promoPreviewModalClose, #promoPreviewModalDismiss, #promoPreviewModalCta', closePromoPopupPreview);
+$(document).on('click', '#promoPreviewOverlay', function(e){
+  if(e.target === this) closePromoPopupPreview();
+});
+$(document).on('keydown', function(e){
+  if(e.key === 'Escape' && $('#promoPreviewOverlay').hasClass('open')) closePromoPopupPreview();
+});
+
 /* ================= COMBOS ================= */
 let adminEditingComboId = null; // set while editing an existing combo, null when adding a new one
 const PASTRY_CATEGORY = 'Pastries';
@@ -1136,7 +1766,7 @@ async function loadAndRenderAdminCombos(){
     return;
   }
   buildComboProducts();
-  renderFeaturedCombos();
+  if(typeof renderFeaturedCombos === 'function') renderFeaturedCombos();
   renderAdminCombosTable();
 }
 
@@ -1153,7 +1783,7 @@ function renderAdminCombosTable(){
       <tr data-combo-row="${c.id}">
         <td class="admin-td-product">
           <div class="admin-td-product-inner">
-            <img src="${c.img || blankPlaceholder(c.id, 'Combo')}" alt="${c.name}">
+            <img src="${resolveImageSrc(c.img || blankPlaceholder(c.id, 'Combo'))}" alt="${c.name}">
             <span>${c.name}</span>
           </div>
         </td>
@@ -1209,7 +1839,7 @@ $(document).on('click', '[data-admin-combo-edit]', function(){
   $('#acActive').val(String(!!c.active));
   $('#acDesc').val(c.desc || '');
   $('#acImg').val(c.img || '');
-  setImagePreview('acImgPreviewImg', 'acImgPreviewPlaceholder', c.img || '');
+  setImagePreview('acImgPreviewImg', 'acImgPreviewPlaceholder', resolveImageSrc(c.img) || '');
   $('#acImgUploadStatus').text('').removeClass('image-upload-error');
   $('#adminComboFormHeading').text(`Edit "${c.name}"`);
   $('#adminComboFormSubmitBtn').text('Update Combo');
@@ -1230,7 +1860,7 @@ $(document).on('click', '[data-admin-combo-toggle]', async function(){
     await window.CCCombos.updateCombo(id, { active: !c.active });
     c.active = !c.active;
     buildComboProducts();
-    renderFeaturedCombos();
+    if(typeof renderFeaturedCombos === 'function') renderFeaturedCombos();
     renderAdminCombosTable();
     showToast(`"${c.name}" is now ${c.active ? 'active' : 'inactive'}.`, 'success');
   } catch(err){
@@ -1244,12 +1874,19 @@ $(document).on('click', '[data-admin-combo-toggle]', async function(){
 $(document).on('click', '[data-admin-combo-delete]', async function(){
   const id = $(this).data('admin-combo-delete');
   const c = COMBOS.find(x => x.id === id);
-  if(!c || !confirm(`Delete "${c.name}"? This can't be undone.`)) return;
+  if(!c) return;
+  const ok = await showConfirm({
+    title: `Delete "${c.name}"?`,
+    message: "This can't be undone.",
+    confirmText: 'Delete',
+    danger: true
+  });
+  if(!ok) return;
   try{
     await window.CCCombos.deleteCombo(id);
     COMBOS = COMBOS.filter(x => x.id !== id);
     buildComboProducts();
-    renderFeaturedCombos();
+    if(typeof renderFeaturedCombos === 'function') renderFeaturedCombos();
     renderAdminCombosTable();
     showToast(`Deleted "${c.name}".`, 'success');
     if(adminEditingComboId === id) resetAdminComboForm();
@@ -1286,7 +1923,7 @@ $(document).on('submit', '#adminAddComboForm', async function(e){
       const idx = COMBOS.findIndex(x => x.id === adminEditingComboId);
       if(idx > -1) COMBOS[idx] = { id: adminEditingComboId, ...fields };
       buildComboProducts();
-      renderFeaturedCombos();
+      if(typeof renderFeaturedCombos === 'function') renderFeaturedCombos();
       renderAdminCombosTable();
       showToast(`Updated "${fields.name}".`, 'success');
       resetAdminComboForm();
@@ -1304,7 +1941,7 @@ $(document).on('submit', '#adminAddComboForm', async function(e){
     const newId = await window.CCCombos.addCombo(fields);
     COMBOS.push({ id: newId, ...fields });
     buildComboProducts();
-    renderFeaturedCombos();
+    if(typeof renderFeaturedCombos === 'function') renderFeaturedCombos();
     renderAdminCombosTable();
     showToast(`Added "${fields.name}".`, 'success');
     resetAdminComboForm();
