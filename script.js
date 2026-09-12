@@ -1,350 +1,3 @@
-function blankPlaceholder(id, cat){
-  const MERCH = ['Accessories','Wearables','Shirts','Caps','Shorts','Socks','ToteBags','Bracelets','Keychains'];
-  const accent = cat === 'Tea' ? '#7C9885'
-    : cat === 'Cakes' ? '#B98A9A'
-    : MERCH.includes(cat) ? '#7C93A6'
-    : '#C08552';
-  const label = (cat || 'Crafts & Crumbs').toUpperCase();
-  const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 400">
-    <defs>
-      <linearGradient id="g${id}" x1="0" y1="0" x2="1" y2="1">
-        <stop offset="0" stop-color="#F7F5F1"/>
-        <stop offset="1" stop-color="#EFEAE1"/>
-      </linearGradient>
-    </defs>
-    <rect width="400" height="400" fill="url(#g${id})"/>
-    <rect x="16" y="16" width="368" height="368" fill="none" stroke="${accent}" stroke-width="1.4" stroke-dasharray="7 7" opacity="0.5"/>
-    <g transform="translate(160,148)" stroke="${accent}" stroke-width="2.4" fill="none" stroke-linecap="round" stroke-linejoin="round">
-      <rect x="0" y="0" width="80" height="60" rx="6"/>
-      <circle cx="18" cy="16" r="7"/>
-      <path d="M0 50l22-20 18 15 16-13 24 20"/>
-    </g>
-    <text x="200" y="252" text-anchor="middle" font-family="Poppins, sans-serif" font-size="11" letter-spacing="3" fill="${accent}" font-weight="600">${label}</text>
-    <text x="200" y="272" text-anchor="middle" font-family="Poppins, sans-serif" font-size="9" letter-spacing="1.5" fill="${accent}" font-weight="500" opacity="0.75">PHOTO COMING SOON</text>
-  </svg>`;
-  return 'data:image/svg+xml;utf8,' + encodeURIComponent(svg);
-}
-
-/* ================= DATA =================
-   SEED_PRODUCTS is only used to seed Firestore once (via the
-   Admin page's "Seed Starter Catalog" button). The live catalog
-   that the site actually renders from is the mutable PRODUCTS
-   array below, populated from Firestore at startup. */
-let PRODUCTS = [];
-// Flat delivery fee, admin-configurable (Admin > Settings). Starts at the
-// same value that used to be hardcoded here, and is overwritten by the
-// cached/live value from settings-service.js during init below.
-let DELIVERY_FEE = 60;
-// Launch-popup config, admin-configurable (Admin > Settings > Launch
-// Popup). Same "hardcoded fallback + overwritten by Firestore during
-// init" pattern as DELIVERY_FEE above. Kept in sync with the default
-// shape in settings-service.js's DEFAULT_PROMO_POPUP, just duplicated
-// here rather than imported since script.js/admin.js are plain
-// scripts (see DELIVERY_FEE for the same convention).
-const PROMO_POPUP_DEFAULTS = {
-  enabled: true,
-  badgeText: 'New',
-  eyebrow: 'Just Dropped',
-  headline: 'Fresh Brews,<br>Fresh Merch.',
-  copy: 'New seasonal drinks and a handcrafted merch line just landed at Crafts & Crumbs — brewed and stitched with the same care as always.',
-  ctaText: 'Take a Look',
-  dismissText: 'Maybe later',
-  category: '',
-  sortMode: 'featured',
-  productIds: []
-};
-let PROMO_POPUP_CONFIG = { ...PROMO_POPUP_DEFAULTS };
-const SEED_PRODUCTS = [
-  /* ---- Pastries: All-day Bakery ---- */
-  { id:'p13', name:'Classic Buttered Croissant', cat:'Pastries', price:120,
-    desc:'72-hour laminated dough, baked golden and flaky every morning.',
-    img:'croissant.jpg',
-    imgs:['croissant.jpg'],
-    ingredients:'Flour, cultured butter, yeast, sea salt.',
-    allergens:'Gluten (wheat), Milk. May contain traces of egg.' },
-  { id:'p14', name:'Sausage and Bacon Flatbread', cat:'Pastries', price:165,
-    desc:'Oven-baked flatbread topped with savory sausage, bacon, and melted cheese.',
-    img:'flatbread.png',
-    imgs:['flatbread.png'],
-    ingredients:'Flatbread dough, sausage, bacon, mozzarella, house sauce.',
-    allergens:'Gluten (wheat), Milk. May contain traces of soy.' },
-  { id:'p15', name:'Dark Chocolate Macadamia Cookie', cat:'Pastries', price:110,
-    desc:'Chewy cookie loaded with dark chocolate chunks and roasted macadamia nuts.',
-    img:'cookie.jpg',
-    imgs:['cookie.jpg'],
-    ingredients:'Flour, brown butter, dark chocolate chunks, roasted macadamia nuts.',
-    allergens:'Gluten (wheat), Milk, Tree Nuts (macadamia). May contain traces of soy and other nuts.' },
-  { id:'p16', name:'Apple Cinnamon Turnover', cat:'Pastries', price:125,
-    desc:'Flaky puff pastry folded around warm spiced apple filling, finished with icing.',
-    img:'turnover.jpg',
-    imgs:['turnover.jpg'],
-    ingredients:'Puff pastry, cinnamon spiced apples, vanilla icing drizzle.',
-    allergens:'Gluten (wheat), Milk, Egg.' },
-  { id:'p17', name:'Classic Cinnamon Roll', cat:'Pastries', price:130,
-    desc:'Soft swirled roll layered with cinnamon sugar, topped with sweet glaze.',
-    img:'cinnamonroll.jpg',
-    imgs:['cinnamonroll.jpg'],
-    ingredients:'Flour, butter, brown sugar, cinnamon, sweet glaze.',
-    allergens:'Gluten (wheat), Milk, Egg.' },
-
-  /* ---- Sandwiches & Pasta ---- */
-  { id:'p18', name:'Beef Shawarma', cat:'Sandwiches', price:0,
-    desc:'Warm pita rolled around marinated shaved beef, garlic sauce, and pickled vegetables.',
-    img:'beefshawarma.jpeg', imgs:['beefshawarma.jpeg'],
-    ingredients:'Pita bread, marinated beef, garlic sauce, pickles, lettuce, tomato.',
-    allergens:'Gluten (wheat). May contain traces of milk and sesame.' },
-  { id:'p19', name:'Chicken Kofta', cat:'Sandwiches', price:0,
-    desc:'Spiced grilled chicken kofta tucked into flatbread with garlic sauce and fresh vegetables.',
-    img:'chickenkofta.jpeg', imgs:['chickenkofta.jpeg'],
-    ingredients:'Ground chicken, Middle Eastern spice blend, flatbread, garlic sauce, vegetables.',
-    allergens:'Gluten (wheat). May contain traces of milk.' },
-  { id:'p20', name:'Grilled Cheese on Sourdough Bread', cat:'Sandwiches', price:0,
-    desc:'Buttery sourdough grilled until crisp with a melty blend of cheeses.',
-    img:'grilledcheese.jpeg', imgs:['grilledcheese.jpeg'],
-    ingredients:'Sourdough bread, butter, blended cheeses.',
-    allergens:'Gluten (wheat), Milk.' },
-  { id:'p21', name:'Classic Lasagna', cat:'Sandwiches', price:0,
-    desc:'Layers of pasta, slow-simmered meat sauce, and melted cheese baked until bubbling.',
-    img:'lasagna.jpg', imgs:['lasagna.jpg'],
-    ingredients:'Lasagna pasta sheets, meat sauce, bechamel, mozzarella, parmesan.',
-    allergens:'Gluten (wheat), Milk, Egg.' },
-  { id:'p22', name:'Penne Pesto with Mushroom', cat:'Sandwiches', price:0,
-    desc:'Penne pasta tossed in basil pesto with sauteed mushrooms and parmesan.',
-    img:'pennepesto.jpg', imgs:['pennepesto.jpg'],
-    ingredients:'Penne pasta, basil pesto, mushrooms, parmesan, olive oil.',
-    allergens:'Gluten (wheat), Milk, Tree Nuts (pine nuts in pesto).' },
-
-  /* ---- Cakes ---- */
-  { id:'p23', name:'Triple Chocolate Cake', cat:'Cakes', price:0,
-    desc:'Rich chocolate sponge layered with chocolate ganache and chocolate shavings.',
-    img:'triplechocolate.jpg', imgs:['triplechocolate.jpg'],
-    ingredients:'Flour, cocoa, dark chocolate, chocolate ganache, butter, eggs.',
-    allergens:'Gluten (wheat), Milk, Egg.' },
-  { id:'p24', name:'Blueberry Cheesecake', cat:'Cakes', price:0,
-    desc:'Creamy baked cheesecake topped with a sweet blueberry compote.',
-    img:'blueberry.jpg', imgs:['blueberry.jpg'],
-    ingredients:'Cream cheese, graham crust, eggs, fresh blueberries, sugar.',
-    allergens:'Gluten (wheat), Milk, Egg.' },
-  { id:'p25', name:'New York Cheesecake', cat:'Cakes', price:0,
-    desc:'Dense and creamy classic cheesecake with a buttery graham crust.',
-    img:'newyork.jpg', imgs:['newyork.jpg'],
-    ingredients:'Cream cheese, graham crust, eggs, vanilla, sugar.',
-    allergens:'Gluten (wheat), Milk, Egg.' },
-  { id:'p26', name:'Tiramisu Cake', cat:'Cakes', price:0,
-    desc:'Espresso soaked sponge layered with mascarpone cream and cocoa dust.',
-    img:'tiramisu.png', imgs:['tiramisu.png'],
-    ingredients:'Sponge cake, espresso, mascarpone cream, cocoa powder, eggs.',
-    allergens:'Gluten (wheat), Milk, Egg. Contains caffeine.' },
-  { id:'p27', name:'Ubelicious Cake', cat:'Cakes', price:0,
-    desc:'Soft ube sponge cake filled and topped with sweet ube frosting.',
-    img:'ubelicious.png', imgs:['ubelicious.png'],
-    ingredients:'Ube (purple yam), flour, butter, eggs, ube frosting.',
-    allergens:'Gluten (wheat), Milk, Egg.' },
-
-  /* ---- Drinks: Caffeine ---- */
-  { id:'p28', name:'Spanish Latte', cat:'Coffee', price:139,
-    desc:'Espresso balanced with steamed milk and sweetened condensed milk.',
-    img:'spanish latte.png', imgs:['spanish latte.png'],
-    ingredients:'Espresso, steamed milk, condensed milk.',
-    allergens:'Milk.',
-    sizes:[ { size:'12oz', price:139 }, { size:'16oz', price:159 }, { size:'20oz', price:179 } ] },
-  { id:'p29', name:'Iced Americano', cat:'Coffee', price:109,
-    desc:'Bold espresso shots poured over ice and cold water for a clean, crisp finish.',
-    img:'icedamericano.png', imgs:['icedamericano.png'],
-    ingredients:'Espresso, cold water, ice.',
-    allergens:'None known.',
-    sizes:[ { size:'12oz', price:109 }, { size:'16oz', price:129 }, { size:'20oz', price:149 } ] },
-  { id:'p30', name:'White Mocha', cat:'Coffee', price:149,
-    desc:'Espresso blended with steamed milk and sweet white chocolate sauce.',
-    img:'whitemocha.png', imgs:['whitemocha.png'],
-    ingredients:'Espresso, steamed milk, white chocolate sauce.',
-    allergens:'Milk.',
-    sizes:[ { size:'12oz', price:149 }, { size:'16oz', price:169 }, { size:'20oz', price:189 } ] },
-  { id:'p31', name:'Vanilla Sweet Cream', cat:'Coffee', price:139,
-    desc:'Espresso topped with a smooth vanilla sweet cream foam.',
-    img:'vanillacream.png', imgs:['vanillacream.png'],
-    ingredients:'Espresso, milk, vanilla syrup, sweet cream foam.',
-    allergens:'Milk.',
-    sizes:[ { size:'12oz', price:139 }, { size:'16oz', price:159 }, { size:'20oz', price:179 } ] },
-  { id:'p32', name:'Dark Caramel Macchiato', cat:'Coffee', price:149,
-    desc:'Espresso layered with steamed milk and finished with dark caramel drizzle.',
-    img:'darkcaramelmach.png', imgs:['darkcaramelmach.png'],
-    ingredients:'Espresso, steamed milk, vanilla syrup, dark caramel sauce.',
-    allergens:'Milk.',
-    sizes:[ { size:'12oz', price:149 }, { size:'16oz', price:169 }, { size:'20oz', price:189 } ] },
-
-  /* ---- Drinks: Non-Caffeine ---- */
-  { id:'p33', name:'Iced Matcha Latte', cat:'Non-Coffee', price:149,
-    desc:'Ceremonial matcha whisked with cold milk and poured over ice.',
-    img:'IcedGreenTeaLatte.jpg', imgs:['IcedGreenTeaLatte.jpg'],
-    ingredients:'Matcha powder, milk, light syrup, ice.',
-    allergens:'Milk.',
-    sizes:[ { size:'12oz', price:149 }, { size:'16oz', price:169 }, { size:'20oz', price:189 } ] },
-  { id:'p34', name:'Hot Chocolate', cat:'Non-Coffee', price:119,
-    desc:'Rich cocoa steamed with milk for a warm, comforting classic.',
-    img:'hot-chocolate.jpeg', imgs:['hot-chocolate.jpeg'],
-    ingredients:'Cocoa, milk, sugar.',
-    allergens:'Milk.',
-    sizes:[ { size:'12oz', price:119 }, { size:'16oz', price:139 }, { size:'20oz', price:159 } ] },
-  { id:'p35', name:'Chai Tea Cream', cat:'Non-Coffee', price:129,
-    desc:'Spiced chai tea blended with steamed milk and a light layer of cream.',
-    img:'chaiteacream.png', imgs:['chaiteacream.png'],
-    ingredients:'Chai tea concentrate, milk, warm spices, cream.',
-    allergens:'Milk.',
-    sizes:[ { size:'12oz', price:129 }, { size:'16oz', price:149 }, { size:'20oz', price:169 } ] },
-  { id:'p36', name:'Soy Milk', cat:'Non-Coffee', price:99,
-    desc:'A smooth, plant-based milk option served warm or over ice.',
-    img:'soy milk.jpg', imgs:['soy milk.jpg'],
-    ingredients:'Soy milk.',
-    allergens:'Soy.',
-    sizes:[ { size:'12oz', price:99 }, { size:'16oz', price:119 }, { size:'20oz', price:139 } ] },
-  { id:'p37', name:'Oat Milk', cat:'Non-Coffee', price:109,
-    desc:'Creamy, naturally sweet oat milk, our go-to dairy-free option.',
-    img:'oatmilk.png', imgs:['oatmilk.png'],
-    ingredients:'Oat milk.',
-    allergens:'Oats. May contain traces of gluten.',
-    sizes:[ { size:'12oz', price:109 }, { size:'16oz', price:129 }, { size:'20oz', price:149 } ] },
-
-  /* ---- Drinks: Tea ---- */
-  { id:'p38', name:'Iced Hibiscus Tea with Honey Pearls', cat:'Tea', price:119,
-    desc:'Tart hibiscus tea served cold with chewy honey glazed pearls.',
-    img:'hibiscustea.png', imgs:['hibiscustea.png'],
-    ingredients:'Hibiscus tea, honey pearls, ice.',
-    allergens:'None known.',
-    sizes:[ { size:'12oz', price:119 }, { size:'16oz', price:139 }, { size:'20oz', price:159 } ] },
-  { id:'p39', name:'Classic Organic Earl Grey', cat:'Tea', price:99,
-    desc:'Organic black tea leaves infused with fragrant bergamot.',
-    img:'earlgrey.png', imgs:['earlgrey.png'],
-    ingredients:'Organic Earl Grey tea leaves.',
-    allergens:'None known.',
-    sizes:[ { size:'12oz', price:99 }, { size:'16oz', price:119 }, { size:'20oz', price:139 } ] },
-  { id:'p40', name:'Iced Matcha with a Shot of Espresso', cat:'Tea', price:149,
-    desc:'Iced matcha latte with a bold shot of espresso stirred through.',
-    img:'matchaespresso.png', imgs:['matchaespresso.png'],
-    ingredients:'Matcha powder, milk, espresso, ice.',
-    allergens:'Milk. Contains caffeine.',
-    sizes:[ { size:'12oz', price:149 }, { size:'16oz', price:169 }, { size:'20oz', price:189 } ] },
-  { id:'p41', name:'Black Tea', cat:'Tea', price:89,
-    desc:'A straightforward, full-bodied classic black tea, hot or iced.',
-    img:'blacktea.png', imgs:['blacktea.png'],
-    ingredients:'Black tea leaves.',
-    allergens:'None known.',
-    sizes:[ { size:'12oz', price:89 }, { size:'16oz', price:109 }, { size:'20oz', price:129 } ] },
-  { id:'p42', name:'Grapefruit Honey Iced Tea', cat:'Tea', price:109,
-    desc:'Black tea brightened with grapefruit and a touch of honey, served over ice.',
-    img:'grapefruittea.png', imgs:['grapefruittea.png'],
-    ingredients:'Black tea, grapefruit, honey, ice.',
-    allergens:'None known.',
-    sizes:[ { size:'12oz', price:109 }, { size:'16oz', price:129 }, { size:'20oz', price:149 } ] },
-
-  /* ---- Merchandise: Wearables ---- */
-  { id:'w-shirt-1', name:'Classic Logo Shirt', cat:'Shirts', price:449,
-    desc:'Soft cotton shirt with the Crafts and Crumbs logo, made for everyday wear.',
-    img:blankPlaceholder('w-shirt-1','Shirts'), imgs:[blankPlaceholder('w-shirt-1','Shirts')],
-    sizes:['XS','S','M','L','XL','XXL'],
-    fit:'Regular Fit', },
-  { id:'w-shirt-2', name:'Cropped Tee', cat:'Shirts', price:399,
-    desc:'Relaxed cropped tee with a small embroidered Crafts and Crumbs mark.',
-    img:blankPlaceholder('w-shirt-2','Shirts'), imgs:[blankPlaceholder('w-shirt-2','Shirts')],
-    sizes:['XS','S','M','L'],
-    fit:'Cropped Fit', },
-  { id:'w-shirt-3', name:'Oversized Shirt', cat:'Shirts', price:549,
-    desc:'Boxy, oversized fit shirt in heavyweight cotton with back print.',
-    img:blankPlaceholder('w-shirt-3','Shirts'), imgs:[blankPlaceholder('w-shirt-3','Shirts')],
-    sizes:['S','M','L','XL','XXL'],
-    fit:'Oversized Fit', },
-
-  { id:'w-cap-1', name:'Classic Cap', cat:'Caps', price:349,
-    desc:'Adjustable cap embroidered with the Crafts and Crumbs mark.',
-    img:blankPlaceholder('w-cap-1','Caps'), imgs:[blankPlaceholder('w-cap-1','Caps')],
-    sizes:['One Size'],
-    fit:'Adjustable', },
-  { id:'w-cap-2', name:'Trucker Cap', cat:'Caps', price:379,
-    desc:'Mesh-back trucker cap with a snapback closure and woven patch.',
-    img:blankPlaceholder('w-cap-2','Caps'), imgs:[blankPlaceholder('w-cap-2','Caps')],
-    sizes:['One Size'],
-    fit:'Adjustable', },
-  { id:'w-cap-3', name:'Bucket Hat', cat:'Caps', price:399,
-    desc:'Cotton twill bucket hat with a subtle embroidered logo.',
-    img:blankPlaceholder('w-cap-3','Caps'), imgs:[blankPlaceholder('w-cap-3','Caps')],
-    sizes:['One Size'],
-    fit:'Adjustable', },
-
-  { id:'w-short-1', name:'Classic Shorts', cat:'Shorts', price:399,
-    desc:'Comfortable everyday shorts featuring the Crafts and Crumbs branding.',
-    img:blankPlaceholder('w-short-1','Shorts'), imgs:[blankPlaceholder('w-short-1','Shorts')],
-    sizes:['XS','S','M','L','XL','XXL'],
-    fit:'Regular Fit', },
-  { id:'w-short-2', name:'Jogger Shorts', cat:'Shorts', price:499,
-    desc:'Fleece jogger shorts with an elastic waistband and side pockets.',
-    img:blankPlaceholder('w-short-2','Shorts'), imgs:[blankPlaceholder('w-short-2','Shorts')],
-    sizes:['XS','S','M','L','XL'],
-    fit:'Relaxed Fit', },
-  { id:'w-short-3', name:'Cargo Shorts', cat:'Shorts', price:549,
-    desc:'Utility cargo shorts with side pockets and an embroidered tag.',
-    img:blankPlaceholder('w-short-3','Shorts'), imgs:[blankPlaceholder('w-short-3','Shorts')],
-    sizes:['S','M','L','XL','XXL'],
-    fit:'Relaxed Fit', },
-
-  { id:'w-socks-1', name:'Crew Socks', cat:'Socks', price:159,
-    desc:'Cozy crew socks with a cafe-inspired print.',
-    img:blankPlaceholder('w-socks-1','Socks'), imgs:[blankPlaceholder('w-socks-1','Socks')],
-    sizes:['S','M','L'], },
-  { id:'w-socks-2', name:'Ankle Socks', cat:'Socks', price:149,
-    desc:'Low-cut ankle socks with a woven logo band.',
-    img:blankPlaceholder('w-socks-2','Socks'), imgs:[blankPlaceholder('w-socks-2','Socks')],
-    sizes:['S','M','L'], },
-  { id:'w-socks-3', name:'Knit Socks', cat:'Socks', price:179,
-    desc:'Ribbed knit socks in warm, cafe-inspired tones.',
-    img:blankPlaceholder('w-socks-3','Socks'), imgs:[blankPlaceholder('w-socks-3','Socks')],
-    sizes:['S','M','L'], },
-
-  { id:'w-tote-1', name:'Canvas Tote', cat:'ToteBags', price:0,
-    desc:'Sturdy canvas tote for carrying home your coffee and pastry haul.',
-    img:blankPlaceholder('w-tote-1','ToteBags'), imgs:[blankPlaceholder('w-tote-1','ToteBags')], },
-  { id:'w-tote-2', name:'Mini Tote', cat:'ToteBags', price:0,
-    desc:'Compact mini tote, sized for a quick coffee run.',
-    img:blankPlaceholder('w-tote-2','ToteBags'), imgs:[blankPlaceholder('w-tote-2','ToteBags')], },
-  { id:'w-tote-3', name:'Zip Tote', cat:'ToteBags', price:0,
-    desc:'Zippered tote with an inner pocket, built for everyday errands.',
-    img:blankPlaceholder('w-tote-3','ToteBags'), imgs:[blankPlaceholder('w-tote-3','ToteBags')], },
-
-
-  /* ---- Merchandise: Bracelets ---- */
-  { id:'p48', name:'Beads Bracelet', cat:'Bracelets', price:0,
-    desc:'Handstrung beaded bracelet in cafe inspired colors.',
-    img:'beads.png', imgs:['beads.png'], },
-  { id:'p49', name:'Charm Bracelet', cat:'Bracelets', price:0,
-    desc:'Delicate bracelet finished with a small charm.',
-    img:'charm.png', imgs:['charm.png'], },
-  { id:'p50', name:'Slider Bracelet', cat:'Bracelets', price:0,
-    desc:'Adjustable slider clasp bracelet for a comfortable fit.',
-    img:'slider.png', imgs:['slider.png'], },
-  { id:'p51', name:'Pearl Bracelet', cat:'Bracelets', price:0,
-    desc:'Dainty bracelet strung with freshwater style pearls.',
-    img:'pearl.png', imgs:['pearl.png'], },
-  { id:'p52', name:'Hololith Bracelet', cat:'Bracelets', price:0,
-    desc:'Bracelet featuring holographic beads that catch the light.',
-    img:'hololith.png', imgs:['hololith.png'], },
-
-  /* ---- Merchandise: Keychains ---- */
-  { id:'p53', name:'Mini Ceramic Mug Keychain', cat:'Keychains', price:0,
-    desc:'A tiny hand-glazed ceramic mug charm for your keys or bag.',
-    img:'ceramicmug.png', imgs:['ceramicmug.png'], },
-  { id:'p54', name:'Acrylic Boba Tea Keychain', cat:'Keychains', price:0,
-    desc:'A playful acrylic charm shaped like a boba tea cup.',
-    img:'acrylicboba.png', imgs:['acrylicboba.png'], },
-  { id:'p55', name:'Fuzzy Wire Croissant Keychain', cat:'Keychains', price:0,
-    desc:'A soft, fuzzy wire croissant charm, handmade and huggable.',
-    img:'croissantkeychain.png', imgs:['croissantkeychain.png'], },
-  { id:'p56', name:'Crochet Cake Keychain', cat:'Keychains', price:0,
-    desc:'A tiny crocheted slice of cake, stitched by hand.',
-    img:'crochetcake.png', imgs:['crochetcake.png'], },
-  { id:'p57', name:'Lasagna Resin Keychain', cat:'Keychains', price:0,
-    desc:'A miniature resin lasagna charm, cast to look good enough to eat.',
-    img:'lasagnaresin.png', imgs:['lasagnaresin.png'], },
-];
-
 const SIZE_CHARTS = {
   Shirts: {
     unit: 'cm',
@@ -398,14 +51,8 @@ const CATEGORIES = [
 let cart = []; // {id, qty, size}
 let cartOwnerUid = null; // uid whose cart is currently loaded into `cart` — null while signed out
 
-/* Raw combo records from Firestore (name, desc, img, drinkId, pastryId,
-   discountPercent, active) and the "product-shaped" versions derived
-   from them — see buildComboProducts() further down. Kept as separate
-   arrays from PRODUCTS/PRODUCTS-derived state rather than merged in,
-   so the Menu/Merch grids and the admin Products table never
-   accidentally pick up a combo as if it were a real catalog item. */
-let COMBOS = [];
-let COMBO_PRODUCTS = [];
+/* COMBOS / COMBO_PRODUCTS moved to shared-catalog.js — see
+   buildComboProducts() there. */
 
 function persistCart(){
   if(!cartOwnerUid) return;
@@ -507,28 +154,12 @@ const MERCH_SIDEBAR = [
   ]},
 ];
 
-/* Wearable categories that price flat but track stock per size (see
-   the seed data above, where each has a `sizes: ['XS','S',...]`
-   array). Used by the admin Add/Edit form's stock-per-size UI and by
-   the "Flatten Size Pricing" legacy cleanup tool — it does NOT include
-   Coffee/Non-Coffee/Tea, which intentionally DO price per size
-   (12oz/16oz/20oz) and must never be "flattened" back to one price. */
-const SIZED_CATEGORIES = ['Shirts', 'Caps', 'Shorts', 'Socks'];
-const CAT_LABELS = {
-  'Coffee': { group:'Drinks', sub:'Caffeine' },
-  'Non-Coffee': { group:'Drinks', sub:'Non-Caffeine' },
-  'Tea': { group:'Drinks', sub:'Tea' },
-  'Pastries': { group:'Food', sub:'Pastries' },
-  'Sandwiches': { group:'Food', sub:'Sandwiches & Pasta' },
-  'Cakes': { group:'Food', sub:'Cakes' },
-  'Shirts': { group:'Wearables', sub:'Shirts' },
-  'Caps': { group:'Wearables', sub:'Caps' },
-  'Shorts': { group:'Wearables', sub:'Shorts' },
-  'Socks': { group:'Wearables', sub:'Socks' },
-  'ToteBags': { group:'Wearables', sub:'Tote Bags' },
-  'Bracelets': { group:'Merchandise', sub:'Bracelets' },
-  'Keychains': { group:'Merchandise', sub:'Keychains' },
-};
+/* SIZED_CATEGORIES moved to shared-catalog.js (loaded before this
+   file). Wearable categories that price flat but track stock per
+   size — used by the admin Add/Edit form's stock-per-size UI and the
+   "Flatten Size Pricing" legacy cleanup tool. Does NOT include
+   Coffee/Non-Coffee/Tea, which intentionally DO price per size. */
+/* CAT_LABELS moved to shared-catalog.js. */
 
 /* Flattens a sidebar's groups down to the plain list of category keys
    it contains — used to tell, given a product's `cat`, whether it
@@ -574,7 +205,7 @@ function productMatchesQuery(p, query){
    list (rather than only folded into CAT_LABELS) so the admin
    dashboard can tell "built-in" and "custom" categories apart if it
    ever needs to (e.g. only custom ones are deletable). */
-let CUSTOM_CATEGORIES = [];
+/* CUSTOM_CATEGORIES moved to shared-catalog.js. */
 
 /* Folds one category doc — see categories-service.js for the shape —
    into every piece of config a category needs to participate in:
@@ -585,17 +216,18 @@ let CUSTOM_CATEGORIES = [];
    global scope), and the Menu/Merchandise sidebar it should appear
    on. Safe to call more than once with the same category — it just
    no-ops after the first time (CAT_LABELS[c.id] already set). */
+/* applyCustomCategory()/removeCustomCategoryEffects(): thin storefront
+   wrappers around the shared applyCustomCategoryCore()/
+   removeCustomCategoryEffectsCore() (see shared-catalog.js). The only
+   thing these versions add on top of Core is keeping MENU_SIDEBAR/
+   MERCH_SIDEBAR (customer-nav-only data) in sync — that's why this
+   wrapper stays here instead of moving to the shared file. admin.js
+   calls the Core versions directly, since the standalone admin app has
+   no storefront sidebar to update. */
 function applyCustomCategory(c){
-  if(CAT_LABELS[c.id]) return;
-  CAT_LABELS[c.id] = { group: c.group, sub: c.label };
-
-  if(c.pricingType === 'sized-price'){
-    if(!DRINK_CATEGORIES.includes(c.id)) DRINK_CATEGORIES.push(c.id);
-  } else if(c.pricingType === 'sized-stock'){
-    if(!SIZED_CATEGORIES.includes(c.id)) SIZED_CATEGORIES.push(c.id);
-    DEFAULT_SIZES_BY_CATEGORY[c.id] = (c.sizes && c.sizes.length) ? c.sizes : ['One Size'];
-  }
-  if(c.hasFoodFields && !FOOD_CATEGORIES.includes(c.id)) FOOD_CATEGORIES.push(c.id);
+  const isNew = !CAT_LABELS[c.id];
+  applyCustomCategoryCore(c);
+  if(!isNew) return; // already applied (and sidebar already has it too)
 
   const sidebar = c.page === 'merch' ? MERCH_SIDEBAR : MENU_SIDEBAR;
   let groupEntry = sidebar.find(g => g.group === c.group);
@@ -613,29 +245,17 @@ function applyCustomCategories(categories){
 }
 
 /* Reverses applyCustomCategory — unwinds every place a category id
-   was folded into when it was added, so deleting it actually removes
-   it from dropdowns/sidebars instead of leaving stale references
-   behind. Only ever called on entries from CUSTOM_CATEGORIES; built-in
-   categories never go through this. */
+   was folded into when it was added, including the sidebar entry (the
+   part removeCustomCategoryEffectsCore alone doesn't touch). Only ever
+   called on entries from CUSTOM_CATEGORIES; built-in categories never
+   go through this. */
 function removeCustomCategoryEffects(c){
-  delete CAT_LABELS[c.id];
-  delete DEFAULT_SIZES_BY_CATEGORY[c.id];
-
-  const di = DRINK_CATEGORIES.indexOf(c.id);
-  if(di > -1) DRINK_CATEGORIES.splice(di, 1);
-  const si = SIZED_CATEGORIES.indexOf(c.id);
-  if(si > -1) SIZED_CATEGORIES.splice(si, 1);
-  const fi = FOOD_CATEGORIES.indexOf(c.id);
-  if(fi > -1) FOOD_CATEGORIES.splice(fi, 1);
+  removeCustomCategoryEffectsCore(c);
 
   const sidebar = c.page === 'merch' ? MERCH_SIDEBAR : MENU_SIDEBAR;
   const groupEntry = sidebar.find(g => g.group === c.group);
   if(groupEntry){
     groupEntry.items = groupEntry.items.filter(it => it.cat !== c.id);
-    // Drop the whole group heading once it has nothing left under it —
-    // only happens for a group the admin invented from scratch, since
-    // built-in groups (Drinks/Food/Wearables) always keep their
-    // built-in items regardless.
     if(!groupEntry.items.length){
       const gi = sidebar.indexOf(groupEntry);
       if(gi > -1) sidebar.splice(gi, 1);
@@ -644,7 +264,7 @@ function removeCustomCategoryEffects(c){
 }
 
 /* ================= HELPERS ================= */
-const peso = n => '₱' + n.toLocaleString('en-PH');
+/* peso() moved to shared-catalog.js. */
 const findProduct = id => PRODUCTS.find(p => p.id === id) || COMBO_PRODUCTS.find(p => p.id === id);
 const escapeHtml = str => $('<div>').text(str == null ? '' : str).html();
 
@@ -657,17 +277,7 @@ const escapeHtml = str => $('<div>').text(str == null ? '' : str).html();
      price, stock tracked per size
    `stock: null` means stock isn't tracked for that size at all, which
    the storefront treats as always available (never crossed out). */
-function getSizeOptions(p){
-  if(!p.sizes) return [];
-  return p.sizes.map(s => {
-    if(typeof s === 'string') return { size: s, price: p.price, stock: null };
-    return {
-      size: s.size,
-      price: typeof s.price === 'number' ? s.price : p.price,
-      stock: typeof s.stock === 'number' ? s.stock : null
-    };
-  });
-}
+/* getSizeOptions() moved to shared-catalog.js. */
 
 /* True when a specific size is out of stock — only ever true when
    that size actually has stock tracked (stock isn't null) and it's
@@ -707,21 +317,7 @@ function getPriceForSize(p, sizeLabel){
 
 /* The price to show before a size is picked — the lowest of the
    available sizes, e.g. a latte that runs ₱139–₱179 just shows ₱139. */
-function getDisplayPrice(p){
-  const opts = getSizeOptions(p);
-  if(!opts.length) return p.price;
-  return Math.min(...opts.map(o => o.price));
-}
-
-/* True when at least two sizes are actually priced differently — true
-   for every drink (12oz/16oz/20oz each cost more) and false for
-   wearables (one flat price regardless of size), which is what
-   decides whether each size chip needs its own price shown. */
-function hasVariablePricing(p){
-  const opts = getSizeOptions(p);
-  if(opts.length < 2) return false;
-  return new Set(opts.map(o => o.price)).size > 1;
-}
+/* getDisplayPrice() / hasVariablePricing() moved to shared-catalog.js. */
 
 /* ================= PRODUCT CUSTOMIZATION (OPTION GROUPS) ================= */
 /* A product can optionally carry `optionGroups`, an array admin-defined
@@ -928,50 +524,12 @@ $(document).on('click', '#pdDescToggle', function(){
   $(this).text(nowClamped ? 'See More' : 'See Less');
 });
 
-/* Rating teaser under the gallery just jumps down to the full reviews
-   section — html already has scroll-behavior:smooth set globally, so
-   this doesn't need its own animation logic. */
-$(document).on('click', '#pdGalleryRating', function(){
-  document.getElementById('productReviews')?.scrollIntoView({ behavior:'smooth', block:'start' });
-});
-
-/* Keeps the sticky gallery's top offset pixel-accurate to the actual
-   rendered header height (via a CSS variable) instead of a guessed
-   constant in the stylesheet, and tracks the exact moment the gallery
-   transitions into its pinned state so a "docked" shadow can kick in
-   (see .pd-gallery.is-stuck in style.css) instead of the stick just
-   happening silently. Re-run on every product-detail render, since
-   #pdContent is fully replaced each time and any previous observer's
-   target no longer exists in the DOM. */
-let pdGalleryObserver = null;
-function initPdGallerySticky(){
-  const header = document.querySelector('header.site-nav');
-  const headerH = header ? Math.round(header.getBoundingClientRect().height) : 80;
-  document.documentElement.style.setProperty('--pd-sticky-top', (headerH + 12) + 'px');
-
-  if(pdGalleryObserver){ pdGalleryObserver.disconnect(); pdGalleryObserver = null; }
-  const sentinel = document.getElementById('pdGallerySentinel');
-  const gallery = document.querySelector('#pdContent .pd-gallery');
-  if(!sentinel || !gallery || !('IntersectionObserver' in window)) return;
-  if(!window.matchMedia('(min-width:981px)').matches){
-    gallery.classList.remove('is-stuck');
-    return;
-  }
-  pdGalleryObserver = new IntersectionObserver(
-    ([entry]) => gallery.classList.toggle('is-stuck', !entry.isIntersecting),
-    { rootMargin: `-${headerH + 13}px 0px 0px 0px`, threshold: 0 }
-  );
-  pdGalleryObserver.observe(sentinel);
-}
-$(window).on('resize', () => { if(document.getElementById('pdGallerySentinel')) initPdGallerySticky(); });
-
 function refreshPdPricing(p){
   const unit = computePdUnitPrice(p, pdSize, pdOptions);
   const oos = pdSize ? isSizeOutOfStock(p, pdSize) : isProductOutOfStock(p);
   $('#pdPriceDisplayValue').text(peso(unit));
   if(p.comboMeta && pdSize) $('.combo-price-original-pd').text(comboOriginalPriceForSize(p, pdSize));
-  $('#pdAddBtn').prop('disabled', oos);
-  $('#pdAddBtnLabel').text(oos ? 'Out of Stock' : `Add to Cart · ${peso(unit * pdQty)}`);
+  $('#pdAddBtn').prop('disabled', oos).text(oos ? 'Out of Stock' : `Add to Cart · ${peso(unit * pdQty)}`);
   $('#pdBuyNowBtn').prop('disabled', oos);
   $('#pdOptSummary').text(optionsSummaryText(p, pdOptions));
   const subtitle = pdSubtitleText(p, pdSize, pdOptions);
@@ -991,15 +549,7 @@ function refreshPdPricing(p){
 /* Drinks show a range across their three sizes (e.g. "₱139–₱179");
    everything else (one flat price, sized or not) shows a single
    number. */
-function priceLabel(p){
-  if(hasVariablePricing(p)){
-    const opts = getSizeOptions(p);
-    const min = Math.min(...opts.map(o => o.price));
-    const max = Math.max(...opts.map(o => o.price));
-    return `${peso(min)}–${peso(max)}`;
-  }
-  return peso(getDisplayPrice(p));
-}
+/* priceLabel() moved to shared-catalog.js. */
 
 /* Shared by the Menu and Merchandise grids. "Featured" keeps the
    catalog's natural order but pulls best sellers to the front — it's
@@ -1462,40 +1012,7 @@ $(document).on('click', '[data-checkout-address-new]', function(){
    the combo silently drops off the storefront rather than crashing or
    showing a broken card. Re-run whenever PRODUCTS or COMBOS changes
    (product prices/stock updated, or a combo added/edited/toggled). */
-function buildComboProducts(){
-  COMBO_PRODUCTS = COMBOS.filter(c => c.active).map(c => {
-    const drink = PRODUCTS.find(p => p.id === c.drinkId);
-    const pastry = PRODUCTS.find(p => p.id === c.pastryId);
-    if(!drink || !pastry) return null;
-
-    const drinkOpts = getSizeOptions(drink).length ? getSizeOptions(drink) : [{ size: null, price: drink.price, stock: null }];
-    const discount = Number(c.discountPercent) || 0;
-    const originalSizes = drinkOpts.map(o => ({ size: o.size, price: o.price + pastry.price }));
-    const sizes = originalSizes.map(o => ({ size: o.size, price: Math.round(o.price * (1 - discount / 100)) }));
-
-    const stocks = [drink.stock, pastry.stock].filter(s => typeof s === 'number');
-    const stock = stocks.length ? Math.min(...stocks) : null;
-
-    return {
-      id: 'combo_' + c.id,
-      name: c.name,
-      desc: c.desc || `${drink.name} + ${pastry.name}`,
-      img: c.img,
-      imgs: [c.img],
-      cat: 'Combo',
-      sizes: drinkOpts[0].size ? sizes : undefined,
-      price: Math.min(...sizes.map(s => s.price)),
-      stock,
-      comboMeta: {
-        comboId: c.id,
-        drinkId: drink.id,
-        pastryId: pastry.id,
-        discountPercent: discount,
-        originalSizes
-      }
-    };
-  }).filter(Boolean);
-}
+/* buildComboProducts() moved to shared-catalog.js. */
 
 async function loadCombosFromFirestore(){
   try{
@@ -1534,7 +1051,7 @@ function comboCard(p, i=0){
   return `
     <div class="product-card combo-card reveal${oos ? ' oos' : ''}" style="--i:${i}">
       <div class="product-img" data-open-product="${p.id}">
-        <img src="${p.img}" alt="${p.name}">
+        <img src="${resolveImageSrc(p.img)}" alt="${p.name}">
         <span class="combo-discount-badge">${p.comboMeta.discountPercent}% off</span>
         ${oos ? '<span class="oos-badge">Out of Stock</span>' : ''}
         <button type="button" class="wishlist-btn ${saved ? 'active' : ''}" data-wishlist-toggle="${p.id}" aria-label="${saved ? 'Remove from favorites' : 'Save to favorites'}">
@@ -1715,7 +1232,7 @@ function renderCartDropdown(){
     const unit = typeof c.unitPrice === 'number' ? c.unitPrice : getPriceForSize(p, c.size);
     return `
       <div class="cart-dd-item">
-        <img src="${p.img}" alt="${p.name}">
+        <img src="${resolveImageSrc(p.img)}" alt="${p.name}">
         <div>
           <div class="cart-dd-name">${p.name}${c.size ? ` <span class="cart-dd-size">(${c.size})</span>` : ''}</div>
           ${c.optionsSummary ? `<div class="cart-dd-item-opts">${c.optionsSummary}</div>` : ''}
@@ -1819,15 +1336,10 @@ function navigate(pageName){
     renderMerchPage();
   }
 
-  if(pageName === 'admin' && window.currentRole !== 'admin'){
-    showToast('Admin access only. Please log in as an admin.', 'warning');
-    $('.page').removeClass('active');
-    $('.page[data-page="home"]').addClass('active');
-    return;
-  }
-  if(pageName === 'admin' && typeof renderAdminDashboard === 'function'){
-    renderAdminDashboard();
-  }
+  /* The 'admin' page/route no longer exists on the customer site —
+     the admin dashboard is now a standalone app at /admin (see
+     admin/index.html) with its own login, so there's nothing left
+     here to gate. */
   if(pageName === 'checkout' && !window.currentUser){
     showToast('Please log in to check out.', 'warning');
     $('.page').removeClass('active');
@@ -1999,7 +1511,7 @@ function renderCategories(){
   const isMerch = c => ['Wearables','Bracelets','Keychains'].includes(c.key);
   const html = CATEGORIES.map((c,i) => `
     <div class="cat-card reveal" style="--i:${i}" ${isMerch(c) ? `data-nav="merchandise"` : `data-menu-filter="${c.key}"`}>
-      <div class="cat-img"><img src="${c.img}" alt="${c.title}"></div>
+      <div class="cat-img"><img src="${resolveImageSrc(c.img)}" alt="${c.title}"></div>
       <div class="cat-body">
         <span class="emoji">${c.emoji}</span>
         <h3>${c.title}</h3>
@@ -2026,7 +1538,7 @@ function productCard(p, i=0){
   return `
     <div class="product-card reveal${oos ? ' oos' : ''}" style="--i:${i}">
       <div class="product-img" data-open-product="${p.id}">
-        <img src="${p.img}" alt="${p.name}">
+        <img src="${resolveImageSrc(p.img)}" alt="${p.name}">
         ${oos ? '<span class="oos-badge">Out of Stock</span>' : ''}
         <button type="button" class="wishlist-btn ${saved ? 'active' : ''}" data-wishlist-toggle="${p.id}" aria-label="${saved ? 'Remove from favorites' : 'Save to favorites'}">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="${saved ? 'currentColor' : 'none'}"><path d="M12 21s-7.5-4.6-10-9.3C.6 8.1 2.4 4.5 6 4c2-.3 3.7.7 6 3 2.3-2.3 4-3.3 6-3 3.6.5 5.4 4.1 4 7.7C19.5 16.4 12 21 12 21z" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/></svg>
@@ -2057,19 +1569,17 @@ function placeholderImg(p){
 
 function bestSellerCard(p, i){
   const oos = isProductOutOfStock(p);
-  const isTop = i === 0;
   return `
     <div class="product-card best-card${oos ? ' oos' : ''}" style="--i:${i}">
       <div class="product-img" data-open-product="${p.id}">
-        <span class="bestseller-tag${isTop ? ' tag-top' : ''}">${isTop ? 'Bestseller' : String(i+1).padStart(2,'0')}</span>
-        <img src="${p.img}" alt="${p.name}">
+        <span class="bestseller-tag">${String(i+1).padStart(2,'0')}</span>
+        <img src="${resolveImageSrc(p.img)}" alt="${p.name}">
         ${oos ? '<span class="oos-badge">Out of Stock</span>' : ''}
         <div class="best-card-shade"></div>
       </div>
       <div class="product-info">
         <span class="eyebrow best-eyebrow">${p.cat}</span>
         <div class="product-name" data-open-product="${p.id}">${p.name}</div>
-        <div class="best-card-rating" data-rating-for="${p.id}"></div>
         <div class="product-desc">${p.desc}</div>
         <div class="product-footer">
           <span class="price">${priceLabel(p)}</span>
@@ -2085,37 +1595,7 @@ function bestSellerCard(p, i){
 function renderBestSellers(){
   const best = BEST_SELLER_IDS.map(findProduct).filter(Boolean);
   initBestSellerCarousel(best);
-  loadBestSellerRatings(best);
 }
-
-/* Fills in each card's live star-rating strip once real review data is
-   available. Runs after the initial render (and after review-service.js
-   has had a chance to attach window.CCReviews) so the carousel isn't
-   blocked on it — cards simply pick up their rating a moment later,
-   in both duplicated halves of the loop, once it resolves. */
-function loadBestSellerRatings(items, attempt){
-  attempt = attempt || 0;
-  if(!window.CCReviews){
-    if(attempt < 10) setTimeout(() => loadBestSellerRatings(items, attempt + 1), 300);
-    return;
-  }
-  const uniqueIds = [...new Set(items.map(p => p.id))];
-  uniqueIds.forEach(async id => {
-    try{
-      const reviews = await window.CCReviews.fetchReviewsForProduct(id);
-      if(!reviews.length) return;
-      const avg = reviews.reduce((s,r) => s + r.rating, 0) / reviews.length;
-      const html = `${starRatingHTML(avg, 'stars-sm')}<span>${reviews.length} review${reviews.length === 1 ? '' : 's'}</span>`;
-      document.querySelectorAll(`[data-rating-for="${id}"]`).forEach(el => {
-        el.innerHTML = html;
-        el.classList.add('show');
-      });
-    } catch(err){
-      console.error(err);
-    }
-  });
-}
-
 
 /* ================= POPULAR THIS WEEK — auto-scrolling marquee ================= */
 function debounce(fn, wait){
@@ -2164,7 +1644,7 @@ function initBestSellerCarousel(items){
   measure();
   window.addEventListener('resize', debounce(measure, 200));
 
-  const SPEED = 40; // px/sec, moving left — a clearly-visible, unhurried drift
+  const SPEED = 26; // px/sec, moving left — an unhurried, boutique-window drift
   // Respect the OS-level "reduce motion" setting: the passive drift is
   // pure decoration, so people who've asked for less motion get a
   // perfectly still carousel they can still browse with the arrows,
@@ -2517,12 +1997,7 @@ $(document).on('change', '#merchSort', function(){
    product with `ingredients` — food AND drinks), or both together for
    a sized drink. Other merch (totes, bracelets, keychains) gets
    neither. */
-/* Selection controls only — size chips and customization option chips.
-   Split out from the old renderPdSecondary so the actions bar (Buy
-   Now/Add to Cart) can sit right after these instead of after the
-   reference material below, which used to bury it under nutrition
-   tables and "about" blurbs on drinks with a lot of admin content. */
-function renderPdSelection(p, options){
+function renderPdSecondary(p, size, options){
   const chart = SIZE_CHARTS[p.cat];
   let sizingHtml = '';
   if(p.sizes && p.sizes.length){
@@ -2568,16 +2043,6 @@ function renderPdSelection(p, options){
     `;
   }
   const optionsHtml = renderPdOptionGroups(p, options || {});
-  return sizingHtml + optionsHtml;
-}
-
-/* Reference-only material — ingredients/allergens, the "About the
-   Drink" blurb, and the nutrition table. None of this affects price
-   or what gets added to the cart, so it belongs below the actions
-   bar: a shopper who already knows what they want shouldn't have to
-   scroll past it to check out, but it's right there for anyone who
-   wants the details before buying. */
-function renderPdReference(p, size, options){
   let infoHtml = '';
   if(p.ingredients){
     infoHtml = `
@@ -2595,7 +2060,7 @@ function renderPdReference(p, size, options){
   }
   const aboutHtml = renderPdAbout(p);
   const nutritionHtml = renderPdNutrition(p, size, options);
-  return infoHtml + aboutHtml + nutritionHtml;
+  return sizingHtml + optionsHtml + infoHtml + aboutHtml + nutritionHtml;
 }
 
 /* "About the Drink" — a short fun-fact/backstory blurb, admin-set per
@@ -2647,47 +2112,6 @@ function renderPdNutrition(p, size, options){
   `;
 }
 
-/* Trust-row badges under the gallery. Copy differs by category so it
-   never reads oddly against what's actually being sold — "Made Fresh
-   to Order" fits a drink, not a printed tote bag, so merch gets its
-   own pair of claims instead of forcing one generic phrase onto both. */
-function trustRowHTML(isMerch){
-  const items = isMerch ? [
-    {
-      icon: '<path d="M12 3l8 4.5v9L12 21l-8-4.5v-9L12 3Z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/><path d="M4 7.5L12 12l8-4.5M12 12v9" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/>',
-      label: 'Quality Checked'
-    },
-    {
-      icon: '<path d="M4 4h7l9 9-7 7-9-9V4Z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/><circle cx="8" cy="8" r="1.3" fill="currentColor"/>',
-      label: 'Small-Batch Prints'
-    }
-  ] : [
-    {
-      icon: '<path d="M4 8h13a3 3 0 0 1 0 6h-1" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/><path d="M4 8v8a2 2 0 0 0 2 2h7a2 2 0 0 0 2-2V8" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/><path d="M7 4.5c0 1-1 1-1 2M11 4.5c0 1-1 1-1 2" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>',
-      label: 'Made Fresh to Order'
-    },
-    {
-      icon: '<path d="M12 3c3 3 5 6 5 9a5 5 0 0 1-10 0c0-3 2-6 5-9Z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/><path d="M9.5 15.5c0 1.5 1 2.5 2.5 2.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>',
-      label: 'Small-Batch Ingredients'
-    }
-  ];
-  items.push({
-    icon: '<rect x="3" y="6" width="18" height="13" rx="2" stroke="currentColor" stroke-width="1.5"/><path d="M3 10.5h18" stroke="currentColor" stroke-width="1.5"/><path d="M6.5 15h4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>',
-    label: 'Cash · GCash · Card'
-  });
-  return `
-    <div class="pd-trust-row">
-      ${items.map(it => `
-        <div class="pd-trust-item">
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none">${it.icon}</svg>
-          <span>${it.label}</span>
-        </div>
-      `).join('')}
-    </div>
-  `;
-}
-
-
 function renderProductDetail(){
   const p = findProduct(currentProductId);
   pdQty = 1;
@@ -2708,24 +2132,10 @@ function renderProductDetail(){
   const startOos = pdSize ? isSizeOutOfStock(p, pdSize) : isProductOutOfStock(p);
   const hasOptions = getOptionGroups(p).length > 0;
   $('#pdContent').html(`
-    <div class="pd-gallery-col">
-      <div class="pd-gallery-sentinel" id="pdGallerySentinel"></div>
-      <div class="pd-gallery">
-      <div class="pd-main-img"><img id="pdMainImg" src="${p.imgs[0]}" alt="${p.name}"></div>
-      ${p.imgs.length > 1 ? `
+    <div>
+      <div class="pd-main-img"><img id="pdMainImg" src="${resolveImageSrc(p.imgs[0])}" alt="${p.name}"></div>
       <div class="pd-thumbs">
-        ${p.imgs.map((im,i)=>`<img src="${im}" class="${i===0?'active':''}" data-thumb="${im}" alt="${p.name} view ${i+1}">`).join('')}
-      </div>
-      ` : ''}
-      <div class="pd-gallery-extra">
-        ${trustRowHTML(isMerch)}
-        <a href="javascript:void(0)" class="pd-rating-mini" id="pdGalleryRating" style="display:none;">
-          <span class="pd-rating-mini-score" id="pdGalleryRatingScore"></span>
-          <span class="stars" id="pdGalleryRatingStars"></span>
-          <span class="pd-rating-mini-count" id="pdGalleryRatingCount"></span>
-          <svg class="pd-rating-mini-arrow" width="13" height="13" viewBox="0 0 24 24" fill="none"><path d="M9 6l6 6-6 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
-        </a>
-      </div>
+        ${p.imgs.map((im,i)=>`<img src="${resolveImageSrc(im)}" class="${i===0?'active':''}" data-thumb="${resolveImageSrc(im)}" alt="${p.name} view ${i+1}">`).join('')}
       </div>
     </div>
     <div>
@@ -2738,7 +2148,7 @@ function renderProductDetail(){
       </div>
       <p class="pd-desc pd-desc-clamped" id="pdDesc">${p.desc}${p.ingredients ? ' Made in small batches at our counter, using seasonal ingredients whenever we can.' : ''}</p>
       <button type="button" class="pd-desc-toggle" id="pdDescToggle" style="display:none;">See More</button>
-      ${renderPdSelection(p, pdOptions)}
+      ${renderPdSecondary(p, pdSize, pdOptions)}
       <div class="pd-actions-wrap" id="pdActionsWrap">
         ${hasOptions ? `<div class="pd-opt-summary" id="pdOptSummary">${optionsSummaryText(p, pdOptions)}</div>` : ''}
         <div class="pd-actions">
@@ -2748,21 +2158,14 @@ function renderProductDetail(){
             <button data-qty-action="plus">+</button>
           </div>
           <div class="pd-actions-btns">
-            <button class="btn btn-outline" id="pdBuyNowBtn" data-pd-buy-now="${p.id}" ${startOos ? 'disabled' : ''}>
-              <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M13 2 4 14h6l-1 8 9-12h-6l1-8Z"/></svg>
-              Buy Now
-            </button>
-            <button class="btn btn-primary" id="pdAddBtn" data-pd-add="${p.id}" ${startOos ? 'disabled' : ''}>
-              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M3 4h2l2.4 12.2a2 2 0 0 0 2 1.6h7.7a2 2 0 0 0 2-1.6L21 8H6" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/><circle cx="10" cy="21" r="1.4" fill="currentColor"/><circle cx="18" cy="21" r="1.4" fill="currentColor"/></svg>
-              <span id="pdAddBtnLabel">${startOos ? 'Out of Stock' : `Add to Cart · ${peso(startPrice)}`}</span>
-            </button>
+            <button class="btn btn-outline" id="pdBuyNowBtn" data-pd-buy-now="${p.id}" ${startOos ? 'disabled' : ''}>Buy Now</button>
+            <button class="btn btn-primary" id="pdAddBtn" data-pd-add="${p.id}" ${startOos ? 'disabled' : ''}>${startOos ? 'Out of Stock' : `Add to Cart · ${peso(startPrice)}`}</button>
           </div>
           <button type="button" class="wishlist-btn pd-wishlist-btn ${isWishlisted(p.id) ? 'active' : ''}" data-wishlist-toggle="${p.id}" aria-label="Save to favorites">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="${isWishlisted(p.id) ? 'currentColor' : 'none'}"><path d="M12 21s-7.5-4.6-10-9.3C.6 8.1 2.4 4.5 6 4c2-.3 3.7.7 6 3 2.3-2.3 4-3.3 6-3 3.6.5 5.4 4.1 4 7.7C19.5 16.4 12 21 12 21z" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/></svg>
           </button>
         </div>
       </div>
-      ${renderPdReference(p, pdSize, pdOptions)}
     </div>
   `);
   initPdDescToggle();
@@ -2783,25 +2186,12 @@ function renderProductDetail(){
   $('#relatedGrid').html([...related, ...fill].map(productCard).join(''));
   initReveal();
   loadAndRenderReviews(p.id);
-  initPdGallerySticky();
 }
 
 /* ================= RATINGS & REVIEWS ================= */
-/* Gradient-fill overlay stars — supports fractional ratings (e.g. 4.3)
-   by clipping a gold-gradient star row to a percentage width over a
-   muted track row underneath. sizeClass adds a size modifier class. */
-function starRatingHTML(rating, sizeClass){
-  const pct = Math.max(0, Math.min(100, (Number(rating) || 0) / 5 * 100));
-  const cls = 'star-rating' + (sizeClass ? ' ' + sizeClass : '');
-  return `<span class="${cls}"><span class="star-rating-track">★★★★★</span><span class="star-rating-fill" style="width:${pct}%">★★★★★</span></span>`;
-}
-function ratingQualitative(avg){
-  if(avg >= 4.5) return 'Excellent';
-  if(avg >= 3.5) return 'Great';
-  if(avg >= 2.5) return 'Good';
-  if(avg >= 1.5) return 'Fair';
-  if(avg > 0) return 'Poor';
-  return '';
+function starString(rating){
+  const r = Math.round(rating);
+  return '★★★★★'.slice(0, r) + '☆☆☆☆☆'.slice(0, 5 - r);
 }
 
 /* State for the currently-open product's reviews, kept in memory so
@@ -2896,35 +2286,14 @@ function renderReviewsSection(){
     `;
   }).join('');
 
-  const qualitative = total ? ratingQualitative(avg) : '';
-  const summaryHtml = total ? `
+  const summaryHtml = `
     <div class="reviews-summary-card">
-      ${qualitative ? `<div class="review-summary-badge">${qualitative}</div>` : ''}
-      <div class="review-summary-score">${avg.toFixed(1)}</div>
-      ${starRatingHTML(avg, 'stars-lg')}
+      <div class="review-summary-score">${avg ? avg.toFixed(1) : '—'}</div>
+      <div class="stars stars-lg">${starString(avg)}</div>
       <div class="review-summary-count">${total} review${total === 1 ? '' : 's'}</div>
-      <div class="rating-bars">${barsHtml}</div>
-    </div>
-  ` : `
-    <div class="reviews-summary-card reviews-summary-card-empty">
-      <svg width="30" height="30" viewBox="0 0 24 24" fill="none"><path d="M12 3.5l2.5 5.4 5.9.6-4.4 4 1.3 5.9L12 16.4l-5.3 3 1.3-5.9-4.4-4 5.9-.6z" stroke="var(--cta-dark)" stroke-width="1.4" stroke-linejoin="round"/></svg>
-      <div class="review-summary-empty-title">No ratings yet</div>
-      <div class="review-summary-empty-sub">Be the first to rate this item</div>
+      ${total ? `<div class="rating-bars">${barsHtml}</div>` : ''}
     </div>
   `;
-
-  // Small rating teaser under the product gallery, only shown once
-  // there's an actual score to show — an empty/zero rating there
-  // would just be noise next to the "no reviews yet" empty state
-  // already shown further down in the reviews section itself.
-  if(total){
-    $('#pdGalleryRatingScore').text(avg.toFixed(1));
-    $('#pdGalleryRatingStars').html(starRatingHTML(avg));
-    $('#pdGalleryRatingCount').text(`${total} review${total === 1 ? '' : 's'}`);
-    $('#pdGalleryRating').show();
-  } else {
-    $('#pdGalleryRating').hide();
-  }
 
   const realUser = window.currentUser && !window.currentUser.isAnonymous ? window.currentUser : null;
   const myReview = realUser ? reviews.find(r => r.uid === realUser.uid) : null;
@@ -2944,7 +2313,7 @@ function renderReviewsSection(){
               ${r.verified ? `<span class="verified-badge"><svg width="10" height="10" viewBox="0 0 24 24" fill="none"><path d="M5 13l4 4L19 7" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/></svg>Verified Purchase</span>` : ''}
             </div>
             <div class="review-stars-row">
-              ${starRatingHTML(r.rating)}
+              <span class="stars">${starString(r.rating)}</span>
               <span class="review-date">${formatReviewDate(r.createdAt)}</span>
             </div>
           </div>
@@ -2955,11 +2324,8 @@ function renderReviewsSection(){
     `;
       }).join('')
     : `<div class="reviews-empty">
-        <div class="reviews-empty-icon-wrap">
-          <svg width="26" height="26" viewBox="0 0 24 24" fill="none"><path d="M12 3.5l2.5 5.4 5.9.6-4.4 4 1.3 5.9L12 16.4l-5.3 3 1.3-5.9-4.4-4 5.9-.6z" stroke="var(--cta-dark)" stroke-width="1.5" stroke-linejoin="round"/></svg>
-        </div>
-        <p class="reviews-empty-title">No reviews yet</p>
-        <p class="reviews-empty-sub">Be the first to share what you thought about this item.</p>
+        <svg width="30" height="30" viewBox="0 0 24 24" fill="none"><path d="M12 17.3l-5.8 3 1.1-6.5-4.7-4.6 6.5-1 2.9-5.9 2.9 5.9 6.5 1-4.7 4.6 1.1 6.5z" stroke="var(--line-strong)" stroke-width="1.4" stroke-linejoin="round"/></svg>
+        <p>No reviews yet — be the first to share what you thought.</p>
       </div>`;
 
   // Gate the form on having actually bought the item — but an existing
@@ -2972,11 +2338,8 @@ function renderReviewsSection(){
     : canReview ? `
     <div class="review-form">
       <h4>${myReview ? 'Edit your review' : 'Write a review'}</h4>
-      <div class="review-star-input-row">
-        <div class="review-star-input" id="reviewStarInput" data-value="${myReview ? myReview.rating : 0}">
-          ${[1,2,3,4,5].map(n => `<span data-star="${n}" class="${myReview && n <= myReview.rating ? 'active' : ''}">★</span>`).join('')}
-        </div>
-        <span class="review-star-input-label" id="reviewRatingLabel">${myReview && myReview.rating ? ratingQualitative(myReview.rating) : 'Tap to rate'}</span>
+      <div class="review-star-input" id="reviewStarInput" data-value="${myReview ? myReview.rating : 0}">
+        ${[1,2,3,4,5].map(n => `<span data-star="${n}" class="${myReview && n <= myReview.rating ? 'active' : ''}">★</span>`).join('')}
       </div>
       <textarea id="reviewTextInput" placeholder="Optional — what did you think?" maxlength="600">${myReview ? escapeHtml(myReview.text || '') : ''}</textarea>
       <div class="review-form-footer">
@@ -3020,19 +2383,6 @@ $(document).on('click', '#reviewStarInput span', function(){
   const val = Number($(this).data('star'));
   $('#reviewStarInput').attr('data-value', val)
     .find('span').each(function(){ $(this).toggleClass('active', Number($(this).data('star')) <= val); });
-  $('#reviewRatingLabel').text(ratingQualitative(val));
-});
-
-$(document).on('mouseenter', '#reviewStarInput span', function(){
-  const val = Number($(this).data('star'));
-  $('#reviewStarInput').find('span').each(function(){ $(this).toggleClass('hover', Number($(this).data('star')) <= val); });
-  $('#reviewRatingLabel').text(ratingQualitative(val));
-});
-
-$(document).on('mouseleave', '#reviewStarInput', function(){
-  const val = Number($(this).attr('data-value')) || 0;
-  $(this).find('span').removeClass('hover');
-  $('#reviewRatingLabel').text(val ? ratingQualitative(val) : 'Tap to rate');
 });
 
 $(document).on('click', '#submitReviewBtn', async function(){
@@ -3205,7 +2555,7 @@ function renderCart(){
     const unit = typeof c.unitPrice === 'number' ? c.unitPrice : getPriceForSize(p, c.size);
     return `
       <div class="cart-item">
-        <img src="${p.img}" alt="${p.name}">
+        <img src="${resolveImageSrc(p.img)}" alt="${p.name}">
         <div>
           <div class="cart-item-name">${p.name}</div>
           <div class="cart-item-meta">${p.cat}${c.size ? ` · Size: ${c.size}` : ''} · ${peso(unit)} each</div>
@@ -3707,7 +3057,7 @@ document.addEventListener('authStateReady', function(e){
    (it needs a Firestore read), so the dot/dropdown update here once
    authRoleReady fires rather than in authStateReady above. */
 document.addEventListener('authRoleReady', function(e){
-  const { user, role, otpVerified } = e.detail;
+  const { user, otpVerified } = e.detail;
   const realUser = user && !user.isAnonymous ? user : null;
   $('#accountStatusDot').toggleClass('unverified', !!(realUser && !otpVerified));
   renderAccountDropdown(realUser, otpVerified);
@@ -4055,28 +3405,13 @@ function renderAll(){
   rerenderActiveCartPage();
 }
 
-async function loadProductsFromFirestore(){
-  try{
-    const live = await window.CCProducts.fetchAllProducts();
-    if(live.length){
-      PRODUCTS = live;
-    } else {
-      // Firestore is empty (not seeded yet) — fall back to the
-      // built-in seed list so the site still renders for a demo.
-      PRODUCTS = SEED_PRODUCTS;
-      console.warn('Firestore "products" collection is empty. Go to the Admin page and click "Seed Starter Catalog" to populate it.');
-    }
-  } catch(err){
-    console.error('Could not load products from Firestore, using local seed data instead.', err);
-    PRODUCTS = SEED_PRODUCTS;
-  }
-}
+/* loadProductsFromFirestore() moved to shared-catalog.js. */
 
 async function loadSettingsFromFirestore(){
   try{
     const settings = await window.CCSettings.fetchSettings();
     DELIVERY_FEE = settings.deliveryFee;
-    PROMO_POPUP_CONFIG = { ...PROMO_POPUP_DEFAULTS, ...(settings.promoPopup || {}) };
+    PROMO_POPUP_CONFIG = settings.promoPopup;
   } catch(err){
     console.error('Could not load settings from Firestore, using the default delivery fee instead.', err);
   }
@@ -4108,6 +3443,7 @@ $(async function(){
   const cachedSettings = window.CCSettings.getCachedSettings();
   if(cachedSettings){
     DELIVERY_FEE = cachedSettings.deliveryFee;
+    if(cachedSettings.promoPopup) PROMO_POPUP_CONFIG = cachedSettings.promoPopup;
   }
   const cachedCategories = window.CCCategories.getCachedCategories();
   if(cachedCategories && cachedCategories.length){
@@ -4123,113 +3459,58 @@ $(async function(){
   initPromoOverlay();
 });
 /* ================= PROMO LAUNCH BANNER ================= */
-/* Fancy "New" popup shown once per browser session on page load,
-   showcasing 1-3 real products in a tilted 3D card stack. Fully
-   admin-configurable (Admin > Settings > Launch Popup) — copy, badge
-   text, and either an auto-featured category or a hand-picked list
-   of up to 3 products (PROMO_POPUP_CONFIG, loaded above alongside the
-   rest of settings). Called at the end of the main init block above
-   rather than running standalone, since it needs PRODUCTS and
-   PROMO_POPUP_CONFIG to already be populated — a plain top-level IIFE
-   here would fire before either finished loading from Firestore. */
+/* Fancy "New" popup shown once per browser session on page load, its
+   content driven by whatever the admin last saved (see the Launch
+   Popup panel in admin.js) via the shared resolvePromoProducts()/
+   applyPromoPopupContent() in shared-catalog.js. sessionStorage (not
+   localStorage) so it reappears on a fresh visit/tab but doesn't nag
+   on every reload within the same session.
 
-/* productIds (manual pick) always wins when non-empty; otherwise
-   falls back to auto-featuring the chosen category, sorted the way
-   the admin picked (best sellers vs newest — see sortProducts). Caps
-   at 3 either way, matching the 3D stage's card layout. */
-function resolvePromoProducts(cfg){
-  let list = [];
-  if(cfg.productIds && cfg.productIds.length){
-    list = cfg.productIds.map(id => PRODUCTS.find(p => p.id === id)).filter(Boolean);
-  }
-  if(!list.length && cfg.category){
-    const inCategory = PRODUCTS.filter(p => p.cat === cfg.category);
-    list = sortProducts(inCategory, cfg.sortMode === 'newest' ? 'newest' : 'featured');
-  }
-  return list.slice(0, 3);
-}
-
-/* Fans the given products out into a tilted stack: the middle item
-   (or the first of two) sits upright and forward, the rest lean away
-   symmetrically to either side. offset (-1..1-ish) drives everything
-   — horizontal spread, the 3D lean, the in-plane tilt, and how far
-   back in Z each card sits — so 1, 2, or 3 products all lay out
-   sensibly without separate cases for each count. */
-function renderPromoStage(products, target){
-  target = target || { stage: '#promoStage', cards: '#promoStageCards' };
-  const $stage = $(target.stage);
-  const $cards = $(target.cards);
-  if(!products.length){
-    $stage.hide();
-    $cards.empty();
-    return;
-  }
-  $stage.show();
-  const n = products.length;
-  $cards.html(products.map((p, i) => {
-    const offset = i - (n - 1) / 2;
-    const depth = Math.abs(offset);
-    const img = (p.imgs && p.imgs[0]) || p.img || blankPlaceholder(p.id, p.cat);
-    return `
-      <div class="promo-stage-card" style="--i:${i}; --offsetx:${(offset * 58).toFixed(1)}; --depth:${depth.toFixed(2)}; --angle:${(offset * 16).toFixed(1)}; --tilt:${(offset * 7).toFixed(1)}; z-index:${10 - Math.round(depth)};">
-        <div class="promo-stage-card-float" style="animation-delay:${(i * 0.28).toFixed(2)}s;">
-          <div class="promo-stage-card-img"><img src="${img}" alt="${p.name}" loading="lazy"></div>
-          <div class="promo-stage-card-info">
-            <span class="promo-stage-card-name">${p.name}</span>
-            <span class="promo-stage-card-price">${priceLabel(p)}</span>
-          </div>
-        </div>
-      </div>`;
-  }).join(''));
-}
-
-function applyPromoPopupContent(cfg, products, ids){
-  ids = ids || {
-    badge: '#promoBadgeText', eyebrow: '#promoEyebrow', title: '#promoModalTitle',
-    copy: '#promoModalCopy', cta: '#promoModalCta', dismiss: '#promoModalDismiss',
-    stage: '#promoStage', cards: '#promoStageCards'
-  };
-  $(ids.badge).text(cfg.badgeText || 'New');
-  $(ids.eyebrow).text(cfg.eyebrow || '');
-  $(ids.title).html(cfg.headline || '');
-  $(ids.copy).text(cfg.copy || '');
-  $(ids.cta).text(cfg.ctaText || 'Take a Look');
-  $(ids.dismiss).text(cfg.dismissText || 'Maybe later');
-  renderPromoStage(products, { stage: ids.stage, cards: ids.cards });
-}
-
+   Called from the main $(async function(){...}) init flow below,
+   once loadSettingsFromFirestore()/loadProductsFromFirestore() have
+   populated PROMO_POPUP_CONFIG/PRODUCTS — not on raw page parse —
+   since there's nothing real to show before then. */
 function initPromoOverlay(){
   const PROMO_KEY = 'cc_promo_seen_v1';
   const $overlay = $('#promoOverlay');
   if(!$overlay.length) return;
 
+  const cfg = PROMO_POPUP_CONFIG || PROMO_POPUP_DEFAULTS;
+  if(cfg.enabled === false) return;
+
   function closePromo(){
     $overlay.removeClass('open');
-    try{ sessionStorage.setItem(PROMO_KEY, '1'); } catch(err){ /* private mode — fine, it'll just show again */ }
+    sessionStorage.setItem(PROMO_KEY, '1');
   }
-
-  // Bound every call (not just the first) — cheap no-op if a previous
-  // call already bound these, and guarantees the buttons work even if
-  // this function is ever invoked more than once in a session.
-  $('#promoModalClose, #promoModalDismiss').off('click.promo').on('click.promo', closePromo);
-  $('#promoModalCta').off('click.promo').on('click.promo', closePromo);
-  $overlay.off('click.promo').on('click.promo', function(e){
-    if(e.target === this) closePromo();
-  });
-  $(document).off('keydown.promo').on('keydown.promo', function(e){
-    if(e.key === 'Escape' && $overlay.hasClass('open')) closePromo();
-  });
-
-  if(!PROMO_POPUP_CONFIG.enabled) return;
 
   let seen = false;
   try{ seen = sessionStorage.getItem(PROMO_KEY) === '1'; } catch(err){ /* private mode — just show it */ }
   if(seen) return;
 
-  const products = resolvePromoProducts(PROMO_POPUP_CONFIG);
-  applyPromoPopupContent(PROMO_POPUP_CONFIG, products);
+  applyPromoPopupContent(cfg, resolvePromoProducts(cfg), {
+    badge: '#promoBadgeText', eyebrow: '#promoEyebrow', title: '#promoModalTitle',
+    copy: '#promoModalCopy', cta: '#promoModalCta', dismiss: '#promoModalDismiss',
+    stage: '#promoStage', cards: '#promoStageCards'
+  });
 
   // Slight delay so it arrives after the hero's own entrance animation
   // has had a moment to breathe, rather than competing with it.
   setTimeout(() => $overlay.addClass('open'), 900);
+
+  $('#promoModalClose, #promoModalDismiss').on('click', closePromo);
+  $('#promoModalCta').on('click', closePromo);
+  // Clicking a product card itself should close the popup and let it
+  // proceed like any other product link — the existing global
+  // [data-open-product] handler (bound elsewhere, used by every
+  // product grid) already sets currentProductId and navigates on this
+  // same click; this just dismisses the popup out of the way first,
+  // since it's bound closer to the target and fires earlier in the
+  // bubble phase.
+  $('#promoStageCards').on('click', '.promo-stage-card', closePromo);
+  $overlay.on('click', function(e){
+    if(e.target === this) closePromo();
+  });
+  $(document).on('keydown', function(e){
+    if(e.key === 'Escape' && $overlay.hasClass('open')) closePromo();
+  });
 }
