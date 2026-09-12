@@ -400,4 +400,61 @@ export async function normalizeDrinkSizes(drinkCategories){
   return updated;
 }
 
-window.CCProducts = { fetchAllProducts, addProduct, updateProduct, deleteProduct, seedProducts, getCachedProducts, decrementStock, cleanupLegacyFoodFields, flattenSizePricing, fillMissingDrinkDetails, normalizeDrinkSizes };
+/* =========================================================
+   FIX BROKEN PRODUCT IMAGES
+   Some products — mostly ones seeded before SEED_PRODUCTS in
+   shared-catalog.js was updated to generate a proper placeholder for
+   every item — still carry a bare local filename in `img`/`imgs`
+   (e.g. "croissant.jpg", "shirt1.png") left over from before Cloudinary
+   uploads existed. Those never resolve to anything on this host, so
+   the browser just shows a broken-image icon everywhere that product
+   appears — the grid, the product page, and the Launch Popup preview.
+
+   This walks every product and, for any `img`/`imgs` entry that isn't
+   a real URL (doesn't start with "http" or "data:" — Cloudinary URLs
+   and the generated SVG placeholders both pass, bare filenames don't),
+   swaps in the same blankPlaceholder() generator the seed data now
+   uses, so it renders a clean "photo coming soon" placeholder instead
+   of nothing. blankPlaceholder lives in shared-catalog.js — a plain
+   script (not a module) — so it's reached here via window, same as
+   this file's own exports are reached from admin.js.
+
+   This only ever repairs a genuinely missing image reference; it
+   never touches an already-good Cloudinary URL, generated
+   placeholder, OR a bare local filename (e.g. "croissant.jpg") —
+   those are valid site-root-relative paths to real static assets,
+   just ones that need resolveImageSrc() (shared-catalog.js) to
+   resolve correctly from a nested route like /admin/. An earlier
+   version of this function treated any non-http(s)/data: string as
+   "broken" and overwrote it with a placeholder — which silently
+   destroyed real, working image references on every product using a
+   bare filename, on both apps, the first time this tool ran. Don't
+   revert to that check. Returns the ids of every product actually
+   changed. */
+function isBrokenImageRef(src){
+  return !src || (typeof src === 'string' && src.trim() === '');
+}
+
+export async function fixBrokenProductImages(){
+  const snap = await getDocs(collection(db, PRODUCTS_COL));
+  const fixed = [];
+  for(const docSnap of snap.docs){
+    const data = docSnap.data();
+    const placeholder = window.blankPlaceholder(docSnap.id, data.cat);
+    const fields = {};
+
+    if(isBrokenImageRef(data.img)){
+      fields.img = placeholder;
+    }
+    if(Array.isArray(data.imgs) && data.imgs.some(isBrokenImageRef)){
+      fields.imgs = data.imgs.map(src => isBrokenImageRef(src) ? placeholder : src);
+    }
+
+    if(!Object.keys(fields).length) continue; // already fine — real URL, bare filename, or generated placeholder
+    await updateDoc(doc(db, PRODUCTS_COL, docSnap.id), fields);
+    patchCachedProduct(docSnap.id, fields);
+    fixed.push(docSnap.id);
+  }
+  return fixed;
+}
+window.CCProducts = { fetchAllProducts, addProduct, updateProduct, deleteProduct, seedProducts, getCachedProducts, decrementStock, cleanupLegacyFoodFields, flattenSizePricing, fillMissingDrinkDetails, normalizeDrinkSizes, fixBrokenProductImages };
