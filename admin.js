@@ -8,21 +8,11 @@ let adminCategoryFilter = 'All'; // current selection in the category filter dro
    and the whole "OPTION GROUPS BUILDER" section for how it's edited. */
 let apOptionGroups = [];
 
-const FOOD_CATEGORIES = ['Coffee', 'Non-Coffee', 'Tea', 'Pastries', 'Sandwiches', 'Cakes'];
-
-/* Default size list offered for each sized category when adding a new
-   product, or when switching an existing product to one of these
-   categories. Editing a product that already has its own size list
-   keeps that list instead (see renderSizePriceRows). */
-const DEFAULT_SIZES_BY_CATEGORY = {
-  Shirts: ['XS','S','M','L','XL','XXL'],
-  Shorts: ['XS','S','M','L','XL','XXL'],
-  Socks: ['S','M','L'],
-  Caps: ['One Size'],
-};
-
-const DRINK_CATEGORIES = ['Coffee', 'Non-Coffee', 'Tea'];
-const DRINK_SIZES = ['12oz', '16oz', '20oz'];
+/* FOOD_CATEGORIES, DRINK_CATEGORIES, SIZED_CATEGORIES, and
+   DEFAULT_SIZES_BY_CATEGORY moved to shared-catalog.js (loaded before
+   this file) — script.js reads them too, so they can't be declared
+   here as well. */
+const DRINK_SIZES = ['16oz', '20oz', '24oz'];
 
 const ADMIN_CATEGORY_BADGE_CLASS = {
   'Drinks': 'drinks',
@@ -39,6 +29,173 @@ function categoryBadge(cat){
 }
 
 const ADMIN_NAV_ICON = `<svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M12 15.2a3.2 3.2 0 1 0 0-6.4 3.2 3.2 0 0 0 0 6.4Z" stroke="currentColor" stroke-width="1.5"/><path d="M19.4 13.9c.05-.6.05-1.2 0-1.8l1.9-1.4a.8.8 0 0 0 .2-1L19.7 6.9a.8.8 0 0 0-.95-.35l-2.2.85a7.4 7.4 0 0 0-1.55-.9l-.35-2.3a.8.8 0 0 0-.8-.7h-3.7a.8.8 0 0 0-.8.7l-.35 2.3c-.56.23-1.08.53-1.55.9l-2.2-.85a.8.8 0 0 0-.95.35L2.5 9.7a.8.8 0 0 0 .2 1l1.9 1.4a8.3 8.3 0 0 0 0 1.8l-1.9 1.4a.8.8 0 0 0-.2 1l1.85 2.8c.2.32.6.44.95.35l2.2-.85c.47.37.99.67 1.55.9l.35 2.3c.06.4.42.7.8.7h3.7c.38 0 .74-.3.8-.7l.35-2.3c.56-.23 1.08-.53 1.55-.9l2.2.85c.35.09.75-.03.95-.35l1.85-2.8a.8.8 0 0 0-.2-1l-1.9-1.4Z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/></svg>`;
+
+/* ================= ADD CATEGORY ================= */
+function openCategoryModal(){
+  $('#addCategoryForm')[0].reset();
+  $('#ccSizesField').hide();
+  const groups = Array.from(new Set(Object.values(CAT_LABELS).map(m => m.group)));
+  $('#ccGroupOptions').html(groups.map(g => `<option value="${g}">`).join(''));
+  renderExistingCategoriesList();
+  $('#categoryModalOverlay').addClass('open');
+}
+function closeCategoryModal(){
+  $('#categoryModalOverlay').removeClass('open');
+}
+
+/* Lists categories the admin has actually created (CUSTOM_CATEGORIES),
+   each with a delete button — built-in categories (Coffee, Shirts,
+   etc.) aren't shown here since they're hardcoded in script.js and
+   were never meant to be removable. Shows how many products currently
+   sit in each category so an admin isn't surprised by an orphaned
+   product after deleting one. */
+function renderExistingCategoriesList(){
+  const $wrap = $('#ccExistingWrap');
+  if(!CUSTOM_CATEGORIES.length){
+    $wrap.hide();
+    return;
+  }
+  const rows = CUSTOM_CATEGORIES.map(c => {
+    const count = PRODUCTS.filter(p => p.cat === c.id).length;
+    return `
+      <div class="cc-existing-row" data-cc-row="${c.id}">
+        <div class="cc-existing-row-info">
+          <span class="cc-existing-row-name">${c.label}</span>
+          <span class="cc-existing-row-count">${count ? `${count} product${count === 1 ? '' : 's'}` : 'empty'}</span>
+        </div>
+        <button type="button" class="admin-icon-btn admin-icon-btn-danger" data-admin-category-delete="${c.id}" title="Delete category" aria-label="Delete ${c.label}">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none"><path d="M5 7h14M9 7V5a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2m-8 0v12a1 1 0 0 0 1 1h6a1 1 0 0 0 1-1V7" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </button>
+      </div>
+    `;
+  }).join('');
+  $('#ccExistingList').html(rows);
+  $wrap.show();
+}
+
+/* Deletes a custom category: confirms (with a stronger warning if
+   products still use it, since those products won't be reassigned
+   automatically), removes it from Firestore, unwinds every place it
+   was folded into (CAT_LABELS, sidebars, pricing rules — see
+   removeCustomCategoryEffects in script.js), and refreshes every
+   piece of UI that reads category data. */
+$(document).on('click', '[data-admin-category-delete]', async function(){
+  const id = $(this).data('admin-category-delete');
+  const c = CUSTOM_CATEGORIES.find(x => x.id === id);
+  if(!c) return;
+
+  const count = PRODUCTS.filter(p => p.cat === id).length;
+  const msg = count
+    ? `${count} product${count === 1 ? '' : 's'} still use${count === 1 ? 's' : ''} "${c.label}". They won't be deleted, but they'll need a new category assigned or they may not show up correctly. Delete "${c.label}" anyway?`
+    : `Delete category "${c.label}"? This can't be undone.`;
+  const ok = await showConfirm({
+    title: 'Delete category?',
+    message: msg,
+    confirmText: 'Delete',
+    danger: true
+  });
+  if(!ok) return;
+
+  const $btn = $(this);
+  $btn.prop('disabled', true);
+  try{
+    await window.CCCategories.deleteCategory(id);
+    CUSTOM_CATEGORIES = CUSTOM_CATEGORIES.filter(x => x.id !== id);
+    removeCustomCategoryEffectsCore(c);
+    renderExistingCategoriesList();
+    renderAdminCategorySelects();
+    // These four are customer-storefront renderers — they only exist
+    // when admin.js happens to be running inside the full customer
+    // page (script.js loaded). On the standalone admin app they're
+    // undefined, so this is guarded rather than called unconditionally.
+    if(typeof renderMenuSidebar === 'function') renderMenuSidebar();
+    if(typeof renderMerchSidebar === 'function') renderMerchSidebar();
+    if(typeof renderMenuPage === 'function') renderMenuPage();
+    if(typeof renderMerchPage === 'function') renderMerchPage();
+    showToast(`Deleted "${c.label}".`, 'success');
+  } catch(err){
+    console.error(err);
+    showToast('Could not delete that category. Please try again.', 'error');
+    $btn.prop('disabled', false);
+  }
+});
+
+$(document).on('click', '#openAddCategoryBtn', openCategoryModal);
+$(document).on('click', '#categoryModalClose', closeCategoryModal);
+$(document).on('click', '#categoryModalOverlay', function(e){
+  if(e.target === this) closeCategoryModal();
+});
+$(document).on('keydown', function(e){
+  if(e.key === 'Escape' && $('#categoryModalOverlay').hasClass('open')) closeCategoryModal();
+});
+
+$(document).on('change', '#ccPricing', function(){
+  $('#ccSizesField').toggle($(this).val() === 'sized-stock');
+});
+
+/* Turns a free-typed label into a doc-id-safe key in the same style
+   as the built-in categories ('Non-Coffee', 'ToteBags') — letters and
+   numbers only, no spaces. Falls back to a timestamp if the label is
+   somehow left with nothing usable (e.g. all punctuation). */
+function slugifyCategoryLabel(label){
+  return label.trim().replace(/[^a-zA-Z0-9]+/g, '') || ('Category' + Date.now());
+}
+
+/* Guarantees the id doesn't collide with a built-in or previously
+   added category — appends 2, 3, 4... until it finds a free one.
+   Collisions should be rare (two categories with very similar names)
+   but silently overwriting an existing category would be much worse
+   than a slightly-suffixed id. */
+function uniqueCategoryId(base){
+  if(!CAT_LABELS[base]) return base;
+  let n = 2;
+  while(CAT_LABELS[base + n]) n++;
+  return base + n;
+}
+
+$(document).on('submit', '#addCategoryForm', async function(e){
+  e.preventDefault();
+  const $btn = $('#addCategorySubmitBtn');
+  const label = $('#ccLabel').val().trim();
+  const group = $('#ccGroup').val().trim();
+  if(!label || !group) return;
+
+  const id = uniqueCategoryId(slugifyCategoryLabel(label));
+  const pricingType = $('#ccPricing').val();
+  const sizes = pricingType === 'sized-stock'
+    ? $('#ccSizes').val().split(',').map(s => s.trim()).filter(Boolean)
+    : [];
+
+  const category = {
+    id, label, group,
+    page: $('#ccPage').val(),
+    pricingType,
+    sizes,
+    hasFoodFields: $('#ccFoodFields').prop('checked'),
+    createdAt: new Date().toISOString()
+  };
+
+  $btn.prop('disabled', true).text('Adding...');
+  try{
+    await window.CCCategories.addCategory(category);
+    CUSTOM_CATEGORIES.push(category);
+    applyCustomCategoryCore(category);
+    renderAdminCategorySelects();
+    if(typeof renderMenuSidebar === 'function') renderMenuSidebar();
+    if(typeof renderMerchSidebar === 'function') renderMerchSidebar();
+    closeCategoryModal();
+    // Jump straight to the Add Product form with the new category
+    // already selected — the whole point was to use it right away.
+    goToProductsSubtab('add-product');
+    $('#apCategory').val(category.id).trigger('change');
+    showToast(`Added category "${label}".`, 'success');
+  } catch(err){
+    console.error(err);
+    showToast('Could not add that category. Please try again.', 'error');
+  } finally {
+    $btn.prop('disabled', false).text('Add Category');
+  }
+});
 
 document.addEventListener('authRoleReady', function(e){
   const { role } = e.detail;
@@ -740,11 +897,8 @@ $(document).on('submit', '#adminAddProductForm', async function(e){
       if(typeof renderMenuPage === 'function') renderMenuPage();
       if(typeof renderMerchPage === 'function') renderMerchPage();
       buildComboProducts();
-      renderFeaturedCombos();
-      $('.admin-tab').removeClass('active');
-      $('.admin-tab[data-admin-tab="products"]').addClass('active');
-      $('.admin-panel').removeClass('active');
-      $('.admin-panel[data-admin-panel="products"]').addClass('active');
+      if(typeof renderFeaturedCombos === 'function') renderFeaturedCombos();
+      goToProductsSubtab('catalog');
     } catch(err){
       console.error(err);
       showToast('Could not update product. Please try again.', 'error');
@@ -797,20 +951,181 @@ async function loadAndRenderAdminOrders(){
 
 const ORDER_STATUSES = ['pending', 'preparing', 'ready', 'completed', 'cancelled'];
 
+/* How long a pending order can sit before the table flags it —
+   pending is the one status where every extra minute is a customer
+   waiting to hear back, so it's the only one worth calling out. */
+const ORDER_STALE_MINUTES = 15;
+
+let adminOrderStatusFilter = 'all'; // 'all' | one of ORDER_STATUSES
+let adminOrderSearch = '';          // current text in the orders search box
+
+/* Sort state for the orders table. key is one of 'createdAt' | 'customer' | 'total'.
+   Newest-first by date is the most useful default view for an admin
+   checking in on the shop, so that's where every session starts. */
+let adminOrderSort = { key: 'createdAt', dir: 'desc' };
+
+function sortOrders(list){
+  const { key, dir } = adminOrderSort;
+  const mult = dir === 'asc' ? 1 : -1;
+  return [...list].sort((a, b) => {
+    let av, bv;
+    if(key === 'total'){
+      av = a.totals?.total || 0;
+      bv = b.totals?.total || 0;
+    } else if(key === 'customer'){
+      av = (a.customer?.name || 'Guest').toLowerCase();
+      bv = (b.customer?.name || 'Guest').toLowerCase();
+    } else {
+      av = orderTimestampMs(a.createdAt) || 0;
+      bv = orderTimestampMs(b.createdAt) || 0;
+    }
+    if(av < bv) return -1 * mult;
+    if(av > bv) return 1 * mult;
+    return 0;
+  });
+}
+
+/* Reflects adminOrderSort onto the header row: clears stale arrows,
+   marks the active column, and points its arrow the right way. */
+function updateOrderSortHeaders(){
+  $('.sortable-th').removeClass('sort-active').find('.sort-arrow').text('↕');
+  const $active = $(`.sortable-th[data-sort-key="${adminOrderSort.key}"]`);
+  $active.addClass('sort-active').find('.sort-arrow').text(adminOrderSort.dir === 'asc' ? '↑' : '↓');
+}
+
+$(document).on('click', '.sortable-th', function(){
+  const key = $(this).data('sort-key');
+  if(adminOrderSort.key === key){
+    adminOrderSort.dir = adminOrderSort.dir === 'asc' ? 'desc' : 'asc';
+  } else {
+    adminOrderSort = { key, dir: key === 'customer' ? 'asc' : 'desc' };
+  }
+  renderAdminOrdersTable();
+});
+
+function orderTimestampMs(val){
+  if(!val) return null;
+  if(typeof val.seconds === 'number') return val.seconds * 1000;
+  const parsed = new Date(val).getTime();
+  return isNaN(parsed) ? null : parsed;
+}
+
+function isOrderStale(order){
+  const status = order.status || 'pending';
+  if(status !== 'pending') return false;
+  const ms = orderTimestampMs(order.createdAt);
+  if(ms === null) return false;
+  return (Date.now() - ms) > ORDER_STALE_MINUTES * 60 * 1000;
+}
+
+/* Builds the All/Pending/Preparing/.../Cancelled pill row, each with
+   a live count so the admin can tell at a glance how many orders
+   need attention without opening every filter. Re-run any time
+   ADMIN_ORDERS changes (load, refresh, or a status update) so counts
+   never go stale. */
+function renderOrderStatusFilters(){
+  const counts = { all: ADMIN_ORDERS.length };
+  ORDER_STATUSES.forEach(s => { counts[s] = 0; });
+  ADMIN_ORDERS.forEach(o => {
+    const s = o.status || 'pending';
+    if(counts[s] !== undefined) counts[s]++;
+  });
+
+  const filters = ['all', ...ORDER_STATUSES];
+  const html = filters.map(f => {
+    const label = f === 'all' ? 'All' : f.charAt(0).toUpperCase() + f.slice(1);
+    return `
+      <button type="button" class="order-filter-pill${f === adminOrderStatusFilter ? ' active' : ''}" data-order-filter="${f}">
+        ${label} <span class="order-filter-count">${counts[f] || 0}</span>
+      </button>
+    `;
+  }).join('');
+  $('#orderStatusFilters').html(html);
+}
+
+$(document).on('click', '[data-order-filter]', function(){
+  adminOrderStatusFilter = $(this).data('order-filter');
+  $('.order-filter-pill').removeClass('active');
+  $(this).addClass('active');
+  renderAdminOrdersTable();
+});
+
+$(document).on('input', '#adminOrderSearch', function(){
+  adminOrderSearch = $(this).val().trim().toLowerCase();
+  renderAdminOrdersTable();
+});
+
+/* Applies the active status pill + search box to ADMIN_ORDERS.
+   Search matches the order's short id, customer name, phone, or
+   email — whichever the admin is most likely to have on hand when a
+   customer calls in asking about their order. */
+function getFilteredOrders(){
+  let list = ADMIN_ORDERS;
+  if(adminOrderStatusFilter !== 'all'){
+    list = list.filter(o => (o.status || 'pending') === adminOrderStatusFilter);
+  }
+  if(adminOrderSearch){
+    list = list.filter(o => {
+      const c = o.customer || {};
+      const haystack = [
+        o.id.slice(0, 6),
+        c.name, c.phone, c.email
+      ].filter(Boolean).join(' ').toLowerCase();
+      return haystack.includes(adminOrderSearch);
+    });
+  }
+  return list;
+}
+
+/* Two initials from a customer name for the little avatar chip —
+   falls back to "?" for guest/blank names so the chip never renders empty. */
+function customerInitials(name){
+  const parts = (name || '').trim().split(/\s+/).filter(Boolean);
+  if(!parts.length) return '?';
+  const first = parts[0][0] || '';
+  const last = parts.length > 1 ? parts[parts.length - 1][0] : '';
+  return (first + last).toUpperCase();
+}
+
+function minutesWaiting(order){
+  const ms = orderTimestampMs(order.createdAt);
+  if(ms === null) return null;
+  return Math.max(1, Math.round((Date.now() - ms) / 60000));
+}
+
 function renderAdminOrdersTable(){
   if(!ADMIN_ORDERS.length){
     $('#adminOrdersBody').html(`<tr><td colspan="6" class="admin-empty-row">No orders yet.</td></tr>`);
     return;
   }
-  const rows = ADMIN_ORDERS.map(o => {
+  const filtered = sortOrders(getFilteredOrders());
+  updateOrderSortHeaders();
+  if(!filtered.length){
+    const msg = adminOrderSearch
+      ? 'No orders match your search.'
+      : `No ${adminOrderStatusFilter} orders.`;
+    $('#adminOrdersBody').html(`<tr><td colspan="6" class="admin-empty-row">${msg}</td></tr>`);
+    return;
+  }
+  const rows = filtered.map((o, i) => {
     const status = o.status || 'pending';
     const options = ORDER_STATUSES.map(s => `<option value="${s}" ${s === status ? 'selected' : ''}>${s.charAt(0).toUpperCase() + s.slice(1)}</option>`).join('');
+    const stale = isOrderStale(o);
+    const name = o.customer?.name || 'Guest';
+    const isDelivery = o.fulfillment === 'delivery';
+    const waited = stale ? minutesWaiting(o) : null;
     return `
-      <tr>
-        <td>#${o.id.slice(0,6).toUpperCase()}</td>
-        <td><button class="admin-customer-link" data-order-view="${o.id}">${o.customer?.name || 'Guest'}</button></td>
-        <td>${o.fulfillment === 'delivery' ? 'Delivery' : 'Pickup'}</td>
-        <td>${peso(o.totals?.total || 0)}</td>
+      <tr style="--i:${i}"${stale ? ' class="admin-order-row-stale"' : ''}>
+        <td><span class="admin-order-id">#${o.id.slice(0,6).toUpperCase()}</span></td>
+        <td class="admin-order-placed">${formatOrderTimestamp(o.createdAt)}${stale ? `<span class="admin-order-stale-flag" title="Pending for over ${ORDER_STALE_MINUTES} minutes">⚠ ${waited}m</span>` : ''}</td>
+        <td>
+          <button class="admin-customer-link" data-order-view="${o.id}">
+            <span class="admin-avatar">${customerInitials(name)}</span>
+            <span>${name}</span>
+          </button>
+        </td>
+        <td><span class="fulfillment-badge fulfillment-${isDelivery ? 'delivery' : 'pickup'}">${isDelivery ? 'Delivery' : 'Pickup'}</span></td>
+        <td class="admin-order-total">${peso(o.totals?.total || 0)}</td>
         <td>
           <select class="admin-status-select admin-status-${status}" data-order-status="${o.id}">
             ${options}
@@ -1032,6 +1347,117 @@ $(document).on('click', '#adminGraduatePricingBtn', async function(){
   }
 });
 
+/* ================= NORMALIZE DRINK SIZES ================= */
+/* Rewrites every Coffee/Non-Coffee/Tea product onto exactly three
+   selectable sizes — 16oz, 20oz, 24oz — so the size selector on the
+   product page always has something real to show, no matter what
+   state that drink's `sizes` array was previously in. See
+   CCProducts.normalizeDrinkSizes for how the new prices are derived
+   from whatever the drink was already charging. */
+$(document).on('click', '#adminNormalizeSizesBtn', async function(){
+  const $btn = $(this);
+  const $status = $('#adminNormalizeSizesStatus');
+  $btn.prop('disabled', true).text('Fixing...');
+  $status.text('Scanning Coffee/Non-Coffee/Tea drinks for their size options...');
+  try{
+    const updatedIds = await window.CCProducts.normalizeDrinkSizes(DRINK_CATEGORIES);
+    await loadProductsFromFirestore();
+    if(typeof renderMenuPage === 'function') renderMenuPage();
+    renderAdminProductsTable();
+    renderAdminOverviewStats();
+    $status.text(updatedIds.length
+      ? `Done — fixed sizes on ${updatedIds.length} drink${updatedIds.length === 1 ? '' : 's'}: ${updatedIds.join(', ')}.`
+      : 'Done — every drink already has 16oz/20oz/24oz sizes.');
+  } catch(err){
+    console.error(err);
+    $status.text('Something went wrong while fixing sizes. Check the console for details.');
+  } finally {
+    $btn.prop('disabled', false).text('Fix Drink Sizes (16/20/24oz)');
+  }
+});
+
+/* ================= FIX BROKEN PRODUCT IMAGES ================= */
+/* Repairs products still carrying a bare local filename in img/imgs
+   (leftover from before Cloudinary uploads existed, or from a seed
+   run before SEED_PRODUCTS was fixed to use a real placeholder) —
+   these never resolve on this host and show as a broken-image icon
+   everywhere that product appears. Swaps in the same "photo coming
+   soon" placeholder the seed data now uses; never touches a product
+   that already has a real Cloudinary URL. See
+   CCProducts.fixBrokenProductImages for exactly how a broken
+   reference is detected. Admins can still upload a real photo for
+   any of these afterward through the normal Edit form — this just
+   stops the broken-icon in the meantime. */
+$(document).on('click', '#adminFixImagesBtn', async function(){
+  const missingCount = PRODUCTS.filter(p =>
+    !p.img || (Array.isArray(p.imgs) && p.imgs.some(src => !src))
+  ).length;
+  const ok = await showConfirm({
+    title: 'Fix missing product images?',
+    message: missingCount
+      ? `${missingCount} product${missingCount === 1 ? '' : 's'} currently ${missingCount === 1 ? 'has' : 'have'} no image at all — this will give ${missingCount === 1 ? 'it' : 'them'} a "photo coming soon" placeholder. Existing images (including plain filenames like "croissant.jpg") are left alone — those aren't broken, just upload a real photo whenever you're ready. Continue?`
+      : 'No products currently have a missing image — running this won\'t change anything. Continue anyway?',
+    confirmText: 'Fix Images',
+    danger: false
+  });
+  if(!ok) return;
+
+  const $btn = $(this);
+  const $status = $('#adminFixImagesStatus');
+  $btn.prop('disabled', true).text('Fixing...');
+  $status.text('Scanning every product for missing image references...');
+  try{
+    const fixedIds = await window.CCProducts.fixBrokenProductImages();
+    await loadProductsFromFirestore();
+    if(typeof renderMenuPage === 'function') renderMenuPage();
+    if(typeof renderMerchPage === 'function') renderMerchPage();
+    buildComboProducts();
+    if(typeof renderFeaturedCombos === 'function') renderFeaturedCombos();
+    renderAdminProductsTable();
+    renderAdminOverviewStats();
+    $status.text(fixedIds.length
+      ? `Done — placeholder added for ${fixedIds.length} product${fixedIds.length === 1 ? '' : 's'} with no image: ${fixedIds.join(', ')}. Upload real photos for these any time from Edit.`
+      : 'Done — no products were missing an image.');
+  } catch(err){
+    console.error(err);
+    $status.text('Something went wrong while fixing images. Check the console for details.');
+  } finally {
+    $btn.prop('disabled', false).text('Fix Broken Product Images');
+  }
+});
+
+/* ================= FILL IN DRINK CUSTOMIZATIONS ================= */
+/* Fills in whatever Coffee/Non-Coffee/Tea drink is still missing its
+   option groups (Sweetness Level, Ice Level, and Milk Type when the
+   drink contains milk), calories, about text, or nutrition — without
+   touching any of those fields on a drink that already has them. See
+   CCProducts.fillMissingDrinkDetails for exactly what gets generated
+   and why nothing already-filled-in is ever overwritten. Everything
+   it adds shows up as normal, editable fields on that drink's Edit
+   form afterward (the Option Groups Builder, and the Calories/About/
+   Nutrition inputs) — this is just a starting point, not a lock-in. */
+$(document).on('click', '#adminFillDrinkDetailsBtn', async function(){
+  const $btn = $(this);
+  const $status = $('#adminFillDrinkDetailsStatus');
+  $btn.prop('disabled', true).text('Filling...');
+  $status.text('Scanning Coffee/Non-Coffee/Tea drinks for missing customization details...');
+  try{
+    const updatedIds = await window.CCProducts.fillMissingDrinkDetails(DRINK_CATEGORIES);
+    await loadProductsFromFirestore();
+    if(typeof renderMenuPage === 'function') renderMenuPage();
+    renderAdminProductsTable();
+    renderAdminOverviewStats();
+    $status.text(updatedIds.length
+      ? `Done — filled in details on ${updatedIds.length} drink${updatedIds.length === 1 ? '' : 's'}: ${updatedIds.join(', ')}. Open any of them with Edit to adjust.`
+      : 'Done — every drink already has its customization details filled in.');
+  } catch(err){
+    console.error(err);
+    $status.text('Something went wrong while filling in details. Check the console for details.');
+  } finally {
+    $btn.prop('disabled', false).text('Fill In Drink Customizations');
+  }
+});
+
 /* ================= SETTINGS ================= */
 /* Populates the delivery fee input from Firestore each time the
    dashboard is (re)rendered, e.g. on navigating to the Admin page. */
@@ -1071,6 +1497,238 @@ $(document).on('submit', '#adminSettingsForm', async function(e){
   } finally {
     $btn.prop('disabled', false).text('Save Delivery Fee');
   }
+});
+
+/* ================= LAUNCH POPUP ================= */
+/* PROMO_PICK_LIMIT now lives in shared-catalog.js (loaded before this
+   file) since resolvePromoProducts() there needs it too — don't
+   redeclare it here, that throws a SyntaxError that silently kills
+   this whole file (see the "no duplicate top-level names" rule). */
+
+/* Source of truth for the manual product picks — kept separate from
+   the checkbox DOM because the list gets re-rendered on every search
+   keystroke (only showing whatever matches), so a checked box that
+   scrolls out of view or gets filtered out would otherwise "forget"
+   its checked state. Selected ids persist here regardless of what
+   the search box currently shows. */
+let promoPickedIds = [];
+
+/* Reuses the same grouped-optgroup builder the product/category
+   dropdowns use elsewhere, so this stays in sync with custom
+   categories automatically. */
+function renderPromoCategorySelect(){
+  const $sel = $('#ppCategory');
+  const prev = $sel.val();
+  $sel.html(`<option value="">— None —</option>${buildCategoryOptgroupsHtml()}`);
+  if(prev) $sel.val(prev);
+}
+
+/* The "you've picked these" row, shown above the search box so the
+   admin never has to scroll/search to see what's currently selected —
+   each chip removes itself with one click. */
+function renderPromoSelectedChips(){
+  const $chips = $('#ppSelectedChips');
+  if(!promoPickedIds.length){ $chips.empty(); return; }
+  $chips.html(promoPickedIds.map(id => {
+    const p = PRODUCTS.find(x => x.id === id);
+    const name = p ? p.name : id;
+    return `
+      <span class="promo-pick-chip">
+        <span class="promo-pick-chip-name">${name}</span>
+        <button type="button" data-promo-unpick="${id}" aria-label="Remove ${name}">×</button>
+      </span>`;
+  }).join(''));
+}
+
+/* Filters by name as the admin types, instead of one long scrolling
+   list of the entire catalog — the whole point being it's now fast
+   to find one specific product instead of hunting through everything. */
+function renderPromoProductList(searchTerm){
+  const $list = $('#ppProductList');
+  if(!PRODUCTS.length){
+    $list.html('<p class="form-hint" style="margin:4px;">No products yet — add some from the Catalog tab first.</p>');
+    return;
+  }
+  const term = (searchTerm || '').trim().toLowerCase();
+  const filtered = term ? PRODUCTS.filter(p => p.name.toLowerCase().includes(term)) : PRODUCTS;
+  if(!filtered.length){
+    $list.html('<p class="form-hint" style="margin:4px;">No products match that search.</p>');
+    return;
+  }
+  $list.html(filtered.map(p => {
+    const thumb = (p.imgs && p.imgs[0]) || p.img || blankPlaceholder(p.id, p.cat);
+    const isPicked = promoPickedIds.includes(p.id);
+    const catMeta = (typeof CAT_LABELS !== 'undefined') ? CAT_LABELS[p.cat] : null;
+    const catLabel = (catMeta && catMeta.sub) || p.cat || '';
+    return `
+      <label class="promo-pick-row${isPicked ? ' is-picked' : ''}">
+        <input type="checkbox" value="${p.id}" data-promo-pick ${isPicked ? 'checked' : ''}>
+        <img class="promo-pick-row-thumb" src="${resolveImageSrc(thumb)}" alt="">
+        <span class="promo-pick-row-name" title="${p.name}">${p.name}</span>
+        <span class="promo-pick-row-cat">${catLabel}</span>
+        <span class="promo-pick-row-price">${priceLabel(p)}</span>
+      </label>`;
+  }).join(''));
+  updatePromoPickLimit();
+}
+
+/* Disables the remaining unchecked boxes once 3 are picked, rather
+   than only catching it as a submit-time error — immediate feedback
+   for a limit tied directly to how many cards the 3D stage lays out. */
+function updatePromoPickLimit(){
+  const count = promoPickedIds.length;
+  $('#ppPickCount').text(count ? `(${count}/${PROMO_PICK_LIMIT} selected)` : '');
+  $('[data-promo-pick]').each(function(){
+    const isChecked = promoPickedIds.includes(this.value);
+    $(this).closest('.promo-pick-row')
+      .toggleClass('disabled', !isChecked && count >= PROMO_PICK_LIMIT)
+      .toggleClass('is-picked', isChecked);
+  });
+}
+
+$(document).on('change', '[data-promo-pick]', function(){
+  const id = this.value;
+  if(this.checked){
+    if(promoPickedIds.length >= PROMO_PICK_LIMIT){ this.checked = false; return; }
+    promoPickedIds.push(id);
+  } else {
+    promoPickedIds = promoPickedIds.filter(x => x !== id);
+  }
+  renderPromoSelectedChips();
+  updatePromoPickLimit();
+});
+
+$(document).on('click', '[data-promo-unpick]', function(){
+  const id = $(this).attr('data-promo-unpick');
+  promoPickedIds = promoPickedIds.filter(x => x !== id);
+  // Uncheck the box too, in case it's currently visible under the
+  // active search term.
+  $(`[data-promo-pick][value="${id}"]`).prop('checked', false);
+  renderPromoSelectedChips();
+  updatePromoPickLimit();
+});
+
+$(document).on('input', '#ppProductSearch', function(){
+  renderPromoProductList($(this).val());
+});
+
+/* Enter picks the first visible match — lets a fast typist add a
+   product without reaching for the mouse. No-ops past the limit or
+   when nothing matches, same guard as the checkbox handler. */
+$(document).on('keydown', '#ppProductSearch', function(e){
+  if(e.key !== 'Enter') return;
+  e.preventDefault();
+  const $firstRow = $('#ppProductList .promo-pick-row:not(.disabled)').first();
+  const $checkbox = $firstRow.find('[data-promo-pick]');
+  if(!$checkbox.length || $checkbox.prop('checked')) return;
+  $checkbox.prop('checked', true).trigger('change');
+});
+
+async function loadAndRenderAdminPromo(){
+  renderPromoCategorySelect();
+  $('#ppProductSearch').val('');
+  try{
+    const settings = await window.CCSettings.fetchSettings();
+    const cfg = settings.promoPopup || window.CCSettings.DEFAULT_PROMO_POPUP;
+    $('#ppEnabled').prop('checked', cfg.enabled !== false);
+    $('#ppBadgeText').val(cfg.badgeText || 'New');
+    $('#ppEyebrow').val(cfg.eyebrow || 'Just Dropped');
+    $('#ppHeadline').val((cfg.headline || '').replace(/<br\s*\/?>/gi, '\n'));
+    $('#ppCopy').val(cfg.copy || '');
+    $('#ppCtaText').val(cfg.ctaText || 'Take a Look');
+    $('#ppDismissText').val(cfg.dismissText || 'Maybe later');
+    $('#ppCategory').val(cfg.category || '');
+    $('#ppSortMode').val(cfg.sortMode || 'featured');
+    promoPickedIds = (cfg.productIds || []).slice(0, PROMO_PICK_LIMIT);
+    renderPromoSelectedChips();
+    renderPromoProductList('');
+  } catch(err){
+    console.error('Could not load popup settings from Firestore.', err);
+    promoPickedIds = [];
+    renderPromoSelectedChips();
+    renderPromoProductList('');
+  }
+}
+
+$(document).on('submit', '#adminPromoForm', async function(e){
+  e.preventDefault();
+  const productIds = promoPickedIds.slice(0, PROMO_PICK_LIMIT);
+  const promoPopup = {
+    enabled: $('#ppEnabled').prop('checked'),
+    badgeText: $('#ppBadgeText').val().trim() || 'New',
+    eyebrow: $('#ppEyebrow').val().trim(),
+    headline: $('#ppHeadline').val().trim().replace(/\n/g, '<br>'),
+    copy: $('#ppCopy').val().trim(),
+    ctaText: $('#ppCtaText').val().trim() || 'Take a Look',
+    dismissText: $('#ppDismissText').val().trim() || 'Maybe later',
+    category: $('#ppCategory').val(),
+    sortMode: $('#ppSortMode').val(),
+    productIds
+  };
+
+  const $btn = $('#adminPromoSubmitBtn');
+  const $status = $('#adminPromoStatus');
+  $btn.prop('disabled', true).text('Saving...');
+  $status.text('');
+  try{
+    await window.CCSettings.updatePromoPopup(promoPopup);
+    // Update the in-memory config script.js reads when it decides
+    // whether/what to show, so a freshly-saved popup takes effect on
+    // this browser's very next fresh session without a redeploy.
+    PROMO_POPUP_CONFIG = { ...PROMO_POPUP_DEFAULTS, ...promoPopup };
+    $status.text('Saved — visitors will see this the next time the popup shows.');
+  } catch(err){
+    console.error(err);
+    $status.text('Something went wrong while saving. Check the console for details.');
+  } finally {
+    $btn.prop('disabled', false).text('Save Popup Settings');
+  }
+});
+
+/* Reads the form exactly as Save would, but skips Firestore entirely
+   and renders straight into the isolated #promoPreviewOverlay — so
+   the admin can check copy/layout/product picks before committing,
+   and so mid-edit previewing never marks the real popup "seen" for
+   this browser or saves anything half-finished. */
+function buildPromoPreviewConfig(){
+  return {
+    badgeText: $('#ppBadgeText').val().trim() || 'New',
+    eyebrow: $('#ppEyebrow').val().trim(),
+    headline: $('#ppHeadline').val().trim().replace(/\n/g, '<br>'),
+    copy: $('#ppCopy').val().trim(),
+    ctaText: $('#ppCtaText').val().trim() || 'Take a Look',
+    dismissText: $('#ppDismissText').val().trim() || 'Maybe later',
+    category: $('#ppCategory').val(),
+    sortMode: $('#ppSortMode').val(),
+    productIds: promoPickedIds.slice(0, PROMO_PICK_LIMIT)
+  };
+}
+
+function showPromoPopupPreview(){
+  const cfg = buildPromoPreviewConfig();
+  const products = resolvePromoProducts(cfg);
+  applyPromoPopupContent(cfg, products, {
+    badge: '#promoPreviewBadgeText', eyebrow: '#promoPreviewEyebrow', title: '#promoPreviewModalTitle',
+    copy: '#promoPreviewModalCopy', cta: '#promoPreviewModalCta', dismiss: '#promoPreviewModalDismiss',
+    stage: '#promoPreviewStage', cards: '#promoPreviewStageCards'
+  });
+  $('#promoPreviewOverlay').addClass('open');
+}
+
+function closePromoPopupPreview(){
+  $('#promoPreviewOverlay').removeClass('open');
+}
+
+$(document).on('click', '#adminPromoPreviewBtn', function(e){
+  e.preventDefault(); // lives inside the <form> — don't let it submit/save
+  showPromoPopupPreview();
+});
+$(document).on('click', '#promoPreviewModalClose, #promoPreviewModalDismiss, #promoPreviewModalCta', closePromoPopupPreview);
+$(document).on('click', '#promoPreviewOverlay', function(e){
+  if(e.target === this) closePromoPopupPreview();
+});
+$(document).on('keydown', function(e){
+  if(e.key === 'Escape' && $('#promoPreviewOverlay').hasClass('open')) closePromoPopupPreview();
 });
 
 /* ================= COMBOS ================= */
