@@ -1093,6 +1093,20 @@ function minutesWaiting(order){
   return Math.max(1, Math.round((Date.now() - ms) / 60000));
 }
 
+/* Turns a raw minute count into a compact, human-friendly duration —
+   "45m", "2h 15m", "3d 4h" — instead of a clunky five-digit number of
+   minutes for anything that's been sitting a while (old test/seed
+   orders especially). Caps at days; nobody needs "56196m" at a glance. */
+function formatWaitDuration(totalMinutes){
+  if(totalMinutes < 60) return `${totalMinutes}m`;
+  const totalHours = Math.floor(totalMinutes / 60);
+  const mins = totalMinutes % 60;
+  if(totalHours < 24) return mins ? `${totalHours}h ${mins}m` : `${totalHours}h`;
+  const days = Math.floor(totalHours / 24);
+  const hours = totalHours % 24;
+  return hours ? `${days}d ${hours}h` : `${days}d`;
+}
+
 function renderAdminOrdersTable(){
   if(!ADMIN_ORDERS.length){
     $('#adminOrdersBody').html(`<tr><td colspan="6" class="admin-empty-row">No orders yet.</td></tr>`);
@@ -1117,7 +1131,7 @@ function renderAdminOrdersTable(){
     return `
       <tr style="--i:${i}"${stale ? ' class="admin-order-row-stale"' : ''}>
         <td><span class="admin-order-id">#${o.id.slice(0,6).toUpperCase()}</span></td>
-        <td class="admin-order-placed">${formatOrderTimestamp(o.createdAt)}${stale ? `<span class="admin-order-stale-flag" title="Pending for over ${ORDER_STALE_MINUTES} minutes">⚠ ${waited}m</span>` : ''}</td>
+        <td class="admin-order-placed">${formatOrderTimestamp(o.createdAt)}${stale ? `<span class="admin-order-stale-flag" title="Pending for over ${ORDER_STALE_MINUTES} minutes">⚠ ${formatWaitDuration(waited)}</span>` : ''}</td>
         <td>
           <button class="admin-customer-link" data-order-view="${o.id}">
             <span class="admin-avatar">${customerInitials(name)}</span>
