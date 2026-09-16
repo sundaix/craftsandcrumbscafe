@@ -255,6 +255,8 @@ a{ color:inherit; }
 .admin-status-ready, .admin-status-outfordelivery{ background:var(--adm-accent-tint); color:var(--adm-accent-dark); }
 .admin-status-completed, .admin-status-delivered{ background:rgba(124,152,133,0.2); color:var(--adm-accent-dark); }
 .admin-status-cancelled{ background:var(--adm-danger-tint); color:var(--adm-danger-dark); }
+.admin-role-admin{ background:var(--adm-accent-tint); color:var(--adm-accent-dark); }
+.admin-role-customer{ background:rgba(124,147,166,0.16); color:#4f6b82; }
 .admin-status-select{
   font-family:'Poppins',sans-serif; font-size:12px; font-weight:600; padding:7px 10px; border-radius:var(--adm-radius-sm);
   border:1px solid var(--adm-border-strong); background:#fff; color:var(--adm-text); cursor:pointer;
