@@ -1,9 +1,3 @@
-/* =========================================================
-   Crafts & Crumbs — auth.js
-   Real Firebase Authentication (email/password).
-   Also maintains a "users" Firestore doc per account so we
-   can store a role (customer/admin) and basic profile info.
-========================================================= */
 import { auth, db } from "./firebase-config.js";
 import {
   createUserWithEmailAndPassword,
@@ -18,13 +12,9 @@ import {
   doc, setDoc, getDoc, updateDoc
 } from "https://www.gstatic.com/firebasejs/12.17.0/firebase-firestore-lite.js";
 
-/* Current signed-in user + role, kept in memory and exposed globally
-   so script.js (non-module-aware in places) can read it easily. */
 window.currentUser = null;   // Firebase Auth user object
 window.currentRole = null;   // 'admin' | 'customer'
 
-/* Wraps a promise so it rejects with a clear error instead of
-   hanging forever if a network/extension issue blocks the request. */
 function withTimeout(promise, ms, message){
   return Promise.race([
     promise,
@@ -39,26 +29,6 @@ function generateOtp(){
   return String(Math.floor(100000 + Math.random() * 900000)); // 6 digits, never leading-zero-only
 }
 
-/* Writes a freshly generated code onto the user's own Firestore doc
-   and emails it via EmailJS (window.sendOtpEmail, from
-   email-notifications.js). Used both right after registration and
-   whenever the person taps "Resend code".
-
-   Uses setDoc(..., {merge:true}) rather than updateDoc: updateDoc
-   requires the document to already exist and throws "No document to
-   update" if it doesn't (e.g. the original profile write during
-   registration was blocked/timed out and never landed). merge:true
-   creates the doc if it's missing and otherwise only touches the
-   fields listed here — existing fields like role are left untouched.
-   extraFields lets resendOtp backfill the rest of the profile (email,
-   name, role, createdAt) in that recovery case.
-
-   Returns { emailSent } instead of just resolving/rejecting on the
-   email step: the Firestore write is the part that must succeed (a
-   failure there is a real error and rejects normally), but a failed
-   *email* send shouldn't look identical to a failed *code generation*
-   — callers use emailSent to tell the person the honest outcome
-   instead of always claiming "check your inbox." */
 async function issueOtp(uid, email, fullName, extraFields){
   const otpCode = generateOtp();
   await setDoc(doc(db, "users", uid), {
@@ -242,10 +212,10 @@ async function fetchUserRecord(uid){
   try{
     const snap = await withTimeout(getDoc(doc(db, "users", uid)), 8000, 'timeout');
     const data = snap.exists() ? snap.data() : {};
-    return { role: data.role || "customer", otpVerified: !!data.otpVerified };
+    return { role: data.role || "customer", otpVerified: !!data.otpVerified, disabled: !!data.disabled };
   } catch(err){
     console.warn('Could not fetch user record (connection blocked or slow). Defaulting to customer/unverified.', err);
-    return { role: "customer", otpVerified: false };
+    return { role: "customer", otpVerified: false, disabled: false };
   }
 }
 
@@ -262,9 +232,27 @@ onAuthStateChanged(auth, async (user) => {
     detail: { user, role: null }
   }));
 
-  const { role, otpVerified } = user && !user.isAnonymous
+  const { role, otpVerified, disabled } = user && !user.isAnonymous
     ? await fetchUserRecord(user.uid)
-    : { role: null, otpVerified: false };
+    : { role: null, otpVerified: false, disabled: false };
+
+  if(disabled){
+    // Blocked via the admin dashboard's Accounts tab (see
+    // accounts-service.js). Firestore rules already stop a blocked
+    // account from writing anything, but that alone would leave them
+    // sitting signed in with a half-working UI — sign them straight
+    // back out instead. The `blocked: true` detail lets script.js
+    // (customer site) show a "your account has been blocked" message
+    // if it wants to; this file only handles the sign-out itself.
+    window.currentUser = null;
+    window.currentRole = null;
+    await signOut(auth);
+    document.dispatchEvent(new CustomEvent("authRoleReady", {
+      detail: { user: null, role: null, otpVerified: false, blocked: true }
+    }));
+    return;
+  }
+
   window.currentRole = role;
   // Fires once the role/verification status is known — used for
   // admin-only UI (the admin nav icon) and the unverified nudge,
