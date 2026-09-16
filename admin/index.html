@@ -61,6 +61,10 @@
       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M6 2h9l5 5v13a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2z"/><path d="M14 2v5h5"/><path d="M8 13h8M8 17h5"/></svg>
       Orders
     </button>
+    <button class="admin-tab" data-admin-tab="accounts">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H7a4 4 0 0 0-4 4v2"/><circle cx="10" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+      Accounts
+    </button>
     <button class="admin-tab" data-admin-tab="settings">
       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .34 1.87l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.7 1.7 0 0 0-1.87-.34 1.7 1.7 0 0 0-1.04 1.56V21a2 2 0 0 1-4 0v-.09A1.7 1.7 0 0 0 9 19.4a1.7 1.7 0 0 0-1.87.34l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.7 1.7 0 0 0 4.6 15a1.7 1.7 0 0 0-1.56-1.04H3a2 2 0 0 1 0-4h.09A1.7 1.7 0 0 0 4.6 9a1.7 1.7 0 0 0-.34-1.87l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.7 1.7 0 0 0 9 4.6a1.7 1.7 0 0 0 1.04-1.56V3a2 2 0 0 1 4 0v.09A1.7 1.7 0 0 0 15 4.6a1.7 1.7 0 0 0 1.87-.34l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.7 1.7 0 0 0 19.4 9a1.7 1.7 0 0 0 1.56 1.04H21a2 2 0 0 1 0 4h-.09A1.7 1.7 0 0 0 19.4 15z"/></svg>
       Settings
@@ -489,6 +493,41 @@
         </div>
       </div>
 
+      <!-- accounts -->
+      <div class="admin-panel" data-admin-panel="accounts">
+        <div class="admin-panel-head">
+          <h3>Accounts</h3>
+          <div class="admin-panel-head-controls">
+            <div class="admin-search-wrap">
+              <svg class="admin-search-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><circle cx="11" cy="11" r="7"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
+              <input type="text" id="adminAccountSearch" class="admin-search-input" placeholder="Search email, name, uid...">
+            </div>
+            <button class="btn btn-outline btn-sm" id="adminRefreshAccounts">Refresh</button>
+          </div>
+        </div>
+
+        <p class="form-hint" style="margin:0 0 12px;">Role changes, disabling, and deleting accounts all run through a secured Cloud Function — never directly from this browser tab.</p>
+
+        <div class="admin-table-wrap">
+          <table class="admin-table">
+            <thead>
+              <tr>
+                <th>Account</th>
+                <th>Name</th>
+                <th>Role</th>
+                <th>Status</th>
+                <th>Joined</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody id="adminAccountsBody"></tbody>
+          </table>
+        </div>
+        <div style="text-align:center; margin-top:14px;">
+          <button type="button" class="btn btn-outline btn-sm" id="adminAccountsLoadMore" style="display:none;">Load More</button>
+        </div>
+      </div>
+
       <!-- settings -->
       <div class="admin-panel" data-admin-panel="settings">
         <div class="form-card">
@@ -680,6 +719,7 @@
 <script type="module" src="../categories-service.js"></script>
 <script type="module" src="../combos-service.js"></script>
 <script type="module" src="../orders-service.js"></script>
+<script type="module" src="../accounts-service.js"></script>
 
 <script src="../image-upload-service.js"></script>
 <script src="../shared-catalog.js"></script>
