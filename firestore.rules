@@ -60,20 +60,37 @@ service cloud.firestore {
         get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin';
     }
 
-    // Users can read/edit only their own profile doc. Registration always
-    // writes role:'customer' (see auth.js), so create requires that too —
-    // nobody can self-register as admin. Update lets an owner touch any of
-    // their own fields (name, phone, the OTP fields auth.js writes during
-    // verification, etc.) EXCEPT role, unless they're already an admin —
-    // otherwise a signed-in customer could just updateDoc their own role
-    // to 'admin' from devtools and unlock the admin dashboard.
+    // Users can read/edit only their own profile doc — PLUS, for the
+    // admin dashboard's Accounts tab: an admin can read any profile,
+    // list the whole collection, and update another account's role or
+    // disabled flag specifically (never any other field on someone
+    // else's profile, and never their OWN role/disabled — that's what
+    // stops an admin from silently self-blocking or self-demoting by
+    // accident, or a compromised admin session escalating itself
+    // further). Registration always writes role:'customer' (see
+    // auth.js), so create requires that too — nobody can self-register
+    // as admin.
     match /users/{userId} {
-      allow read: if request.auth != null && request.auth.uid == userId;
+      allow get: if request.auth != null && (
+        request.auth.uid == userId ||
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin'
+      );
+      allow list: if request.auth != null &&
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin';
       allow create: if request.auth != null && request.auth.uid == userId &&
         request.resource.data.role == 'customer';
-      allow update: if request.auth != null && request.auth.uid == userId && (
-        !('role' in request.resource.data.diff(resource.data).affectedKeys()) ||
-        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin'
+      allow update: if request.auth != null && (
+        // Owner editing their own profile — unchanged from before: any
+        // field except role, unless they're already an admin.
+        (request.auth.uid == userId && (
+          !('role' in request.resource.data.diff(resource.data).affectedKeys()) ||
+          get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin'
+        )) ||
+        // An admin managing a DIFFERENT account's role/disabled flag —
+        // this is the new part the Accounts tab needs.
+        (request.auth.uid != userId &&
+          get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin' &&
+          request.resource.data.diff(resource.data).affectedKeys().hasOnly(['role', 'disabled']))
       );
     }
 
