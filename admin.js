@@ -3,15 +3,8 @@ let adminEditingId = null; // set while editing an existing product, null when a
 let adminProductSearch = '';    // current text in the Products search box
 let adminCategoryFilter = 'All'; // current selection in the category filter dropdown
 
-/* Mirrors the product being added/edited's optionGroups field while the
-   form is open — see renderOptionGroupsBuilder() below for the shape
-   and the whole "OPTION GROUPS BUILDER" section for how it's edited. */
 let apOptionGroups = [];
 
-/* FOOD_CATEGORIES, DRINK_CATEGORIES, SIZED_CATEGORIES, and
-   DEFAULT_SIZES_BY_CATEGORY moved to shared-catalog.js (loaded before
-   this file) — script.js reads them too, so they can't be declared
-   here as well. */
 const DRINK_SIZES = ['16oz', '20oz', '24oz'];
 
 const ADMIN_CATEGORY_BADGE_CLASS = {
@@ -213,6 +206,7 @@ function renderAdminDashboard(){
   loadAndRenderAdminCombos();
   loadAndRenderAdminSettings();
   loadAndRenderAdminPromo();
+  loadAndRenderAdminAccounts();
 }
 
 /* ================= TABS ================= */
@@ -1743,6 +1737,186 @@ $(document).on('click', '#promoPreviewOverlay', function(e){
 });
 $(document).on('keydown', function(e){
   if(e.key === 'Escape' && $('#promoPreviewOverlay').hasClass('open')) closePromoPopupPreview();
+});
+
+/* ================= ACCOUNTS ================= */
+/* Free-tier version: everything here reads/writes the users/{uid}
+   Firestore docs directly through window.CCAccounts (accounts-
+   service.js) — no Cloud Functions, so this only needs the free
+   Spark plan. Two real limitations that come with that:
+   1. This only shows accounts that HAVE a users/{uid} profile doc
+      (created at signup — see auth.js) — there's no way to list raw
+      Firebase Auth accounts from the client at all, on any plan.
+   2. "Disable" here is an app-enforced flag (disabled:true on the
+      profile doc), not a true Firebase Auth-level disable. Firestore
+      rules block a disabled account from writing anything, and
+      auth.js's onAuthStateChanged is expected to sign them straight
+      back out if their own profile comes back disabled (see the
+      snippet given alongside this file) — but the underlying Auth
+      login technically still exists. There's no delete here at all:
+      permanently removing a login is Admin-SDK-only, i.e. the paid
+      Cloud Functions route, not this one.
+   Every role/disabled write is still gated by firestore.rules
+   requiring the caller to be an existing admin AND not acting on
+   their own account — see the rules snippet given alongside this
+   file. The last-admin check below is a client-side courtesy check
+   only (not a hard security guarantee) since counting documents
+   inside a security rule is expensive/awkward — acceptable for a
+   small internal team, not something to rely on at scale. */
+
+/* auth.js already exposes the signed-in user globally — no guessing
+   needed here, just read it. Used to grey out "act on myself"
+   buttons; the real enforcement is in firestore.rules regardless. */
+function currentAdminUid(){
+  return (window.currentUser && window.currentUser.uid) || null;
+}
+
+let ADMIN_ACCOUNTS = [];
+let adminAccountSearch = ''; // current text in the Accounts search box
+
+async function loadAndRenderAdminAccounts(){
+  $('#adminAccountsBody').html(`<tr><td colspan="5" class="admin-empty-row">Loading accounts...</td></tr>`);
+  try{
+    ADMIN_ACCOUNTS = await window.CCAccounts.listUserProfiles();
+  } catch(err){
+    console.error(err);
+    $('#adminAccountsBody').html(`<tr><td colspan="5" class="admin-empty-row">${err.message || 'Could not load accounts.'}</td></tr>`);
+    return;
+  }
+  renderAdminAccountsTable();
+}
+
+function renderAdminAccountsTable(){
+  const q = adminAccountSearch.trim().toLowerCase();
+  const filtered = !q ? ADMIN_ACCOUNTS : ADMIN_ACCOUNTS.filter(u =>
+    (u.email || '').toLowerCase().includes(q) ||
+    (u.name || '').toLowerCase().includes(q) ||
+    u.uid.toLowerCase().includes(q)
+  );
+
+  if(!ADMIN_ACCOUNTS.length){
+    $('#adminAccountsBody').html(`<tr><td colspan="5" class="admin-empty-row">No accounts found.</td></tr>`);
+    return;
+  }
+  if(!filtered.length){
+    $('#adminAccountsBody').html(`<tr><td colspan="5" class="admin-empty-row">No accounts match your search.</td></tr>`);
+    return;
+  }
+
+  const rows = filtered.map(u => {
+    const name = u.name || 'No name';
+    const isSelf = u.uid === currentAdminUid();
+    return `
+      <tr>
+        <td>
+          <div class="admin-customer-link" style="cursor:default;">
+            <span class="admin-avatar">${customerInitials(u.email || name)}</span>
+            <span>${u.email || '(no email)'}</span>
+          </div>
+        </td>
+        <td>${name}</td>
+        <td>
+          <select class="admin-status-select admin-role-${u.role === 'admin' ? 'admin' : 'customer'}" data-account-role="${u.uid}" ${isSelf ? 'disabled title="You can\'t change your own role"' : ''}>
+            <option value="customer" ${u.role !== 'admin' ? 'selected' : ''}>Customer</option>
+            <option value="admin" ${u.role === 'admin' ? 'selected' : ''}>Admin</option>
+          </select>
+        </td>
+        <td>${u.disabled
+          ? '<span class="admin-stock-badge admin-stock-out">Blocked</span>'
+          : '<span class="admin-stock-badge admin-stock-ok">Active</span>'}</td>
+        <td class="admin-td-actions">
+          <button class="admin-icon-btn" data-account-toggle-disabled="${u.uid}" data-disabled="${!!u.disabled}" ${isSelf ? 'disabled title="You can\'t block your own account"' : ''} title="${u.disabled ? 'Unblock' : 'Block'} account" aria-label="${u.disabled ? 'Unblock' : 'Block'} ${u.email || name}">
+            ${u.disabled
+              ? '<svg width="15" height="15" viewBox="0 0 24 24" fill="none"><path d="M9 12l2 2 4-4" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/><circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="1.6"/></svg>'
+              : '<svg width="15" height="15" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="1.6"/><path d="M9 9l6 6M15 9l-6 6" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>'}
+          </button>
+        </td>
+      </tr>
+    `;
+  }).join('');
+  $('#adminAccountsBody').html(rows);
+}
+
+$(document).on('input', '#adminAccountSearch', function(){
+  adminAccountSearch = $(this).val();
+  renderAdminAccountsTable();
+});
+
+$(document).on('click', '#adminRefreshAccounts', loadAndRenderAdminAccounts);
+
+/* Role changes are privileged and easy to fat-finger, so this
+   confirms before writing — same pattern as deleting a product, just
+   with higher stakes. Also does a soft "don't leave zero admins"
+   check: advisory only (see the section comment above), not a hard
+   guarantee. */
+$(document).on('change', '[data-account-role]', async function(){
+  const $select = $(this);
+  const uid = $select.data('account-role');
+  const newRole = $select.val();
+  const user = ADMIN_ACCOUNTS.find(u => u.uid === uid);
+  const prevRole = user ? user.role : 'customer';
+  if(newRole === prevRole) return;
+
+  if(newRole === 'customer' && prevRole === 'admin'){
+    const adminCount = ADMIN_ACCOUNTS.filter(u => u.role === 'admin').length;
+    if(adminCount <= 1){
+      showToast("Can't remove the last remaining admin account.", 'warning');
+      $select.val(prevRole);
+      return;
+    }
+  }
+
+  const ok = await showConfirm({
+    title: newRole === 'admin' ? 'Grant admin access?' : 'Remove admin access?',
+    message: newRole === 'admin'
+      ? `${user?.email || uid} will be able to sign in to this dashboard and manage products, orders, and other accounts.`
+      : `${user?.email || uid} will lose access to this admin dashboard.`,
+    confirmText: newRole === 'admin' ? 'Grant Admin' : 'Remove Admin',
+    danger: newRole !== 'admin'
+  });
+  if(!ok){ $select.val(prevRole); return; }
+
+  $select.prop('disabled', true);
+  try{
+    await window.CCAccounts.setUserRole(uid, newRole);
+    if(user) user.role = newRole;
+    showToast(`${user?.email || uid} is now ${newRole === 'admin' ? 'an admin' : 'a customer'}.`, 'success');
+    renderAdminAccountsTable();
+  } catch(err){
+    console.error(err);
+    showToast(err.message || "Could not change that account's role.", 'error');
+    $select.val(prevRole).prop('disabled', false);
+  }
+});
+
+$(document).on('click', '[data-account-toggle-disabled]', async function(){
+  const $btn = $(this);
+  const uid = $btn.data('account-toggle-disabled');
+  const currentlyDisabled = $btn.attr('data-disabled') === 'true';
+  const user = ADMIN_ACCOUNTS.find(u => u.uid === uid);
+  const nextDisabled = !currentlyDisabled;
+
+  const ok = await showConfirm({
+    title: nextDisabled ? 'Block this account?' : 'Unblock this account?',
+    message: nextDisabled
+      ? `${user?.email || uid} won't be able to use the site until you unblock them. This is enforced by Firestore rules and by the app signing them out — see the setup notes for the auth.js snippet this depends on.`
+      : `${user?.email || uid} will be able to use the site again.`,
+    confirmText: nextDisabled ? 'Block' : 'Unblock',
+    danger: nextDisabled
+  });
+  if(!ok) return;
+
+  $btn.prop('disabled', true);
+  try{
+    await window.CCAccounts.setUserDisabled(uid, nextDisabled);
+    if(user) user.disabled = nextDisabled;
+    showToast(`${user?.email || uid} is now ${nextDisabled ? 'blocked' : 'active'}.`, 'success');
+    renderAdminAccountsTable();
+  } catch(err){
+    console.error(err);
+    showToast(err.message || 'Could not update that account.', 'error');
+    $btn.prop('disabled', false);
+  }
 });
 
 /* ================= COMBOS ================= */
