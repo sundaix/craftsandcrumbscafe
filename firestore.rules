@@ -48,15 +48,52 @@ service cloud.firestore {
         get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin';
     }
 
-    // Any signed-in customer can create their own order; only the
-    // order's owner or an admin can read it back.
+    // Any signed-in customer can create their own order; the order's
+    // owner, an admin, or (for delivery orders) a rider can read it back.
+    // Rider read access: an unclaimed delivery order that's ready for
+    // pickup (so riders can see what's available to claim), or any
+    // order already assigned to that rider (riderId == their own uid),
+    // regardless of status (so completed deliveries still show in
+    // their own history).
     match /orders/{orderId} {
       allow create: if request.auth != null;
       allow read: if request.auth != null && (
         resource.data.userId == request.auth.uid ||
-        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin'
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin' ||
+        (
+          get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'rider' &&
+          (
+            resource.data.riderId == request.auth.uid ||
+            (resource.data.fulfillment == 'delivery' && resource.data.status == 'ready' && resource.data.riderId == null)
+          )
+        )
       );
-      allow update, delete: if request.auth != null &&
+      allow update: if request.auth != null && (
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin' ||
+        // A rider claiming an unassigned, ready delivery order — may
+        // only set riderId to their own uid, nothing else.
+        (
+          get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'rider' &&
+          resource.data.riderId == null &&
+          resource.data.fulfillment == 'delivery' &&
+          resource.data.status == 'ready' &&
+          request.resource.data.diff(resource.data).affectedKeys().hasOnly(['riderId']) &&
+          request.resource.data.riderId == request.auth.uid
+        ) ||
+        // A rider updating status/proof on an order already assigned
+        // to them — may only touch status and deliveryProof, and may
+        // only move it to out_for_delivery, completed, or back to
+        // ready (e.g. if they have to hand it off), never touch riderId
+        // itself once assigned (admin reassignment is a separate case
+        // below) or any customer/pricing field.
+        (
+          get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'rider' &&
+          resource.data.riderId == request.auth.uid &&
+          request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'deliveryProof']) &&
+          request.resource.data.status in ['ready', 'out_for_delivery', 'completed']
+        )
+      );
+      allow delete: if request.auth != null &&
         get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin';
     }
 
@@ -92,6 +129,17 @@ service cloud.firestore {
           get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin' &&
           request.resource.data.diff(resource.data).affectedKeys().hasOnly(['role', 'disabled']))
       );
+    }
+
+    // A customer's saved delivery addresses, stored as a subcollection
+    // under their own user doc (users/{uid}/addresses/{addressId}).
+    // NOTE: this was missing entirely — Firestore security rules don't
+    // cascade from a parent match block to its subcollections, so
+    // /users/{userId} above never covered this, and every read/write
+    // from addresses-service.js was silently hitting the default-deny.
+    // Same owner-only shape as carts/wishlists below.
+    match /users/{userId}/addresses/{addressId} {
+      allow read, write: if request.auth != null && request.auth.uid == userId;
     }
 
     // A customer's cart doc id is their own uid — only they can read
