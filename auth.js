@@ -208,21 +208,63 @@ export async function ensureSignedIn(){
 /* Fetches the role + verification status stored in Firestore for the
    given uid, in a single read. Falls back to sensible defaults
    (rather than hanging) if the read is blocked or times out. */
+/* Caches the last successfully-fetched record per uid. Falling back
+   to "customer" on any failure (the old behavior) was actively wrong
+   for admin/rider accounts: onAuthStateChanged re-fetches the role on
+   every token refresh, not just real sign-ins, and those refreshes
+   are far more likely to time out right after a tab has sat
+   backgrounded/inactive for a while (throttled timers, a slow
+   reconnect). A defaulted-to-customer role there was read by
+   admin-boot.js/rider-boot.js as "this account lost its access" and
+   force-signed the person out — i.e. the "logged out after
+   inactivity" bug. Falling back to the last known-good record instead
+   means a transient fetch failure just quietly keeps the status quo. */
+const lastKnownUserRecord = new Map(); // uid -> { role, otpVerified, disabled }
+
+function sleep(ms){ return new Promise(res => setTimeout(res, ms)); }
+
+async function fetchUserRecordOnce(uid, timeoutMs){
+  const snap = await withTimeout(getDoc(doc(db, "users", uid)), timeoutMs, 'timeout');
+  const data = snap.exists() ? snap.data() : {};
+  return { role: data.role || "customer", otpVerified: !!data.otpVerified, disabled: !!data.disabled };
+}
+
 async function fetchUserRecord(uid){
-  try{
-    const snap = await withTimeout(getDoc(doc(db, "users", uid)), 8000, 'timeout');
-    const data = snap.exists() ? snap.data() : {};
-    return { role: data.role || "customer", otpVerified: !!data.otpVerified, disabled: !!data.disabled };
-  } catch(err){
-    console.warn('Could not fetch user record (connection blocked or slow). Defaulting to customer/unverified.', err);
-    return { role: "customer", otpVerified: false, disabled: false };
+  // Two retries with backoff before giving up — a slow reconnect
+  // right after a backgrounded tab wakes up is exactly the case this
+  // is meant to ride out, and it usually resolves within a few
+  // seconds if given the chance.
+  const attempts = [12000, 6000, 6000];
+  let lastErr = null;
+  for(let i = 0; i < attempts.length; i++){
+    try{
+      const record = await fetchUserRecordOnce(uid, attempts[i]);
+      lastKnownUserRecord.set(uid, record);
+      return record;
+    } catch(err){
+      lastErr = err;
+      if(i < attempts.length - 1) await sleep(1500 * (i + 1));
+    }
   }
+  console.warn('Could not fetch user record after retries (connection blocked or slow).', lastErr);
+  const cached = lastKnownUserRecord.get(uid);
+  if(cached){
+    console.warn('Falling back to the last known role for this account instead of defaulting to customer.');
+    return cached;
+  }
+  // No cache to fall back on (e.g. very first load on a fresh
+  // session) — this is the one case where we genuinely don't know
+  // the role yet. Signal that distinctly so the boot scripts can
+  // avoid treating "unknown" the same as "not admin/rider".
+  return { role: "customer", otpVerified: false, disabled: false, unknown: true };
 }
 
 /* Fires on every login/logout/page load. Keeps window.currentUser
    and window.currentRole in sync, then tells script.js to
    re-render anything that depends on auth state (nav, admin link). */
 onAuthStateChanged(auth, async (user) => {
+  // TEMP DIAGNOSTIC — remove once the inactivity-logout bug is found.
+  console.warn('[auth] onAuthStateChanged fired. user:', user ? user.uid : null, 'at', new Date().toISOString());
   window.currentUser = user;
   window.currentRole = null;
   // Fires immediately — everything that only needs the Auth user
@@ -232,11 +274,13 @@ onAuthStateChanged(auth, async (user) => {
     detail: { user, role: null }
   }));
 
-  const { role, otpVerified, disabled } = user && !user.isAnonymous
+  const { role, otpVerified, disabled, unknown } = user && !user.isAnonymous
     ? await fetchUserRecord(user.uid)
-    : { role: null, otpVerified: false, disabled: false };
+    : { role: null, otpVerified: false, disabled: false, unknown: false };
 
   if(disabled){
+    // TEMP DIAGNOSTIC
+    console.warn('[auth] Signing out — disabled:true on user record.', { role, otpVerified, unknown });
     // Blocked via the admin dashboard's Accounts tab (see
     // accounts-service.js). Firestore rules already stop a blocked
     // account from writing anything, but that alone would leave them
@@ -254,11 +298,17 @@ onAuthStateChanged(auth, async (user) => {
   }
 
   window.currentRole = role;
+  // TEMP DIAGNOSTIC
+  console.warn('[auth] role resolved:', role, 'unknown:', !!unknown, 'otpVerified:', otpVerified);
   // Fires once the role/verification status is known — used for
   // admin-only UI (the admin nav icon) and the unverified nudge,
-  // both of which can safely lag behind by a moment.
+  // both of which can safely lag behind by a moment. `unknown: true`
+  // means fetchUserRecord couldn't confirm the role at all (first
+  // load, no cache to fall back on, and every retry failed) — the
+  // admin/rider boot scripts treat that as "try again," not "this
+  // account lost access," since we genuinely don't know either way.
   document.dispatchEvent(new CustomEvent("authRoleReady", {
-    detail: { user, role, otpVerified }
+    detail: { user, role, otpVerified, unknown: !!unknown }
   }));
 });
 
