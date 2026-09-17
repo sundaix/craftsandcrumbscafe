@@ -2,7 +2,6 @@ let ADMIN_ORDERS = [];
 let adminEditingId = null; // set while editing an existing product, null when adding a new one
 let adminProductSearch = '';    // current text in the Products search box
 let adminCategoryFilter = 'All'; // current selection in the category filter dropdown
-
 let apOptionGroups = [];
 
 const DRINK_SIZES = ['16oz', '20oz', '24oz'];
@@ -286,7 +285,232 @@ function renderAdminOverviewStats(){
   $('#statPendingOrders').text(ADMIN_ORDERS.length ? pending : '—');
   const revenue = ADMIN_ORDERS.reduce((sum, o) => sum + (o.totals?.total || 0), 0);
   $('#statTotalRevenue').text(ADMIN_ORDERS.length ? peso(revenue) : '—');
+  renderOverviewAnalytics();
 }
+
+/* ================= REPORTS & ANALYTICS (Overview tab) =================
+   Everything here works off ADMIN_ORDERS, already fetched for the Orders
+   tab — no separate query. All computation happens client-side; there's
+   no reporting backend, just filtering/aggregating the same order list
+   the rest of the dashboard already has in memory. */
+
+const OVERVIEW_RANGES = [
+  { key: 'today', label: 'Today' },
+  { key: '7d', label: '7 Days' },
+  { key: '30d', label: '30 Days' },
+  { key: 'all', label: 'All Time' }
+];
+let adminOverviewRange = '30d';
+let overviewCharts = { revenue: null, status: null };
+
+function renderOverviewRangeFilters(){
+  const html = OVERVIEW_RANGES.map(r =>
+    `<button type="button" class="range-filter-pill${r.key === adminOverviewRange ? ' active' : ''}" data-overview-range="${r.key}">${r.label}</button>`
+  ).join('');
+  $('#overviewRangeFilters').html(html);
+}
+
+$(document).on('click', '[data-overview-range]', function(){
+  adminOverviewRange = $(this).data('overview-range');
+  renderOverviewRangeFilters();
+  renderOverviewAnalytics();
+});
+
+function getOrdersInRange(){
+  if(adminOverviewRange === 'all') return ADMIN_ORDERS;
+  const now = Date.now();
+  const cutoffs = { today: 24 * 60 * 60 * 1000, '7d': 7 * 24 * 60 * 60 * 1000, '30d': 30 * 24 * 60 * 60 * 1000 };
+  const windowMs = cutoffs[adminOverviewRange] || cutoffs['30d'];
+  return ADMIN_ORDERS.filter(o => {
+    const ms = orderTimestampMs(o.createdAt);
+    return ms !== null && (now - ms) <= windowMs;
+  });
+}
+
+/* Groups a range's orders into day buckets for the revenue trend chart.
+   Caps at 30 buckets (oldest-first) so "All Time" on a mature dataset
+   doesn't render an unreadable wall of bars. */
+function buildRevenueTrendData(orders){
+  const byDay = {};
+  orders.forEach(o => {
+    const ms = orderTimestampMs(o.createdAt);
+    if(ms === null) return;
+    const dayKey = new Date(ms).toISOString().slice(0, 10);
+    byDay[dayKey] = (byDay[dayKey] || 0) + (o.totals?.total || 0);
+  });
+  const days = Object.keys(byDay).sort();
+  const trimmed = days.length > 30 ? days.slice(days.length - 30) : days;
+  return {
+    labels: trimmed.map(d => new Date(d).toLocaleDateString('en-PH', { month: 'short', day: 'numeric' })),
+    values: trimmed.map(d => byDay[d])
+  };
+}
+
+function buildStatusBreakdownData(orders){
+  const counts = {};
+  ORDER_STATUSES.forEach(s => { counts[s] = 0; });
+  orders.forEach(o => {
+    const s = o.status || 'pending';
+    if(counts[s] !== undefined) counts[s]++;
+  });
+  return counts;
+}
+
+/* Top 5 products by revenue within the range — aggregated by item
+   NAME (order line items don't reliably carry a productId, but every
+   line item is guaranteed to have the name it was sold under). */
+function buildTopProducts(orders){
+  const byName = {};
+  orders.forEach(o => {
+    (o.items || []).forEach(it => {
+      if(!it.name) return;
+      if(!byName[it.name]) byName[it.name] = { units: 0, revenue: 0 };
+      byName[it.name].units += (it.qty || 0);
+      byName[it.name].revenue += (it.price || 0) * (it.qty || 0);
+    });
+  });
+  return Object.entries(byName)
+    .map(([name, v]) => ({ name, ...v }))
+    .sort((a, b) => b.revenue - a.revenue)
+    .slice(0, 5);
+}
+
+const RANGE_LABELS = { today: 'today', '7d': 'last 7 days', '30d': 'last 30 days', all: 'all time' };
+
+function renderOverviewAnalytics(){
+  renderOverviewRangeFilters();
+  const orders = getOrdersInRange();
+
+  // Range stat cards
+  const revenue = orders.reduce((sum, o) => sum + (o.totals?.total || 0), 0);
+  $('#statRangeRevenue').text(orders.length ? peso(revenue) : '—');
+  $('#statRangeOrders').text(orders.length || '—');
+  $('#statRangeAOV').text(orders.length ? peso(revenue / orders.length) : '—');
+
+  renderRevenueTrendChart(orders);
+  renderOrderStatusChart(orders);
+  renderTopProductsTable(orders);
+  renderRecentOrdersTable();
+}
+
+function renderRevenueTrendChart(orders){
+  const $card = $('#chartRevenueTrend').closest('.admin-chart-card');
+  const data = buildRevenueTrendData(orders);
+  $card.toggleClass('is-empty', data.labels.length === 0);
+  if(!data.labels.length) return;
+
+  const ctx = document.getElementById('chartRevenueTrend').getContext('2d');
+  if(overviewCharts.revenue) overviewCharts.revenue.destroy();
+  overviewCharts.revenue = new Chart(ctx, {
+    type: 'bar',
+    data: {
+      labels: data.labels,
+      datasets: [{
+        data: data.values,
+        backgroundColor: '#C99A3A',
+        borderRadius: 4,
+        maxBarThickness: 28
+      }]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: { legend: { display: false }, tooltip: { callbacks: { label: (c) => peso(c.parsed.y) } } },
+      scales: {
+        y: { beginAtZero: true, ticks: { callback: (v) => peso(v), font: { size: 11 } }, grid: { color: 'rgba(0,0,0,0.06)' } },
+        x: { ticks: { font: { size: 11 } }, grid: { display: false } }
+      }
+    }
+  });
+}
+
+function renderOrderStatusChart(orders){
+  const $card = $('#chartOrderStatus').closest('.admin-chart-card');
+  const counts = buildStatusBreakdownData(orders);
+  const total = Object.values(counts).reduce((a, b) => a + b, 0);
+  $card.toggleClass('is-empty', total === 0);
+  if(!total) return;
+
+  // Same palette family as the status pills/badges elsewhere in the dashboard.
+  const statusColors = { pending: '#C99A3A', preparing: '#7C93A6', ready: '#B08659', completed: '#7C9885', cancelled: '#B65C5C' };
+  const labels = ORDER_STATUSES.map(formatStatusLabel);
+  const values = ORDER_STATUSES.map(s => counts[s]);
+
+  const ctx = document.getElementById('chartOrderStatus').getContext('2d');
+  if(overviewCharts.status) overviewCharts.status.destroy();
+  overviewCharts.status = new Chart(ctx, {
+    type: 'doughnut',
+    data: {
+      labels,
+      datasets: [{ data: values, backgroundColor: ORDER_STATUSES.map(s => statusColors[s]), borderWidth: 2, borderColor: '#fff' }]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false, cutout: '62%',
+      plugins: { legend: { position: 'bottom', labels: { boxWidth: 10, font: { size: 11 }, padding: 10 } } }
+    }
+  });
+}
+
+function renderTopProductsTable(orders){
+  const top = buildTopProducts(orders);
+  if(!top.length){
+    $('#topProductsBody').html(`<tr><td colspan="3" class="admin-empty-row">No sales in this range yet.</td></tr>`);
+    return;
+  }
+  $('#topProductsBody').html(top.map(p => `
+    <tr>
+      <td>${p.name}</td>
+      <td>${p.units}</td>
+      <td>${peso(p.revenue)}</td>
+    </tr>
+  `).join(''));
+}
+
+/* Deliberately NOT range-filtered — "recent" always means the most
+   recent orders overall, regardless of which analytics range is
+   selected, so the admin always has a quick pulse of what just
+   happened. */
+function renderRecentOrdersTable(){
+  const recent = [...ADMIN_ORDERS]
+    .sort((a, b) => (orderTimestampMs(b.createdAt) || 0) - (orderTimestampMs(a.createdAt) || 0))
+    .slice(0, 8);
+  if(!recent.length){
+    $('#recentOrdersBody').html(`<tr><td colspan="4" class="admin-empty-row">No orders yet.</td></tr>`);
+    return;
+  }
+  $('#recentOrdersBody').html(recent.map(o => {
+    const status = o.status || 'pending';
+    return `
+      <tr>
+        <td><span class="admin-order-id">#${o.id.slice(0,6).toUpperCase()}</span></td>
+        <td>${o.customer?.name || 'Guest'}</td>
+        <td>${peso(o.totals?.total || 0)}</td>
+        <td><span class="admin-status-select admin-status-${status}" style="display:inline-block; cursor:default;">${status}</span></td>
+      </tr>
+    `;
+  }).join(''));
+}
+
+/* ================= QUICK ACTIONS ================= */
+$(document).on('click', '[data-nav-to-orders]', function(){
+  $('.admin-tab[data-admin-tab="orders"]').trigger('click');
+});
+$(document).on('click', '[data-nav-to-pending-orders]', function(){
+  $('.admin-tab[data-admin-tab="orders"]').trigger('click');
+  adminOrderStatusFilter = 'pending';
+  renderOrderStatusFilters();
+  renderAdminOrdersTable();
+});
+$(document).on('click', '[data-nav-to-accounts]', function(){
+  $('.admin-tab[data-admin-tab="accounts"]').trigger('click');
+});
+$(document).on('click', '[data-nav-to-settings]', function(){
+  $('.admin-tab[data-admin-tab="settings"]').trigger('click');
+});
+$(document).on('click', '[data-nav-to-add-product]', function(){
+  $('.admin-tab[data-admin-tab="products"]').trigger('click');
+  resetAdminProductForm();
+  goToProductsSubtab('add-product');
+});
 
 function renderAdminProductsTable(){
   const q = adminProductSearch.trim().toLowerCase();
@@ -929,13 +1153,32 @@ $(document).on('submit', '#adminAddProductForm', async function(e){
 });
 
 /* ================= ORDERS TABLE ================= */
-async function loadAndRenderAdminOrders(){
-  $('#adminOrdersBody').html(`<tr><td colspan="6" class="admin-empty-row">Loading orders...</td></tr>`);
+let ADMIN_RIDERS = []; // cached rider accounts, for the assign-rider dropdown on delivery orders
+
+/* Riders are just accounts with role:'rider' — reuses the same
+   admin-only listUserProfiles() the Accounts tab already calls,
+   rather than standing up a separate Firestore query, since an admin
+   session always has permission to list every user profile anyway. */
+async function loadRidersCache(){
   try{
-    ADMIN_ORDERS = await window.CCOrders.fetchAllOrders();
+    const profiles = await window.CCAccounts.listUserProfiles();
+    ADMIN_RIDERS = profiles.filter(u => u.role === 'rider' && !u.disabled);
+  } catch(err){
+    console.error('Could not load riders for assignment.', err);
+    ADMIN_RIDERS = [];
+  }
+}
+
+async function loadAndRenderAdminOrders(){
+  $('#adminOrdersBody').html(`<tr><td colspan="7" class="admin-empty-row">Loading orders...</td></tr>`);
+  try{
+    [ADMIN_ORDERS] = await Promise.all([
+      window.CCOrders.fetchAllOrders(),
+      loadRidersCache()
+    ]);
   } catch(err){
     console.error(err);
-    $('#adminOrdersBody').html(`<tr><td colspan="6" class="admin-empty-row">Could not load orders. Please try refreshing.</td></tr>`);
+    $('#adminOrdersBody').html(`<tr><td colspan="7" class="admin-empty-row">Could not load orders. Please try refreshing.</td></tr>`);
     return;
   }
   renderOrderStatusFilters();
@@ -943,7 +1186,13 @@ async function loadAndRenderAdminOrders(){
   renderAdminOverviewStats();
 }
 
-const ORDER_STATUSES = ['pending', 'preparing', 'ready', 'completed', 'cancelled'];
+const ORDER_STATUSES = ['pending', 'preparing', 'ready', 'out_for_delivery', 'completed', 'cancelled'];
+
+/* Human-friendly label for a status value — needed now that
+   'out_for_delivery' shouldn't render as "Out_for_delivery". */
+function formatStatusLabel(status){
+  return status.split('_').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
+}
 
 /* How long a pending order can sit before the table flags it —
    pending is the one status where every extra minute is a customer
@@ -1027,7 +1276,7 @@ function renderOrderStatusFilters(){
 
   const filters = ['all', ...ORDER_STATUSES];
   const html = filters.map(f => {
-    const label = f === 'all' ? 'All' : f.charAt(0).toUpperCase() + f.slice(1);
+    const label = f === 'all' ? 'All' : formatStatusLabel(f);
     return `
       <button type="button" class="order-filter-pill${f === adminOrderStatusFilter ? ' active' : ''}" data-order-filter="${f}">
         ${label} <span class="order-filter-count">${counts[f] || 0}</span>
@@ -1103,7 +1352,7 @@ function formatWaitDuration(totalMinutes){
 
 function renderAdminOrdersTable(){
   if(!ADMIN_ORDERS.length){
-    $('#adminOrdersBody').html(`<tr><td colspan="6" class="admin-empty-row">No orders yet.</td></tr>`);
+    $('#adminOrdersBody').html(`<tr><td colspan="7" class="admin-empty-row">No orders yet.</td></tr>`);
     return;
   }
   const filtered = sortOrders(getFilteredOrders());
@@ -1112,16 +1361,29 @@ function renderAdminOrdersTable(){
     const msg = adminOrderSearch
       ? 'No orders match your search.'
       : `No ${adminOrderStatusFilter} orders.`;
-    $('#adminOrdersBody').html(`<tr><td colspan="6" class="admin-empty-row">${msg}</td></tr>`);
+    $('#adminOrdersBody').html(`<tr><td colspan="7" class="admin-empty-row">${msg}</td></tr>`);
     return;
   }
   const rows = filtered.map((o, i) => {
     const status = o.status || 'pending';
-    const options = ORDER_STATUSES.map(s => `<option value="${s}" ${s === status ? 'selected' : ''}>${s.charAt(0).toUpperCase() + s.slice(1)}</option>`).join('');
+    const options = ORDER_STATUSES.map(s => `<option value="${s}" ${s === status ? 'selected' : ''}>${formatStatusLabel(s)}</option>`).join('');
     const stale = isOrderStale(o);
     const name = o.customer?.name || 'Guest';
     const isDelivery = o.fulfillment === 'delivery';
     const waited = stale ? minutesWaiting(o) : null;
+    const riderCell = !isDelivery
+      ? '<span class="admin-order-rider-na">—</span>'
+      : (() => {
+          const riderOptions = ['<option value="">Unassigned</option>']
+            .concat(ADMIN_RIDERS.map(r => `<option value="${r.uid}" ${o.riderId === r.uid ? 'selected' : ''}>${r.name || r.email || r.uid.slice(0,6)}</option>`));
+          // If the order is assigned to a rider who's since gone missing
+          // from ADMIN_RIDERS (disabled, or role changed back), still show
+          // them selected so the table doesn't silently look unassigned.
+          if(o.riderId && !ADMIN_RIDERS.some(r => r.uid === o.riderId)){
+            riderOptions.push(`<option value="${o.riderId}" selected>${o.riderId.slice(0,6)} (inactive)</option>`);
+          }
+          return `<select class="admin-status-select" data-order-rider="${o.id}">${riderOptions.join('')}</select>`;
+        })();
     return `
       <tr style="--i:${i}"${stale ? ' class="admin-order-row-stale"' : ''}>
         <td><span class="admin-order-id">#${o.id.slice(0,6).toUpperCase()}</span></td>
@@ -1139,6 +1401,7 @@ function renderAdminOrdersTable(){
             ${options}
           </select>
         </td>
+        <td>${riderCell}</td>
       </tr>
     `;
   }).join('');
@@ -1146,6 +1409,28 @@ function renderAdminOrdersTable(){
 }
 
 $(document).on('click', '#adminRefreshOrders', loadAndRenderAdminOrders);
+
+$(document).on('change', '[data-order-rider]', async function(){
+  const orderId = $(this).data('order-rider');
+  const riderId = $(this).val() || null;
+  const rider = riderId ? ADMIN_RIDERS.find(r => r.uid === riderId) : null;
+  const $select = $(this);
+  $select.prop('disabled', true);
+  try{
+    await window.CCOrders.assignRider(orderId, riderId);
+    const order = ADMIN_ORDERS.find(o => o.id === orderId);
+    if(order) order.riderId = riderId;
+    showToast(riderId
+      ? `Order #${orderId.slice(0,6).toUpperCase()} assigned to ${rider?.name || rider?.email || 'rider'}.`
+      : `Order #${orderId.slice(0,6).toUpperCase()} unassigned.`, 'success');
+  } catch(err){
+    console.error(err);
+    showToast('Could not assign that rider. Please try again.', 'error');
+    renderAdminOrdersTable();
+  } finally {
+    $select.prop('disabled', false);
+  }
+});
 
 /* ================= ORDER DETAIL MODAL ================= */
 /* Clicking a customer's name opens the full order — every field
@@ -1816,8 +2101,9 @@ function renderAdminAccountsTable(){
         </td>
         <td>${name}</td>
         <td>
-          <select class="admin-status-select admin-role-${u.role === 'admin' ? 'admin' : 'customer'}" data-account-role="${u.uid}" ${isSelf ? 'disabled title="You can\'t change your own role"' : ''}>
-            <option value="customer" ${u.role !== 'admin' ? 'selected' : ''}>Customer</option>
+          <select class="admin-status-select admin-role-${u.role === 'admin' ? 'admin' : (u.role === 'rider' ? 'rider' : 'customer')}" data-account-role="${u.uid}" ${isSelf ? 'disabled title="You can\'t change your own role"' : ''}>
+            <option value="customer" ${u.role !== 'admin' && u.role !== 'rider' ? 'selected' : ''}>Customer</option>
+            <option value="rider" ${u.role === 'rider' ? 'selected' : ''}>Rider</option>
             <option value="admin" ${u.role === 'admin' ? 'selected' : ''}>Admin</option>
           </select>
         </td>
@@ -1849,6 +2135,8 @@ $(document).on('click', '#adminRefreshAccounts', loadAndRenderAdminAccounts);
    with higher stakes. Also does a soft "don't leave zero admins"
    check: advisory only (see the section comment above), not a hard
    guarantee. */
+const ROLE_LABELS = { admin: 'an admin', rider: 'a rider', customer: 'a customer' };
+
 $(document).on('change', '[data-account-role]', async function(){
   const $select = $(this);
   const uid = $select.data('account-role');
@@ -1857,7 +2145,7 @@ $(document).on('change', '[data-account-role]', async function(){
   const prevRole = user ? user.role : 'customer';
   if(newRole === prevRole) return;
 
-  if(newRole === 'customer' && prevRole === 'admin'){
+  if(newRole !== 'admin' && prevRole === 'admin'){
     const adminCount = ADMIN_ACCOUNTS.filter(u => u.role === 'admin').length;
     if(adminCount <= 1){
       showToast("Can't remove the last remaining admin account.", 'warning');
@@ -1867,12 +2155,14 @@ $(document).on('change', '[data-account-role]', async function(){
   }
 
   const ok = await showConfirm({
-    title: newRole === 'admin' ? 'Grant admin access?' : 'Remove admin access?',
+    title: newRole === 'admin' ? 'Grant admin access?' : `Make this account ${ROLE_LABELS[newRole]}?`,
     message: newRole === 'admin'
       ? `${user?.email || uid} will be able to sign in to this dashboard and manage products, orders, and other accounts.`
-      : `${user?.email || uid} will lose access to this admin dashboard.`,
-    confirmText: newRole === 'admin' ? 'Grant Admin' : 'Remove Admin',
-    danger: newRole !== 'admin'
+      : newRole === 'rider'
+        ? `${user?.email || uid} will be able to sign in to the rider app and claim/deliver orders.${prevRole === 'admin' ? ' They will lose admin access.' : ''}`
+        : `${user?.email || uid} will lose ${prevRole === 'admin' ? 'admin dashboard' : 'rider app'} access.`,
+    confirmText: newRole === 'admin' ? 'Grant Admin' : (newRole === 'rider' ? 'Make Rider' : 'Make Customer'),
+    danger: prevRole === 'admin' && newRole !== 'admin'
   });
   if(!ok){ $select.val(prevRole); return; }
 
@@ -1880,7 +2170,7 @@ $(document).on('change', '[data-account-role]', async function(){
   try{
     await window.CCAccounts.setUserRole(uid, newRole);
     if(user) user.role = newRole;
-    showToast(`${user?.email || uid} is now ${newRole === 'admin' ? 'an admin' : 'a customer'}.`, 'success');
+    showToast(`${user?.email || uid} is now ${ROLE_LABELS[newRole] || newRole}.`, 'success');
     renderAdminAccountsTable();
   } catch(err){
     console.error(err);
