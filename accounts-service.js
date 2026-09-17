@@ -4,9 +4,6 @@ import {
 } from "https://www.gstatic.com/firebasejs/12.17.0/firebase-firestore-lite.js";
 
 function friendlyError(err) {
-  // Firestore permission errors (e.g. a rules rejection) show up as
-  // err.code === 'permission-denied' with a generic message — give a
-  // clearer one for the most likely cause here.
   if (err && err.code === 'permission-denied') {
     return "You don't have permission to do that — either you're not signed in as an admin, or you're trying to change your own account.";
   }
@@ -22,7 +19,7 @@ async function listUserProfiles() {
         uid: d.id,
         email: data.email || null,
         name: data.fullName || null,
-        role: data.role === 'admin' ? 'admin' : 'customer',
+        role: data.role === 'admin' || data.role === 'rider' ? data.role : 'customer',
         disabled: !!data.disabled
       };
     });
