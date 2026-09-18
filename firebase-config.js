@@ -1,5 +1,5 @@
 import { initializeApp } from "https://www.gstatic.com/firebasejs/12.17.0/firebase-app.js";
-import { getAuth } from "https://www.gstatic.com/firebasejs/12.17.0/firebase-auth.js";
+import { getAuth, setPersistence, browserLocalPersistence, browserSessionPersistence } from "https://www.gstatic.com/firebasejs/12.17.0/firebase-auth.js";
 import { getFirestore } from "https://www.gstatic.com/firebasejs/12.17.0/firebase-firestore-lite.js";
 
 const firebaseConfig = {
@@ -14,3 +14,10 @@ const firebaseConfig = {
 export const app = initializeApp(firebaseConfig);
 export const auth = getAuth(app);
 export const db = getFirestore(app);
+
+const isStaffApp = location.pathname.startsWith('/admin') || location.pathname.startsWith('/rider');
+try{
+  await setPersistence(auth, isStaffApp ? browserSessionPersistence : browserLocalPersistence);
+} catch(err){
+  console.error('Could not set auth persistence — sessions may not survive a reload.', err);
+}
