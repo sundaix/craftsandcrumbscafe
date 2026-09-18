@@ -1559,6 +1559,11 @@ function productCard(p, i=0){
 }
 
 /* Eight curated best sellers — mixes drinks + bakes for visual variety in the carousel */
+// null until settings load; renderBestSellers() falls back to
+// BEST_SELLER_IDS/static defaults until then, so the page never
+// shows an empty section while waiting on Firestore.
+let POPULAR_SECTION_CONFIG = null;
+
 const BEST_SELLER_IDS = ['p13','p14','p15','p16','p17','p23','p28','p53'];
 
 /* On-brand fallback artwork for any product image that fails to load
@@ -1592,8 +1597,19 @@ function bestSellerCard(p, i){
   `;
 }
 
+function applyPopularSectionText(cfg){
+  const c = cfg || {};
+  $('#bestSellersEyebrow').text(c.eyebrow || 'Loved by regulars');
+  $('#bestSellersHeading').text(c.heading || 'Popular this week');
+  $('#bestSellersSubtext').text(c.subtext || 'Favorites our regulars keep reordering.');
+  $('#bestSellersViewMenuBtn').text(c.buttonText || 'View full menu');
+}
+
 function renderBestSellers(){
-  const best = BEST_SELLER_IDS.map(findProduct).filter(Boolean);
+  const cfg = POPULAR_SECTION_CONFIG;
+  const ids = (cfg && cfg.productIds && cfg.productIds.length) ? cfg.productIds : BEST_SELLER_IDS;
+  const best = ids.map(findProduct).filter(Boolean);
+  applyPopularSectionText(cfg);
   initBestSellerCarousel(best);
 }
 
@@ -1664,10 +1680,21 @@ function initBestSellerCarousel(items){
     resumeTimer = setTimeout(()=>{ paused = false; ramp = 0; }, ms);
   }
 
+  // Thin progress bar under the track — reads position through one
+  // full set (0 to setWidth) as a 0–1 fraction. Purely decorative
+  // feedback; the carousel works fine if this element isn't present.
+  const progressFillEl = document.getElementById('bsProgressFill');
+  function updateProgress(){
+    if(!progressFillEl || setWidth <= 0) return;
+    const pct = Math.max(0, Math.min(1, wrapEl.scrollLeft / setWidth));
+    progressFillEl.style.transform = `scaleX(${pct})`;
+  }
+
   // Seamless infinite loop: once we scroll past one full set, silently
   // snap back by exactly that width (imperceptible since the two halves
   // are identical copies).
   wrapEl.addEventListener('scroll', function(){
+    updateProgress();
     if(correcting || setWidth <= 0) return;
     if(wrapEl.scrollLeft >= setWidth){
       correcting = true;
@@ -1679,6 +1706,7 @@ function initBestSellerCarousel(items){
       correcting = false;
     }
   });
+  updateProgress();
 
   // Drift the scroll position steadily to the right, which visually
   // carries the cards to the left — same direction reading flows.
@@ -2651,57 +2679,88 @@ $(document).on('click', '[data-fulfillment]', function(){
   renderCheckoutSummary();
 });
 
-/* Placeholder QR images per e-wallet/bank — swap these three files
-   (qr-gcash.png, qr-gotyme.png, qr-maribank.png) for the real bank
-   QR codes whenever they're ready; nothing else needs to change. */
-const PAYMENT_QR = {
-  gcash: { src: 'qr-gcash.png', label: 'GCash' },
-  gotyme: { src: 'qr-gotyme.png', label: 'GoTyme Bank' },
-  maribank: { src: 'qr-maribank.png', label: 'Maribank' }
-};
-
-// clean label text for a pay-opt, ignoring the "Tap to show QR" hint
+// clean label text for a pay-opt
 function payOptLabel($opt){
-  const $clone = $opt.clone();
-  $clone.find('.pay-qr-hint').remove();
-  return $clone.text().trim().replace(/\s+/g, ' ');
+  return $opt.text().trim().replace(/\s+/g, ' ');
 }
 
 $(document).on('click', '.pay-opt', function(){
   $('.pay-opt').removeClass('active');
   $(this).addClass('active');
   $(this).find('input').prop('checked', true);
-
-  const qrKey = $(this).data('qr');
-  const info = qrKey && PAYMENT_QR[qrKey];
-  if(info){
-    $('#qrDisplayImg').attr('src', info.src).attr('alt', `${info.label} QR code`);
-    $('#qrDisplayLabel').text(`Scan this QR using your ${info.label} app to pay.`);
-    $('#qrDisplay').addClass('active');
-  } else {
-    $('#qrDisplay').removeClass('active');
-  }
 });
 
-/* Tapping the small checkout QR opens it centered and enlarged —
-   big enough for a phone camera to scan comfortably, capped so it
-   never takes over the whole screen. */
-function openQrModal(){
-  $('#qrModalImg').attr('src', $('#qrDisplayImg').attr('src')).attr('alt', $('#qrDisplayImg').attr('alt'));
-  $('#qrModalLabel').text($('#qrDisplayLabel').text());
-  $('#qrOverlay').addClass('open');
+/* Simulated PayMongo checkout — no real account, no real API calls.
+   Mirrors PayMongo's actual test-mode flow (per their docs: a
+   redirect to a PayMongo-hosted test page where you click Authorize
+   or Fail) closely enough to stand in for it in a school project.
+   Returns a Promise<boolean> — true if the simulated payment was
+   authorized, false if failed or the modal was dismissed. */
+function openPaymongoCheckout(methodKey, methodLabel, amount){
+  return new Promise((resolve) => {
+    $('#paymongoMethodLabel').text(methodLabel);
+
+    function renderConfirm(){
+      $('#paymongoModalBody').html(`
+        <div class="pm-amount">${peso(amount)}</div>
+        <p class="pm-desc">This is a simulated PayMongo checkout for testing — no real account or money is involved. Choose an outcome below.</p>
+        <button type="button" class="btn btn-primary btn-full" id="pmAuthorizeBtn">Authorize Test Payment</button>
+        <button type="button" class="btn btn-outline btn-full" id="pmFailBtn">Simulate Failed Payment</button>
+      `);
+    }
+    function renderProcessing(){
+      $('#paymongoModalBody').html(`
+        <div class="pm-processing">
+          <div class="pm-spinner"></div>
+          <p>Processing payment…</p>
+        </div>
+      `);
+    }
+    function renderSuccess(){
+      $('#paymongoModalBody').html(`
+        <div class="pm-result pm-result-success">
+          <svg width="40" height="40" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="1.5"/><path d="M7.5 12.5l3 3 6-6.5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          <h3>Payment successful</h3>
+          <p>Test payment of ${peso(amount)} via ${methodLabel} was authorized.</p>
+          <button type="button" class="btn btn-primary btn-full" id="pmContinueBtn">Continue</button>
+        </div>
+      `);
+    }
+    function renderFailed(){
+      $('#paymongoModalBody').html(`
+        <div class="pm-result pm-result-failed">
+          <svg width="40" height="40" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="1.5"/><path d="M9 9l6 6M15 9l-6 6" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
+          <h3>Payment failed</h3>
+          <p>The test payment was declined. No charge was made.</p>
+          <button type="button" class="btn btn-primary btn-full" id="pmRetryBtn">Try Again</button>
+          <button type="button" class="btn btn-outline btn-full" id="pmCancelBtn">Cancel</button>
+        </div>
+      `);
+    }
+
+    function finish(result){
+      $('#paymongoOverlay').removeClass('open');
+      $(document).off('click.pmflow');
+      resolve(result);
+    }
+
+    $(document).off('click.pmflow').on('click.pmflow', '#pmAuthorizeBtn', function(){
+      renderProcessing();
+      setTimeout(renderSuccess, 1200);
+    }).on('click.pmflow', '#pmFailBtn', function(){
+      renderProcessing();
+      setTimeout(renderFailed, 900);
+    }).on('click.pmflow', '#pmContinueBtn', function(){ finish(true); })
+      .on('click.pmflow', '#pmRetryBtn', function(){ renderConfirm(); })
+      .on('click.pmflow', '#pmCancelBtn', function(){ finish(false); })
+      .on('click.pmflow', '#paymongoModalClose', function(){ finish(false); })
+      .on('click.pmflow', '#paymongoOverlay', function(e){ if(e.target.id === 'paymongoOverlay') finish(false); })
+      .on('keydown.pmflow', function(e){ if(e.key === 'Escape' && $('#paymongoOverlay').hasClass('open')) finish(false); });
+
+    renderConfirm();
+    $('#paymongoOverlay').addClass('open');
+  });
 }
-function closeQrModal(){
-  $('#qrOverlay').removeClass('open');
-}
-$(document).on('click', '#qrDisplayImg', openQrModal);
-$(document).on('click', '#qrModalClose', closeQrModal);
-$(document).on('click', '#qrOverlay', function(e){
-  if(e.target.id === 'qrOverlay') closeQrModal();
-});
-$(document).on('keydown', function(e){
-  if(e.key === 'Escape' && $('#qrOverlay').hasClass('open')) closeQrModal();
-});
 
 function renderCheckoutSummary(){
   const subtotal = cartTotal();
@@ -2761,16 +2820,31 @@ async function placeOrder(){
       options: c.options || null, optionsSummary: c.optionsSummary || null
     };
   });
-  const paymentMethod = payOptLabel($('.pay-opt.active'));
+  const $activePayOpt = $('.pay-opt.active');
+  const paymentGateway = $activePayOpt.data('gateway'); // 'gcash' | 'maya' | 'card', undefined for COD
+  let paymentMethod = payOptLabel($activePayOpt);
 
   const $btn = $('#placeOrderBtn');
   $btn.prop('disabled', true).text('Placing order...');
+
+  if(paymentGateway){
+    const authorized = await openPaymongoCheckout(paymentGateway, paymentMethod, total);
+    if(!authorized){
+      $btn.prop('disabled', false).text('Place Order');
+      showToast('Payment was not completed — your order was not placed.', 'warning');
+      return;
+    }
+    paymentMethod = `${paymentMethod} (via PayMongo, Test Mode)`;
+  }
 
   try{
     await window.CCAuth.ensureSignedIn();
     const orderPayload = {
       items, totals: { subtotal, deliveryFee, total },
-      fulfillment, customer, paymentMethod
+      fulfillment, customer, paymentMethod,
+      paymentStatus: paymentGateway ? 'paid' : 'unpaid',
+      paymentProvider: paymentGateway || null,
+      paymentTestMode: paymentGateway ? true : null
     };
     const orderId = await window.CCOrders.createOrder(orderPayload);
     $('#confOrderNum').text('#CC-' + orderId.slice(0,6).toUpperCase());
@@ -3412,6 +3486,7 @@ async function loadSettingsFromFirestore(){
     const settings = await window.CCSettings.fetchSettings();
     DELIVERY_FEE = settings.deliveryFee;
     PROMO_POPUP_CONFIG = settings.promoPopup;
+    POPULAR_SECTION_CONFIG = settings.popularSection;
   } catch(err){
     console.error('Could not load settings from Firestore, using the default delivery fee instead.', err);
   }
@@ -3444,6 +3519,7 @@ $(async function(){
   if(cachedSettings){
     DELIVERY_FEE = cachedSettings.deliveryFee;
     if(cachedSettings.promoPopup) PROMO_POPUP_CONFIG = cachedSettings.promoPopup;
+    if(cachedSettings.popularSection) POPULAR_SECTION_CONFIG = cachedSettings.popularSection;
   }
   const cachedCategories = window.CCCategories.getCachedCategories();
   if(cachedCategories && cachedCategories.length){
