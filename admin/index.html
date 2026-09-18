@@ -691,6 +691,31 @@
             <p id="adminPromoStatus" style="margin-top:10px;"></p>
           </form>
         </div>
+
+        <div class="form-card">
+          <h3>Homepage — Popular This Week</h3>
+          <p>The carousel on the homepage showing off a curated set of products. Pick which ones appear and customize the heading text — leave products unpicked to keep using the built-in default picks.</p>
+          <form id="adminBsForm">
+            <div class="form-row">
+              <div class="form-group"><label for="bsEyebrow">Eyebrow label</label><input type="text" id="bsEyebrow" placeholder="Loved by regulars" maxlength="40"></div>
+              <div class="form-group"><label for="bsHeading">Heading</label><input type="text" id="bsHeading" placeholder="Popular this week" maxlength="60"></div>
+            </div>
+            <div class="form-row">
+              <div class="form-group"><label for="bsSubtext">Subtext</label><input type="text" id="bsSubtext" placeholder="Favorites our regulars keep reordering." maxlength="100"></div>
+              <div class="form-group"><label for="bsButtonText">Button text</label><input type="text" id="bsButtonText" placeholder="View full menu" maxlength="30"></div>
+            </div>
+
+            <div class="form-group">
+              <label>Products to feature <span id="bsPickCount" style="font-weight:400; color:var(--text-faint);"></span></label>
+              <div class="promo-pick-selected" id="bsSelectedChips"></div>
+              <input type="text" id="bsProductSearch" class="admin-search-input promo-pick-search" placeholder="Search products to add...">
+              <div class="promo-pick-list" id="bsProductList"></div>
+            </div>
+
+            <button type="submit" class="btn btn-primary" id="adminBsSubmitBtn">Save Homepage Section</button>
+            <p id="adminBsStatus" style="margin-top:10px;"></p>
+          </form>
+        </div>
       </div>
 
     </div>
