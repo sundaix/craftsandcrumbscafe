@@ -25,6 +25,33 @@
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
 
 <link rel="stylesheet" href="style.css">
+<style>
+/* Simulated PayMongo checkout modal — reuses the site's existing
+   .legal-overlay/.legal-modal pattern for the shell, styled here. */
+.paymongo-modal{ max-width:400px; text-align:center; }
+.paymongo-banner{
+  background:#fef3c7; color:#92400e; font-size:11.5px; font-weight:700;
+  letter-spacing:0.03em; text-transform:uppercase; border-radius:8px;
+  padding:7px 12px; margin-bottom:14px; display:inline-block;
+}
+.pm-amount{ font-family:'Lora',serif; font-size:32px; font-weight:700; margin:6px 0 10px; }
+.pm-desc{ font-size:13.5px; color:#6b6257; line-height:1.5; margin-bottom:18px; }
+.pm-powered-by{ font-size:12px; color:#8a8073; margin:10px 0 0; line-height:1.5; }
+#paymongoModalBody .btn{ margin-bottom:10px; }
+#paymongoModalBody .btn:last-child{ margin-bottom:0; }
+.pm-processing{ padding:22px 0; }
+.pm-spinner{
+  width:34px; height:34px; margin:0 auto 16px; border-radius:50%;
+  border:3px solid #e6ddd0; border-top-color:#0a5f55; animation:pmspin 0.8s linear infinite;
+}
+@keyframes pmspin{ to{ transform:rotate(360deg); } }
+.pm-result{ padding:6px 0; }
+.pm-result svg{ margin-bottom:10px; }
+.pm-result-success svg{ color:#1f8a5f; }
+.pm-result-failed svg{ color:#c0392b; }
+.pm-result h3{ font-family:'Lora',serif; font-size:19px; margin:0 0 8px; }
+.pm-result p{ font-size:13.5px; color:#6b6257; line-height:1.5; margin-bottom:18px; }
+</style>
 </head>
 <body>
 <div class="scroll-progress" id="scrollProgress"></div>
@@ -144,11 +171,11 @@
     <div class="container">
       <div class="section-head">
         <div>
-          <div class="eyebrow">Loved by regulars</div>
-          <h2>Popular this week</h2>
-          <p>Favorites our regulars keep reordering.</p>
+          <div class="eyebrow" id="bestSellersEyebrow">Loved by regulars</div>
+          <h2 id="bestSellersHeading">Popular this week</h2>
+          <p id="bestSellersSubtext">Favorites our regulars keep reordering.</p>
         </div>
-        <button class="btn btn-outline" data-nav="menu">View full menu</button>
+        <button class="btn btn-outline" data-nav="menu" id="bestSellersViewMenuBtn">View full menu</button>
       </div>
 
       <div class="carousel" id="bestSellerCarousel">
@@ -162,6 +189,7 @@
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M9 6l6 6-6 6" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>
         </button>
       </div>
+      <div class="carousel-progress"><div class="carousel-progress-fill" id="bsProgressFill"></div></div>
     </div>
   </section>
 
@@ -343,15 +371,10 @@
       <div class="form-card">
         <h3>Payment method</h3>
         <label class="pay-opt active"><input type="radio" name="pay" checked> <svg class="opt-icon" width="16" height="16" viewBox="0 0 24 24" fill="none"><rect x="2.5" y="6.5" width="19" height="11" rx="1.6" stroke="currentColor" stroke-width="1.5"/><circle cx="12" cy="12" r="2.6" stroke="currentColor" stroke-width="1.5"/><path d="M5.5 9v0M18.5 15v0" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg> Cash on Delivery / Pickup</label>
-        <label class="pay-opt"><input type="radio" name="pay"> <svg class="opt-icon" width="16" height="16" viewBox="0 0 24 24" fill="none"><rect x="2.5" y="5.5" width="19" height="13" rx="2" stroke="currentColor" stroke-width="1.5"/><path d="M2.5 9.8h19" stroke="currentColor" stroke-width="1.5"/><path d="M5.5 14.5h4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg> Credit / Debit Card</label>
-        <label class="pay-opt" data-qr="gcash"><input type="radio" name="pay"> <svg class="opt-icon" width="16" height="16" viewBox="0 0 24 24" fill="none"><rect x="7" y="2.5" width="10" height="19" rx="2" stroke="currentColor" stroke-width="1.5"/><path d="M10.5 18.3h3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg> GCash <span class="pay-qr-hint">Tap to show QR</span></label>
-        <label class="pay-opt" data-qr="gotyme"><input type="radio" name="pay"> <svg class="opt-icon" width="16" height="16" viewBox="0 0 24 24" fill="none"><rect x="2.5" y="5.5" width="19" height="13" rx="2" stroke="currentColor" stroke-width="1.5"/><path d="M2.5 9.8h19" stroke="currentColor" stroke-width="1.5"/><path d="M5.5 14.5h4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg> GoTyme Bank <span class="pay-qr-hint">Tap to show QR</span></label>
-        <label class="pay-opt" data-qr="maribank"><input type="radio" name="pay"> <svg class="opt-icon" width="16" height="16" viewBox="0 0 24 24" fill="none"><rect x="2.5" y="5.5" width="19" height="13" rx="2" stroke="currentColor" stroke-width="1.5"/><path d="M2.5 9.8h19" stroke="currentColor" stroke-width="1.5"/><path d="M5.5 14.5h4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg> Maribank <span class="pay-qr-hint">Tap to show QR</span></label>
-
-        <div class="qr-display" id="qrDisplay">
-          <img id="qrDisplayImg" src="" alt="Payment QR code" title="Click to enlarge">
-          <p id="qrDisplayLabel">Scan this QR using your banking or e-wallet app to pay.</p>
-        </div>
+        <label class="pay-opt" data-gateway="gcash"><input type="radio" name="pay"> <svg class="opt-icon" width="16" height="16" viewBox="0 0 24 24" fill="none"><rect x="7" y="2.5" width="10" height="19" rx="2" stroke="currentColor" stroke-width="1.5"/><path d="M10.5 18.3h3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg> GCash</label>
+        <label class="pay-opt" data-gateway="maya"><input type="radio" name="pay"> <svg class="opt-icon" width="16" height="16" viewBox="0 0 24 24" fill="none"><rect x="7" y="2.5" width="10" height="19" rx="2" stroke="currentColor" stroke-width="1.5"/><path d="M10.5 18.3h3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg> Maya</label>
+        <label class="pay-opt" data-gateway="card"><input type="radio" name="pay"> <svg class="opt-icon" width="16" height="16" viewBox="0 0 24 24" fill="none"><rect x="2.5" y="5.5" width="19" height="13" rx="2" stroke="currentColor" stroke-width="1.5"/><path d="M2.5 9.8h19" stroke="currentColor" stroke-width="1.5"/><path d="M5.5 14.5h4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg> Credit / Debit Card</label>
+        <p class="pm-powered-by">GCash, Maya, and Card are processed through a simulated PayMongo checkout (test mode — no real charges).</p>
       </div>
     </div>
 
@@ -731,13 +754,16 @@
   </div>
 </footer>
 
-<div class="qr-overlay" id="qrOverlay">
-  <div class="qr-modal" id="qrModal" role="dialog" aria-modal="true" aria-labelledby="qrModalLabel">
-    <button class="qr-modal-close" id="qrModalClose" aria-label="Close">
+<div class="legal-overlay" id="paymongoOverlay">
+  <div class="legal-modal paymongo-modal" id="paymongoModal" role="dialog" aria-modal="true" aria-labelledby="paymongoModalTitle">
+    <button class="legal-close" id="paymongoModalClose" aria-label="Close">
       <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M6 6l12 12M18 6L6 18" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
     </button>
-    <img id="qrModalImg" src="" alt="Payment QR code">
-    <p id="qrModalLabel">Scan this QR to pay.</p>
+    <span class="paymongo-banner">Test Mode — no real money is charged</span>
+    <div class="legal-header">
+      <h2 id="paymongoModalTitle">Pay with <span id="paymongoMethodLabel">GCash</span></h2>
+    </div>
+    <div class="legal-body" id="paymongoModalBody"></div>
   </div>
 </div>
 
