@@ -205,6 +205,7 @@ function renderAdminDashboard(){
   loadAndRenderAdminCombos();
   loadAndRenderAdminSettings();
   loadAndRenderAdminPromo();
+  loadAndRenderAdminPopularSection();
   loadAndRenderAdminAccounts();
 }
 
@@ -2022,6 +2023,150 @@ $(document).on('click', '#promoPreviewOverlay', function(e){
 });
 $(document).on('keydown', function(e){
   if(e.key === 'Escape' && $('#promoPreviewOverlay').hasClass('open')) closePromoPopupPreview();
+});
+
+/* ================= POPULAR THIS WEEK (homepage carousel) ================= */
+/* Same picker pattern as the launch popup above — separate state
+   since this list isn't capped by a fixed layout the way the popup's
+   3D stage is, just a sane admin-UX ceiling on the scrolling carousel. */
+const BS_PICK_LIMIT = 12;
+let bsPickedIds = [];
+
+function renderBsSelectedChips(){
+  const $chips = $('#bsSelectedChips');
+  if(!bsPickedIds.length){ $chips.html('<p class="form-hint" style="margin:4px;">No products picked yet — the homepage will show the built-in default picks until you choose some.</p>'); return; }
+  $chips.html(bsPickedIds.map(id => {
+    const p = PRODUCTS.find(x => x.id === id);
+    const name = p ? p.name : id;
+    return `
+      <span class="promo-pick-chip">
+        <span class="promo-pick-chip-name">${name}</span>
+        <button type="button" data-bs-unpick="${id}" aria-label="Remove ${name}">×</button>
+      </span>`;
+  }).join(''));
+}
+
+function renderBsProductList(searchTerm){
+  const $list = $('#bsProductList');
+  if(!PRODUCTS.length){
+    $list.html('<p class="form-hint" style="margin:4px;">No products yet — add some from the Catalog tab first.</p>');
+    return;
+  }
+  const term = (searchTerm || '').trim().toLowerCase();
+  const filtered = term ? PRODUCTS.filter(p => p.name.toLowerCase().includes(term)) : PRODUCTS;
+  if(!filtered.length){
+    $list.html('<p class="form-hint" style="margin:4px;">No products match that search.</p>');
+    return;
+  }
+  $list.html(filtered.map(p => {
+    const thumb = (p.imgs && p.imgs[0]) || p.img || blankPlaceholder(p.id, p.cat);
+    const isPicked = bsPickedIds.includes(p.id);
+    const catMeta = (typeof CAT_LABELS !== 'undefined') ? CAT_LABELS[p.cat] : null;
+    const catLabel = (catMeta && catMeta.sub) || p.cat || '';
+    return `
+      <label class="promo-pick-row${isPicked ? ' is-picked' : ''}">
+        <input type="checkbox" value="${p.id}" data-bs-pick ${isPicked ? 'checked' : ''}>
+        <img class="promo-pick-row-thumb" src="${resolveImageSrc(thumb)}" alt="">
+        <span class="promo-pick-row-name" title="${p.name}">${p.name}</span>
+        <span class="promo-pick-row-cat">${catLabel}</span>
+        <span class="promo-pick-row-price">${priceLabel(p)}</span>
+      </label>`;
+  }).join(''));
+  updateBsPickLimit();
+}
+
+function updateBsPickLimit(){
+  const count = bsPickedIds.length;
+  $('#bsPickCount').text(count ? `(${count}/${BS_PICK_LIMIT} selected)` : '');
+  $('[data-bs-pick]').each(function(){
+    const isChecked = bsPickedIds.includes(this.value);
+    $(this).closest('.promo-pick-row')
+      .toggleClass('disabled', !isChecked && count >= BS_PICK_LIMIT)
+      .toggleClass('is-picked', isChecked);
+  });
+}
+
+$(document).on('change', '[data-bs-pick]', function(){
+  const id = this.value;
+  if(this.checked){
+    if(bsPickedIds.length >= BS_PICK_LIMIT){ this.checked = false; return; }
+    bsPickedIds.push(id);
+  } else {
+    bsPickedIds = bsPickedIds.filter(x => x !== id);
+  }
+  renderBsSelectedChips();
+  updateBsPickLimit();
+});
+
+$(document).on('click', '[data-bs-unpick]', function(){
+  const id = $(this).attr('data-bs-unpick');
+  bsPickedIds = bsPickedIds.filter(x => x !== id);
+  $(`[data-bs-pick][value="${id}"]`).prop('checked', false);
+  renderBsSelectedChips();
+  updateBsPickLimit();
+});
+
+$(document).on('input', '#bsProductSearch', function(){
+  renderBsProductList($(this).val());
+});
+
+$(document).on('keydown', '#bsProductSearch', function(e){
+  if(e.key !== 'Enter') return;
+  e.preventDefault();
+  const $firstRow = $('#bsProductList .promo-pick-row:not(.disabled)').first();
+  const $checkbox = $firstRow.find('[data-bs-pick]');
+  if(!$checkbox.length || $checkbox.prop('checked')) return;
+  $checkbox.prop('checked', true).trigger('change');
+});
+
+async function loadAndRenderAdminPopularSection(){
+  $('#bsProductSearch').val('');
+  try{
+    const settings = await window.CCSettings.fetchSettings();
+    const cfg = settings.popularSection || window.CCSettings.DEFAULT_POPULAR_SECTION;
+    $('#bsEyebrow').val(cfg.eyebrow || 'Loved by regulars');
+    $('#bsHeading').val(cfg.heading || 'Popular this week');
+    $('#bsSubtext').val(cfg.subtext || 'Favorites our regulars keep reordering.');
+    $('#bsButtonText').val(cfg.buttonText || 'View full menu');
+    bsPickedIds = (cfg.productIds || []).slice(0, BS_PICK_LIMIT);
+    renderBsSelectedChips();
+    renderBsProductList('');
+  } catch(err){
+    console.error('Could not load homepage section settings from Firestore.', err);
+    bsPickedIds = [];
+    renderBsSelectedChips();
+    renderBsProductList('');
+  }
+}
+
+$(document).on('submit', '#adminBsForm', async function(e){
+  e.preventDefault();
+  const popularSection = {
+    eyebrow: $('#bsEyebrow').val().trim() || 'Loved by regulars',
+    heading: $('#bsHeading').val().trim() || 'Popular this week',
+    subtext: $('#bsSubtext').val().trim() || 'Favorites our regulars keep reordering.',
+    buttonText: $('#bsButtonText').val().trim() || 'View full menu',
+    productIds: bsPickedIds.slice(0, BS_PICK_LIMIT)
+  };
+
+  const $btn = $('#adminBsSubmitBtn');
+  const $status = $('#adminBsStatus');
+  $btn.prop('disabled', true).text('Saving...');
+  $status.text('');
+  try{
+    await window.CCSettings.updatePopularSection(popularSection);
+    // See the equivalent comment on the promo popup save above — this
+    // only matters if admin.js happens to be running inside the full
+    // customer page; harmless no-op on the standalone admin app.
+    if(typeof POPULAR_SECTION_CONFIG !== 'undefined') POPULAR_SECTION_CONFIG = popularSection;
+    if(typeof renderBestSellers === 'function') renderBestSellers();
+    $status.text('Saved — the homepage will use this the next time it loads.');
+  } catch(err){
+    console.error(err);
+    $status.text('Something went wrong while saving. Check the console for details.');
+  } finally {
+    $btn.prop('disabled', false).text('Save Homepage Section');
+  }
 });
 
 /* ================= ACCOUNTS ================= */
