@@ -1,16 +1,3 @@
-/* =========================================================
-   Crafts & Crumbs — admin-boot.js
-   Bootstraps the standalone admin app: shows a login screen (using
-   CCAuth.loginUser from auth.js — the same generic function the
-   customer site uses, just without the OTP/anonymous-guest machinery
-   layered around it there), checks the signed-in account's role, and
-   only then loads the catalog data + renders the dashboard.
-
-   Auth state itself is still whatever auth.js already provides
-   (onAuthStateChanged + the authRoleReady custom event) — this file
-   doesn't duplicate that, it just reacts to it.
-========================================================= */
-
 const $gate = $('#admGate');
 const $login = $('#admLoginScreen');
 const $shell = $('#admShell');
@@ -60,16 +47,34 @@ document.addEventListener('authStateReady', function(e){
 });
 
 document.addEventListener('authRoleReady', function(e){
-  const { user, role } = e.detail;
+  const { user, role, unknown } = e.detail;
   if(!user || user.isAnonymous){
     showLoginScreen();
     return;
   }
+  if(unknown){
+    // auth.js couldn't confirm the role at all (e.g. right after the
+    // tab was backgrounded for a while and the reconnect is still
+    // catching up) — NOT the same as confirmed non-admin. Signing
+    // someone out here was the "logged out after inactivity" bug:
+    // don't force a logout on an unknown state, just wait for the
+    // next authRoleReady (which fires again on the next token
+    // refresh/retry) rather than guessing.
+    if(!dashboardBooted) showLoadingGate();
+    return;
+  }
   if(role !== 'admin'){
-    // Signed in, but not an admin account — don't leave them signed
-    // in on this app at all, since there's nothing here for a
-    // customer account to do.
-    window.CCAuth.logoutUser();
+    // TEMP DIAGNOSTIC
+    console.warn('[admin-boot] role was', role, 'not admin. unknown was', unknown);
+    // Used to also call window.CCAuth.logoutUser() here, but admin,
+    // rider, and customer all share one Firebase Auth session on this
+    // origin — signOut() isn't scoped to this tab, it kills every
+    // other open tab's session too. That was the real cause of the
+    // "logged out after inactivity" reports: having more than one of
+    // these apps open at once, whichever one's role check lost the
+    // race would sign everyone out. firestore.rules already blocks a
+    // non-admin from doing anything real, so there's no security need
+    // to force a client-side sign-out here — just show the message.
     showLoginScreen('This account does not have admin access.');
     return;
   }

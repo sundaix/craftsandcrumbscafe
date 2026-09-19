@@ -61,6 +61,10 @@
       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M6 2h9l5 5v13a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2z"/><path d="M14 2v5h5"/><path d="M8 13h8M8 17h5"/></svg>
       Orders
     </button>
+    <button class="admin-tab" data-admin-tab="accounts">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H7a4 4 0 0 0-4 4v2"/><circle cx="10" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+      Accounts
+    </button>
     <button class="admin-tab" data-admin-tab="settings">
       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .34 1.87l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.7 1.7 0 0 0-1.87-.34 1.7 1.7 0 0 0-1.04 1.56V21a2 2 0 0 1-4 0v-.09A1.7 1.7 0 0 0 9 19.4a1.7 1.7 0 0 0-1.87.34l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.7 1.7 0 0 0 4.6 15a1.7 1.7 0 0 0-1.56-1.04H3a2 2 0 0 1 0-4h.09A1.7 1.7 0 0 0 4.6 9a1.7 1.7 0 0 0-.34-1.87l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.7 1.7 0 0 0 9 4.6a1.7 1.7 0 0 0 1.04-1.56V3a2 2 0 0 1 4 0v.09A1.7 1.7 0 0 0 15 4.6a1.7 1.7 0 0 0 1.87-.34l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.7 1.7 0 0 0 19.4 9a1.7 1.7 0 0 0 1.56 1.04H21a2 2 0 0 1 0 4h-.09A1.7 1.7 0 0 0 19.4 15z"/></svg>
       Settings
@@ -120,6 +124,98 @@
               <span class="admin-stat-value" id="statTotalRevenue">—</span>
             </div>
           </div>
+        </div>
+
+        <div class="admin-section-head">
+          <h2>Reports &amp; Analytics</h2>
+          <p>Sales, orders, and product performance — pick a range to filter everything below.</p>
+        </div>
+
+        <div class="range-filters" id="overviewRangeFilters"></div>
+
+        <div class="admin-stats admin-stats-compact">
+          <div class="admin-stat-card">
+            <div class="admin-stat-icon admin-stat-icon-cta">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="6" width="20" height="12" rx="2"/><circle cx="12" cy="12" r="3"/></svg>
+            </div>
+            <div class="admin-stat-body">
+              <span class="admin-stat-label">Revenue (range)</span>
+              <span class="admin-stat-value" id="statRangeRevenue">—</span>
+            </div>
+          </div>
+          <div class="admin-stat-card">
+            <div class="admin-stat-icon admin-stat-icon-info">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M6 2h9l5 5v13a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2z"/><path d="M14 2v5h5"/></svg>
+            </div>
+            <div class="admin-stat-body">
+              <span class="admin-stat-label">Orders (range)</span>
+              <span class="admin-stat-value" id="statRangeOrders">—</span>
+            </div>
+          </div>
+          <div class="admin-stat-card">
+            <div class="admin-stat-icon admin-stat-icon-accent">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18"/><path d="m7 14 4-4 3 3 5-6"/></svg>
+            </div>
+            <div class="admin-stat-body">
+              <span class="admin-stat-label">Avg Order Value</span>
+              <span class="admin-stat-value" id="statRangeAOV">—</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="admin-charts-grid">
+          <div class="admin-chart-card">
+            <h3>Revenue trend</h3>
+            <div class="admin-chart-canvas-wrap"><canvas id="chartRevenueTrend"></canvas></div>
+            <p class="admin-chart-empty" id="chartRevenueTrendEmpty">No orders in this range yet.</p>
+          </div>
+          <div class="admin-chart-card">
+            <h3>Orders by status</h3>
+            <div class="admin-chart-canvas-wrap admin-chart-canvas-wrap-donut"><canvas id="chartOrderStatus"></canvas></div>
+            <p class="admin-chart-empty" id="chartOrderStatusEmpty">No orders in this range yet.</p>
+          </div>
+        </div>
+
+        <div class="admin-tables-grid">
+          <div class="admin-mini-table-card">
+            <h3>Top products</h3>
+            <table class="admin-mini-table">
+              <thead><tr><th>Product</th><th>Units</th><th>Revenue</th></tr></thead>
+              <tbody id="topProductsBody"><tr><td colspan="3" class="admin-empty-row">No sales in this range yet.</td></tr></tbody>
+            </table>
+          </div>
+          <div class="admin-mini-table-card">
+            <div class="admin-mini-table-head">
+              <h3>Recent orders</h3>
+              <button type="button" class="admin-link-btn" data-nav-to-orders>View all →</button>
+            </div>
+            <table class="admin-mini-table">
+              <thead><tr><th>Order</th><th>Customer</th><th>Total</th><th>Status</th></tr></thead>
+              <tbody id="recentOrdersBody"><tr><td colspan="4" class="admin-empty-row">No orders yet.</td></tr></tbody>
+            </table>
+          </div>
+        </div>
+
+        <div class="admin-section-head">
+          <h2>Quick Actions</h2>
+        </div>
+        <div class="admin-quick-actions">
+          <button type="button" class="admin-quick-action" data-nav-to-add-product>
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"/></svg>
+            Add Product
+          </button>
+          <button type="button" class="admin-quick-action" data-nav-to-pending-orders>
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 3"/></svg>
+            View Pending Orders
+          </button>
+          <button type="button" class="admin-quick-action" data-nav-to-accounts>
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H7a4 4 0 0 0-4 4v2"/><circle cx="10" cy="7" r="4"/></svg>
+            Manage Accounts
+          </button>
+          <button type="button" class="admin-quick-action" data-nav-to-settings>
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.9l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.9-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1-1.6 1.7 1.7 0 0 0-1.9.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.9 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.6-1 1.7 1.7 0 0 0-.3-1.9l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.9.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.9-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.9V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg>
+            Settings
+          </button>
         </div>
 
         <div class="admin-section-head">
@@ -482,9 +578,41 @@
                 <th>Fulfillment</th>
                 <th class="sortable-th sortable-th-right" data-sort-key="total">Total <span class="sort-arrow">↕</span></th>
                 <th>Status</th>
+                <th>Rider</th>
               </tr>
             </thead>
             <tbody id="adminOrdersBody"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- accounts -->
+      <div class="admin-panel" data-admin-panel="accounts">
+        <div class="admin-panel-head">
+          <h3>Accounts</h3>
+          <div class="admin-panel-head-controls">
+            <div class="admin-search-wrap">
+              <svg class="admin-search-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><circle cx="11" cy="11" r="7"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
+              <input type="text" id="adminAccountSearch" class="admin-search-input" placeholder="Search email, name, uid...">
+            </div>
+            <button class="btn btn-outline btn-sm" id="adminRefreshAccounts">Refresh</button>
+          </div>
+        </div>
+
+        <p class="form-hint" style="margin:0 0 12px;">Role changes and blocking accounts go through secured Firestore rules — this only lists accounts that have signed up through the app.</p>
+
+        <div class="admin-table-wrap">
+          <table class="admin-table">
+            <thead>
+              <tr>
+                <th>Account</th>
+                <th>Name</th>
+                <th>Role</th>
+                <th>Status</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody id="adminAccountsBody"></tbody>
           </table>
         </div>
       </div>
@@ -561,6 +689,31 @@
               <button type="submit" class="btn btn-primary" id="adminPromoSubmitBtn">Save Popup Settings</button>
             </div>
             <p id="adminPromoStatus" style="margin-top:10px;"></p>
+          </form>
+        </div>
+
+        <div class="form-card">
+          <h3>Homepage — Popular This Week</h3>
+          <p>The carousel on the homepage showing off a curated set of products. Pick which ones appear and customize the heading text — leave products unpicked to keep using the built-in default picks.</p>
+          <form id="adminBsForm">
+            <div class="form-row">
+              <div class="form-group"><label for="bsEyebrow">Eyebrow label</label><input type="text" id="bsEyebrow" placeholder="Loved by regulars" maxlength="40"></div>
+              <div class="form-group"><label for="bsHeading">Heading</label><input type="text" id="bsHeading" placeholder="Popular this week" maxlength="60"></div>
+            </div>
+            <div class="form-row">
+              <div class="form-group"><label for="bsSubtext">Subtext</label><input type="text" id="bsSubtext" placeholder="Favorites our regulars keep reordering." maxlength="100"></div>
+              <div class="form-group"><label for="bsButtonText">Button text</label><input type="text" id="bsButtonText" placeholder="View full menu" maxlength="30"></div>
+            </div>
+
+            <div class="form-group">
+              <label>Products to feature <span id="bsPickCount" style="font-weight:400; color:var(--text-faint);"></span></label>
+              <div class="promo-pick-selected" id="bsSelectedChips"></div>
+              <input type="text" id="bsProductSearch" class="admin-search-input promo-pick-search" placeholder="Search products to add...">
+              <div class="promo-pick-list" id="bsProductList"></div>
+            </div>
+
+            <button type="submit" class="btn btn-primary" id="adminBsSubmitBtn">Save Homepage Section</button>
+            <p id="adminBsStatus" style="margin-top:10px;"></p>
           </form>
         </div>
       </div>
@@ -680,7 +833,9 @@
 <script type="module" src="../categories-service.js"></script>
 <script type="module" src="../combos-service.js"></script>
 <script type="module" src="../orders-service.js"></script>
+<script type="module" src="../accounts-service.js"></script>
 
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
 <script src="../image-upload-service.js"></script>
 <script src="../shared-catalog.js"></script>
 <script src="../admin-ui.js"></script>

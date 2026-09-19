@@ -2682,6 +2682,22 @@
   transition:transform 0.1s linear;
 }
 
+/* Same quiet brand-gradient signature as .scroll-progress, scaled down
+   for a single carousel — a thin, premium indicator of position
+   through the set rather than a full page-scroll readout. */
+.carousel-progress{
+  height:2px; margin:22px auto 0; max-width:220px;
+  background:var(--line); border-radius:2px; overflow:hidden;
+}
+.carousel-progress-fill{
+  height:100%; width:100%; transform-origin:left; transform:scaleX(0);
+  background:linear-gradient(90deg, var(--cta), var(--sage), var(--dusk));
+  transition:transform 0.15s linear;
+}
+@media (prefers-reduced-motion: reduce){
+  .carousel-progress-fill{ transition:none; }
+}
+
 /* Hero entrance on page load (not scroll-triggered, since it's above the fold) */
 .hero-eyebrow, .hero-inner h1, .hero p.lead, .hero-actions{
   opacity:0; transform:translateY(22px);

@@ -22,6 +22,17 @@ export const DEFAULT_PROMO_POPUP = {
   productIds: []
 };
 
+/* productIds empty means "use the built-in curated list" (BEST_SELLER_IDS
+   in script.js) — this way an admin who's never touched this form yet
+   doesn't need to see the homepage change out from under them. */
+export const DEFAULT_POPULAR_SECTION = {
+  eyebrow: 'Loved by regulars',
+  heading: 'Popular this week',
+  subtext: 'Favorites our regulars keep reordering.',
+  buttonText: 'View full menu',
+  productIds: []
+};
+
 export function getCachedSettings(){
   try{
     const raw = localStorage.getItem(CACHE_KEY);
@@ -44,7 +55,8 @@ export async function fetchSettings(){
   const settings = {
     deliveryFee: DEFAULT_DELIVERY_FEE,
     ...data,
-    promoPopup: { ...DEFAULT_PROMO_POPUP, ...(data.promoPopup || {}) }
+    promoPopup: { ...DEFAULT_PROMO_POPUP, ...(data.promoPopup || {}) },
+    popularSection: { ...DEFAULT_POPULAR_SECTION, ...(data.popularSection || {}) }
   };
   setCachedSettings(settings);
   return settings;
@@ -65,7 +77,14 @@ export async function updatePromoPopup(promoPopup){
   setCachedSettings({ ...cached, promoPopup });
 }
 
+/* Same pattern as updatePromoPopup — whole object, shallow merge. */
+export async function updatePopularSection(popularSection){
+  await setDoc(doc(db, SETTINGS_COL, GENERAL_DOC_ID), { popularSection }, { merge: true });
+  const cached = getCachedSettings() || { deliveryFee: DEFAULT_DELIVERY_FEE, popularSection: DEFAULT_POPULAR_SECTION };
+  setCachedSettings({ ...cached, popularSection });
+}
+
 window.CCSettings = {
-  fetchSettings, updateDeliveryFee, updatePromoPopup, getCachedSettings,
-  DEFAULT_DELIVERY_FEE, DEFAULT_PROMO_POPUP
+  fetchSettings, updateDeliveryFee, updatePromoPopup, updatePopularSection, getCachedSettings,
+  DEFAULT_DELIVERY_FEE, DEFAULT_PROMO_POPUP, DEFAULT_POPULAR_SECTION
 };

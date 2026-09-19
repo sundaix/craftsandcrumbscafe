@@ -1,9 +1,3 @@
-/* =========================================================
-   Crafts & Crumbs — auth.js
-   Real Firebase Authentication (email/password).
-   Also maintains a "users" Firestore doc per account so we
-   can store a role (customer/admin) and basic profile info.
-========================================================= */
 import { auth, db } from "./firebase-config.js";
 import {
   createUserWithEmailAndPassword,
@@ -18,13 +12,9 @@ import {
   doc, setDoc, getDoc, updateDoc
 } from "https://www.gstatic.com/firebasejs/12.17.0/firebase-firestore-lite.js";
 
-/* Current signed-in user + role, kept in memory and exposed globally
-   so script.js (non-module-aware in places) can read it easily. */
 window.currentUser = null;   // Firebase Auth user object
 window.currentRole = null;   // 'admin' | 'customer'
 
-/* Wraps a promise so it rejects with a clear error instead of
-   hanging forever if a network/extension issue blocks the request. */
 function withTimeout(promise, ms, message){
   return Promise.race([
     promise,
@@ -39,26 +29,6 @@ function generateOtp(){
   return String(Math.floor(100000 + Math.random() * 900000)); // 6 digits, never leading-zero-only
 }
 
-/* Writes a freshly generated code onto the user's own Firestore doc
-   and emails it via EmailJS (window.sendOtpEmail, from
-   email-notifications.js). Used both right after registration and
-   whenever the person taps "Resend code".
-
-   Uses setDoc(..., {merge:true}) rather than updateDoc: updateDoc
-   requires the document to already exist and throws "No document to
-   update" if it doesn't (e.g. the original profile write during
-   registration was blocked/timed out and never landed). merge:true
-   creates the doc if it's missing and otherwise only touches the
-   fields listed here — existing fields like role are left untouched.
-   extraFields lets resendOtp backfill the rest of the profile (email,
-   name, role, createdAt) in that recovery case.
-
-   Returns { emailSent } instead of just resolving/rejecting on the
-   email step: the Firestore write is the part that must succeed (a
-   failure there is a real error and rejects normally), but a failed
-   *email* send shouldn't look identical to a failed *code generation*
-   — callers use emailSent to tell the person the honest outcome
-   instead of always claiming "check your inbox." */
 async function issueOtp(uid, email, fullName, extraFields){
   const otpCode = generateOtp();
   await setDoc(doc(db, "users", uid), {
@@ -238,21 +208,63 @@ export async function ensureSignedIn(){
 /* Fetches the role + verification status stored in Firestore for the
    given uid, in a single read. Falls back to sensible defaults
    (rather than hanging) if the read is blocked or times out. */
+/* Caches the last successfully-fetched record per uid. Falling back
+   to "customer" on any failure (the old behavior) was actively wrong
+   for admin/rider accounts: onAuthStateChanged re-fetches the role on
+   every token refresh, not just real sign-ins, and those refreshes
+   are far more likely to time out right after a tab has sat
+   backgrounded/inactive for a while (throttled timers, a slow
+   reconnect). A defaulted-to-customer role there was read by
+   admin-boot.js/rider-boot.js as "this account lost its access" and
+   force-signed the person out — i.e. the "logged out after
+   inactivity" bug. Falling back to the last known-good record instead
+   means a transient fetch failure just quietly keeps the status quo. */
+const lastKnownUserRecord = new Map(); // uid -> { role, otpVerified, disabled }
+
+function sleep(ms){ return new Promise(res => setTimeout(res, ms)); }
+
+async function fetchUserRecordOnce(uid, timeoutMs){
+  const snap = await withTimeout(getDoc(doc(db, "users", uid)), timeoutMs, 'timeout');
+  const data = snap.exists() ? snap.data() : {};
+  return { role: data.role || "customer", otpVerified: !!data.otpVerified, disabled: !!data.disabled };
+}
+
 async function fetchUserRecord(uid){
-  try{
-    const snap = await withTimeout(getDoc(doc(db, "users", uid)), 8000, 'timeout');
-    const data = snap.exists() ? snap.data() : {};
-    return { role: data.role || "customer", otpVerified: !!data.otpVerified };
-  } catch(err){
-    console.warn('Could not fetch user record (connection blocked or slow). Defaulting to customer/unverified.', err);
-    return { role: "customer", otpVerified: false };
+  // Two retries with backoff before giving up — a slow reconnect
+  // right after a backgrounded tab wakes up is exactly the case this
+  // is meant to ride out, and it usually resolves within a few
+  // seconds if given the chance.
+  const attempts = [12000, 6000, 6000];
+  let lastErr = null;
+  for(let i = 0; i < attempts.length; i++){
+    try{
+      const record = await fetchUserRecordOnce(uid, attempts[i]);
+      lastKnownUserRecord.set(uid, record);
+      return record;
+    } catch(err){
+      lastErr = err;
+      if(i < attempts.length - 1) await sleep(1500 * (i + 1));
+    }
   }
+  console.warn('Could not fetch user record after retries (connection blocked or slow).', lastErr);
+  const cached = lastKnownUserRecord.get(uid);
+  if(cached){
+    console.warn('Falling back to the last known role for this account instead of defaulting to customer.');
+    return cached;
+  }
+  // No cache to fall back on (e.g. very first load on a fresh
+  // session) — this is the one case where we genuinely don't know
+  // the role yet. Signal that distinctly so the boot scripts can
+  // avoid treating "unknown" the same as "not admin/rider".
+  return { role: "customer", otpVerified: false, disabled: false, unknown: true };
 }
 
 /* Fires on every login/logout/page load. Keeps window.currentUser
    and window.currentRole in sync, then tells script.js to
    re-render anything that depends on auth state (nav, admin link). */
 onAuthStateChanged(auth, async (user) => {
+  // TEMP DIAGNOSTIC — remove once the inactivity-logout bug is found.
+  console.warn('[auth] onAuthStateChanged fired. user:', user ? user.uid : null, 'at', new Date().toISOString());
   window.currentUser = user;
   window.currentRole = null;
   // Fires immediately — everything that only needs the Auth user
@@ -262,15 +274,41 @@ onAuthStateChanged(auth, async (user) => {
     detail: { user, role: null }
   }));
 
-  const { role, otpVerified } = user && !user.isAnonymous
+  const { role, otpVerified, disabled, unknown } = user && !user.isAnonymous
     ? await fetchUserRecord(user.uid)
-    : { role: null, otpVerified: false };
+    : { role: null, otpVerified: false, disabled: false, unknown: false };
+
+  if(disabled){
+    // TEMP DIAGNOSTIC
+    console.warn('[auth] Signing out — disabled:true on user record.', { role, otpVerified, unknown });
+    // Blocked via the admin dashboard's Accounts tab (see
+    // accounts-service.js). Firestore rules already stop a blocked
+    // account from writing anything, but that alone would leave them
+    // sitting signed in with a half-working UI — sign them straight
+    // back out instead. The `blocked: true` detail lets script.js
+    // (customer site) show a "your account has been blocked" message
+    // if it wants to; this file only handles the sign-out itself.
+    window.currentUser = null;
+    window.currentRole = null;
+    await signOut(auth);
+    document.dispatchEvent(new CustomEvent("authRoleReady", {
+      detail: { user: null, role: null, otpVerified: false, blocked: true }
+    }));
+    return;
+  }
+
   window.currentRole = role;
+  // TEMP DIAGNOSTIC
+  console.warn('[auth] role resolved:', role, 'unknown:', !!unknown, 'otpVerified:', otpVerified);
   // Fires once the role/verification status is known — used for
   // admin-only UI (the admin nav icon) and the unverified nudge,
-  // both of which can safely lag behind by a moment.
+  // both of which can safely lag behind by a moment. `unknown: true`
+  // means fetchUserRecord couldn't confirm the role at all (first
+  // load, no cache to fall back on, and every retry failed) — the
+  // admin/rider boot scripts treat that as "try again," not "this
+  // account lost access," since we genuinely don't know either way.
   document.dispatchEvent(new CustomEvent("authRoleReady", {
-    detail: { user, role, otpVerified }
+    detail: { user, role, otpVerified, unknown: !!unknown }
   }));
 });
 
