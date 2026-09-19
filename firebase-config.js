@@ -17,8 +17,4 @@ export const db = getFirestore(app);
 
 const isStaffApp = location.pathname.startsWith('/admin') || location.pathname.startsWith('/rider');
 setPersistence(auth, isStaffApp ? browserSessionPersistence : browserLocalPersistence)
-<<<<<<< HEAD
   .catch(err => console.error('Could not set auth persistence — sessions may not survive a reload.', err));
-=======
-  .catch(err => console.error('Could not set auth persistence — sessions may not survive a reload.', err));
->>>>>>> e9cb7b70c270141b540704d99debce1959ccc213

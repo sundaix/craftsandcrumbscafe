@@ -426,8 +426,4 @@ export async function fixBrokenProductImages(){
   }
   return fixed;
 }
-<<<<<<< HEAD
 window.CCProducts = { fetchAllProducts, addProduct, updateProduct, deleteProduct, seedProducts, getCachedProducts, decrementStock, cleanupLegacyFoodFields, flattenSizePricing, fillMissingDrinkDetails, normalizeDrinkSizes, fixBrokenProductImages };
-=======
-window.CCProducts = { fetchAllProducts, addProduct, updateProduct, deleteProduct, seedProducts, getCachedProducts, decrementStock, cleanupLegacyFoodFields, flattenSizePricing, fillMissingDrinkDetails, normalizeDrinkSizes, fixBrokenProductImages };
->>>>>>> e9cb7b70c270141b540704d99debce1959ccc213

@@ -108,8 +108,4 @@ export async function assignRider(orderId, riderId){
 window.CCOrders = {
   createOrder, fetchAllOrders, fetchMyOrders, updateOrderStatus,
   fetchAvailableDeliveries, fetchRiderDeliveries, claimDelivery, updateDeliveryStatus, assignRider
-<<<<<<< HEAD
 };
-=======
-};
->>>>>>> e9cb7b70c270141b540704d99debce1959ccc213

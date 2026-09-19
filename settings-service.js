@@ -87,8 +87,4 @@ export async function updatePopularSection(popularSection){
 window.CCSettings = {
   fetchSettings, updateDeliveryFee, updatePromoPopup, updatePopularSection, getCachedSettings,
   DEFAULT_DELIVERY_FEE, DEFAULT_PROMO_POPUP, DEFAULT_POPULAR_SECTION
-<<<<<<< HEAD
 };
-=======
-};
->>>>>>> e9cb7b70c270141b540704d99debce1959ccc213

@@ -3589,8 +3589,4 @@ function initPromoOverlay(){
   $(document).on('keydown', function(e){
     if(e.key === 'Escape' && $overlay.hasClass('open')) closePromo();
   });
-<<<<<<< HEAD
 }
-=======
-}
->>>>>>> e9cb7b70c270141b540704d99debce1959ccc213
