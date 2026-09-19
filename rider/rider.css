@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 .rid-tab-count{
   margin-left: auto;
   background: var(--adm-accent-tint);
@@ -105,4 +106,113 @@
 }
 .rid-status-ready{ background: var(--adm-accent-tint); color: var(--adm-accent-dark); }
 .rid-status-out_for_delivery{ background: #e6d9c3; color: #8a5a1f; }
+=======
+.rid-tab-count{
+  margin-left: auto;
+  background: var(--adm-accent-tint);
+  color: var(--adm-accent-dark);
+  font-size: 11px;
+  font-weight: 700;
+  padding: 2px 8px;
+  border-radius: 100px;
+  min-width: 18px;
+  text-align: center;
+}
+.admin-tab:not(.active) .rid-tab-count{
+  background: rgba(124,147,166,0.16);
+  color: #4f6b82;
+}
+
+.rid-card-list{
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.rid-card{
+  background: var(--adm-card);
+  border: 1px solid var(--adm-border);
+  border-radius: var(--adm-radius-lg);
+  padding: 18px 20px;
+  box-shadow: var(--adm-shadow-sm);
+}
+
+.rid-card-top{
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 10px;
+}
+
+.rid-card-id{
+  font-family: monospace;
+  font-size: 12px;
+  color: var(--adm-text-faint);
+}
+
+.rid-card-name{
+  font-weight: 600;
+  font-size: 15px;
+  margin-top: 2px;
+}
+
+.rid-card-address{
+  font-size: 13px;
+  color: var(--adm-text);
+  margin: 6px 0;
+  line-height: 1.5;
+}
+
+.rid-card-meta{
+  font-size: 12px;
+  color: var(--adm-text-faint);
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 14px;
+  margin-bottom: 12px;
+}
+
+.rid-card-items{
+  font-size: 12.5px;
+  color: var(--adm-text);
+  margin: 0 0 12px;
+  padding-left: 18px;
+}
+.rid-card-items li{ margin-bottom: 2px; }
+
+.rid-card-actions{
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.rid-card-note{
+  font-size: 12.5px;
+  color: var(--adm-text-faint);
+  font-style: italic;
+  margin-top: 8px;
+  border-top: 1px solid var(--adm-border);
+  padding-top: 8px;
+}
+
+.rid-empty{
+  text-align: center;
+  color: var(--adm-text-faint);
+  font-size: 13.5px;
+  padding: 40px 0;
+}
+
+.rid-status-pill{
+  display: inline-flex;
+  align-items: center;
+  font-size: 11px;
+  font-weight: 700;
+  padding: 4px 10px;
+  border-radius: 100px;
+  white-space: nowrap;
+}
+.rid-status-ready{ background: var(--adm-accent-tint); color: var(--adm-accent-dark); }
+.rid-status-out_for_delivery{ background: #e6d9c3; color: #8a5a1f; }
+>>>>>>> e9cb7b70c270141b540704d99debce1959ccc213
 .rid-status-completed{ background: rgba(124,152,133,0.2); color: var(--adm-accent-dark); }

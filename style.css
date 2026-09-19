@@ -3015,4 +3015,8 @@
      the animation, just the element's normal style) — only the
      fly-in motion and continuous bob are switched off above. */
   .promo-stage-card{ animation:none !important; opacity:1; }
+<<<<<<< HEAD
 }
+=======
+}
+>>>>>>> e9cb7b70c270141b540704d99debce1959ccc213

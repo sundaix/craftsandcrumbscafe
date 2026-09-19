@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 <!doctype html>
 <html lang="en">
 <head>
@@ -135,4 +136,143 @@
 <script src="../rider/rider.js"></script>
 <script src="../rider/rider-boot.js"></script>
 </body>
+=======
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="robots" content="noindex, nofollow">
+<title>Rider — Crafts &amp; Crumbs</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Lora:ital,wght@0,500;0,600;0,700;1,500;1,600&family=Poppins:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="../admin.css">
+<link rel="stylesheet" href="../rider/rider.css">
+</head>
+<body>
+
+<div class="adm-gate-loading" id="ridGate">Loading rider app…</div>
+
+<div class="adm-login-screen" id="ridLoginScreen" style="display:none;">
+  <div class="adm-login-card">
+    <div class="adm-login-brand">
+      <div class="adm-login-mark">C&amp;C</div>
+      <h1>Crafts &amp; Crumbs</h1>
+      <p>Rider App</p>
+    </div>
+    <div class="adm-login-error" id="ridLoginError"></div>
+    <form id="ridLoginForm">
+      <div class="form-group">
+        <label for="ridLoginEmail">Email</label>
+        <input type="email" id="ridLoginEmail" required autocomplete="username">
+      </div>
+      <div class="form-group">
+        <label for="ridLoginPassword">Password</label>
+        <input type="password" id="ridLoginPassword" required autocomplete="current-password">
+      </div>
+      <button type="submit" class="btn btn-primary btn-full" id="ridLoginSubmitBtn">Sign In</button>
+    </form>
+    <p class="adm-login-foot">Rider accounts only. Ask an admin to give your account rider access.</p>
+  </div>
+</div>
+
+<!-- Dashboard shell — hidden until rider-boot.js confirms role:"rider" -->
+<div class="admin-shell" id="ridShell" style="display:none;">
+  <aside class="admin-sidebar">
+    <div class="admin-brand">
+      <div class="admin-brand-mark">C&amp;C</div>
+      <div class="admin-brand-text">
+        <strong>Crafts &amp; Crumbs</strong>
+        <span>Rider</span>
+      </div>
+    </div>
+    <button class="admin-tab active" data-rider-tab="queue">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="9" rx="1.5"/><rect x="14" y="3" width="7" height="5" rx="1.5"/><rect x="14" y="12" width="7" height="9" rx="1.5"/><rect x="3" y="16" width="7" height="5" rx="1.5"/></svg>
+      Available
+      <span class="rid-tab-count" id="ridQueueCount"></span>
+    </button>
+    <button class="admin-tab" data-rider-tab="mine">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7l3-4h12l3 4"/><path d="M3 7h18v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7z"/><path d="M9 11h6"/></svg>
+      My Deliveries
+      <span class="rid-tab-count" id="ridMineCount"></span>
+    </button>
+    <button class="admin-tab" data-rider-tab="history">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 3"/></svg>
+      History
+    </button>
+    <div class="admin-sidebar-foot">
+      <button class="admin-sidebar-logout" id="ridLogoutBtn" type="button">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><path d="M16 17l5-5-5-5"/><path d="M21 12H9"/></svg>
+        Log Out
+      </button>
+    </div>
+  </aside>
+
+  <div class="admin-main">
+    <div class="admin-topbar">
+      <div>
+        <h1>Rider App</h1>
+        <div class="admin-topbar-sub">Crafts &amp; Crumbs — internal use only</div>
+      </div>
+      <button class="btn btn-outline btn-sm" id="ridRefreshBtn">Refresh</button>
+    </div>
+
+    <!-- Available deliveries: unclaimed, ready-for-delivery orders -->
+    <div class="admin-panel active" data-rider-panel="queue">
+      <div class="admin-panel-head">
+        <h3>Available Deliveries</h3>
+      </div>
+      <p class="form-hint" style="margin:0 0 12px;">Orders here are ready and waiting for a rider. Claim one to add it to My Deliveries.</p>
+      <div class="rid-card-list" id="ridQueueList"></div>
+    </div>
+
+    <!-- My Deliveries: orders assigned to me, not yet completed -->
+    <div class="admin-panel" data-rider-panel="mine">
+      <div class="admin-panel-head">
+        <h3>My Deliveries</h3>
+      </div>
+      <div class="rid-card-list" id="ridMineList"></div>
+    </div>
+
+    <!-- History: my completed deliveries -->
+    <div class="admin-panel" data-rider-panel="history">
+      <div class="admin-panel-head">
+        <h3>Delivery History</h3>
+      </div>
+      <div class="rid-card-list" id="ridHistoryList"></div>
+    </div>
+  </div>
+</div>
+
+<!-- Proof-of-delivery modal, shown when marking an order Delivered.
+     Mirrors the admin app's order-detail modal markup/classes exactly
+     (legal-overlay/legal-modal/legal-close/legal-header/legal-body)
+     so it inherits the same overlay behavior and styling for free. -->
+<div class="legal-overlay" id="ridProofOverlay">
+  <div class="legal-modal" id="ridProofModal" style="max-width:420px;" role="dialog" aria-modal="true" aria-labelledby="ridProofTitle">
+    <button class="legal-close" id="ridProofClose" aria-label="Close">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M6 6l12 12M18 6L6 18" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
+    </button>
+    <div class="legal-header">
+      <h2 id="ridProofTitle">Confirm Delivery</h2>
+    </div>
+    <div class="legal-body">
+      <div class="form-group">
+        <label for="ridProofNote">Delivery note (optional)</label>
+        <textarea id="ridProofNote" rows="3" placeholder="e.g. Handed to customer at the gate."></textarea>
+      </div>
+      <button type="button" class="btn btn-primary btn-full" id="ridProofSubmit" data-order-id="">Mark as Delivered</button>
+    </div>
+  </div>
+</div>
+
+<script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
+<script src="../admin-ui.js"></script>
+<script type="module" src="../firebase-config.js"></script>
+<script type="module" src="../auth.js"></script>
+<script type="module" src="../orders-service.js"></script>
+<script src="../rider/rider.js"></script>
+<script src="../rider/rider-boot.js"></script>
+</body>
+>>>>>>> e9cb7b70c270141b540704d99debce1959ccc213
 </html>

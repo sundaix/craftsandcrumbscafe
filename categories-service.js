@@ -19,8 +19,11 @@ function setCachedCategories(categories){
   try{
     localStorage.setItem(CACHE_KEY, JSON.stringify(categories));
   } catch(err){
+<<<<<<< HEAD
     // private browsing / storage full — safe to skip, same as the
     // other *-service.js caches.
+=======
+>>>>>>> e9cb7b70c270141b540704d99debce1959ccc213
   }
 }
 
@@ -45,4 +48,8 @@ export async function deleteCategory(id){
   if(cached) setCachedCategories(cached.filter(c => c.id !== id));
 }
 
+<<<<<<< HEAD
 window.CCCategories = { fetchAllCategories, addCategory, deleteCategory, getCachedCategories };
+=======
+window.CCCategories = { fetchAllCategories, addCategory, deleteCategory, getCachedCategories };
+>>>>>>> e9cb7b70c270141b540704d99debce1959ccc213

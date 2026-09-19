@@ -47,4 +47,8 @@ async function setUserDisabled(uid, disabled) {
   }
 }
 
+<<<<<<< HEAD
 window.CCAccounts = { listUserProfiles, setUserRole, setUserDisabled };
+=======
+window.CCAccounts = { listUserProfiles, setUserRole, setUserDisabled };
+>>>>>>> e9cb7b70c270141b540704d99debce1959ccc213
