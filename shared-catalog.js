@@ -25,26 +25,6 @@ function blankPlaceholder(id, cat){
   return 'data:image/svg+xml;utf8,' + encodeURIComponent(svg);
 }
 
-/* Turns whatever's stored in a product's img/imgs field into a src
-   that actually resolves, regardless of which page is rendering it.
-   Real URLs (Cloudinary https://, or a generated data: placeholder)
-   pass through untouched. A bare filename (e.g. "croissant.jpg" —
-   left over from before every upload went through Cloudinary, or
-   just a local static asset that's never needed to change) is NOT
-   broken, but it IS relative — the browser resolves it against the
-   current page's own path, so the exact same string correctly
-   becomes /croissant.jpg from the customer site's root page but
-   wrongly becomes /admin/croissant.jpg from the admin app's nested
-   route, 404ing there even though the file exists at the site root.
-   Prefixing a leading slash forces it to resolve from the site root
-   every time, so both apps show the same image from the same string
-   with zero Firestore changes needed.
-
-   IMPORTANT: this is why a "fix broken images" tool should never
-   treat a bare filename as broken on its own (see isBrokenImageRef in
-   products-services.js) — this function already makes it display
-   correctly everywhere; overwriting it in Firestore would be
-   destroying a working reference, not fixing a broken one. */
 function resolveImageSrc(src){
   if(!src) return '';
   if(src.startsWith('http://') || src.startsWith('https://') || src.startsWith('data:')) return src;
@@ -53,11 +33,6 @@ function resolveImageSrc(src){
 window.resolveImageSrc = resolveImageSrc;
 
 /* ================= PRODUCTS / COMBOS STATE =================
-   SEED_PRODUCTS is only used to seed Firestore once (via the Admin
-   app's "Seed Starter Catalog" button) and as an offline fallback if
-   Firestore is unreachable/empty. The live catalog both apps actually
-   render from is the mutable PRODUCTS array, populated from Firestore
-   at startup by loadProductsFromFirestore() below. */
 let PRODUCTS = [];
 // Flat delivery fee, admin-configurable (Admin > Settings).
 let DELIVERY_FEE = 60;
@@ -358,10 +333,7 @@ const SEED_PRODUCTS = [
 const FOOD_CATEGORIES = ['Coffee', 'Non-Coffee', 'Tea', 'Pastries', 'Sandwiches', 'Cakes'];
 const DRINK_CATEGORIES = ['Coffee', 'Non-Coffee', 'Tea'];
 const SIZED_CATEGORIES = ['Shirts', 'Caps', 'Shorts', 'Socks'];
-/* Default size list offered for each sized category when adding a new
-   product, or when switching an existing product to one of these
-   categories. Editing a product that already has its own size list
-   keeps that list instead (see renderSizePriceRows in admin.js). */
+/* Default size list offered. */
 const DEFAULT_SIZES_BY_CATEGORY = {
   Shirts: ['XS','S','M','L','XL','XXL'],
   Shorts: ['XS','S','M','L','XL','XXL'],
@@ -385,19 +357,8 @@ const CAT_LABELS = {
   'Keychains': { group:'Merchandise', sub:'Keychains' },
 };
 
-/* Categories an admin has added at runtime via the "+ Add Category"
-   form (admin.js), on top of the built-in set above. */
 let CUSTOM_CATEGORIES = [];
 
-/* Folds one category doc (see categories-service.js for the shape)
-   into the shared category metadata every UI that lists/prices
-   products by category needs: CAT_LABELS (badge + breadcrumb text),
-   FOOD_CATEGORIES / DRINK_CATEGORIES / SIZED_CATEGORIES /
-   DEFAULT_SIZES_BY_CATEGORY (pricing + stock behavior). Safe to call
-   more than once with the same category — it just no-ops after the
-   first time (CAT_LABELS[c.id] already set). Does NOT touch
-   MENU_SIDEBAR/MERCH_SIDEBAR — see applyCustomCategory() in script.js
-   for the storefront-only wrapper that also does that. */
 function applyCustomCategoryCore(c){
   if(CAT_LABELS[c.id]) return;
   CAT_LABELS[c.id] = { group: c.group, sub: c.label };
@@ -467,17 +428,6 @@ function priceLabel(p){
 }
 
 /* ================= LAUNCH POPUP ================= */
-/* Shared between script.js (renders the real #promoOverlay a visitor
-   sees) and admin.js (renders the isolated #promoPreviewOverlay from
-   whatever's currently typed in the settings form). Keeping the
-   defaults/product-resolution/content-injection logic here — instead
-   of duplicated in both files — means the preview can never drift
-   out of sync with what visitors actually see. */
-
-/* Mirrors settings-service.js's DEFAULT_PROMO_POPUP so this file
-   never has to import that module (script.js/admin.js load this as a
-   plain script, not a module). Keep the two in sync by hand if either
-   changes. */
 const PROMO_POPUP_DEFAULTS = {
   enabled: true,
   badgeText: 'New',

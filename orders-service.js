@@ -1,9 +1,14 @@
 import { db } from "./firebase-config.js";
 import {
-  collection, addDoc, serverTimestamp, getDocs, doc, updateDoc, query, where
+  collection, addDoc, serverTimestamp, getDocs, getDoc, doc, updateDoc, query, where
 } from "https://www.gstatic.com/firebasejs/12.17.0/firebase-firestore-lite.js";
 
 const ORDERS_COL = "orders";
+
+export async function fetchOrder(orderId){
+  const snap = await getDoc(doc(db, ORDERS_COL, orderId));
+  return snap.exists() ? { id: snap.id, ...snap.data() } : null;
+}
 
 /* items: [{id, name, price, qty}], totals: {subtotal, deliveryFee, total},
    fulfillment: 'delivery' | 'pickup', customer: {name, phone, email, address} */
@@ -106,6 +111,6 @@ export async function assignRider(orderId, riderId){
 }
 
 window.CCOrders = {
-  createOrder, fetchAllOrders, fetchMyOrders, updateOrderStatus,
+  createOrder, fetchAllOrders, fetchMyOrders, fetchOrder, updateOrderStatus,
   fetchAvailableDeliveries, fetchRiderDeliveries, claimDelivery, updateDeliveryStatus, assignRider
 };

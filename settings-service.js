@@ -14,7 +14,7 @@ export const DEFAULT_PROMO_POPUP = {
   badgeText: 'New',
   eyebrow: 'Just Dropped',
   headline: 'Fresh Brews,<br>Fresh Merch.',
-  copy: 'New seasonal drinks and a handcrafted merch line just landed at Crafts & Crumbs — brewed and stitched with the same care as always.',
+  copy: 'New seasonal drinks and a handcrafted merch line just landed at Crafts & Crumbs. Brewed and stitched with the same care as always.',
   ctaText: 'Take a Look',
   dismissText: 'Maybe later',
   category: '',

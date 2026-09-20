@@ -2784,6 +2784,82 @@ function renderCheckoutSummary(){
 
 $(document).on('click', '#placeOrderBtn', placeOrder);
 
+function showOrderConfirmationUI(orderId, fulfillment, total){
+  $('#confOrderNum').text('#CC-' + orderId.slice(0,6).toUpperCase());
+  $('#confFulfillment').text(fulfillment === 'delivery' ? 'Delivery' : 'Store Pickup');
+  $('#confTotal').text(peso(total));
+  navigate('confirmation');
+}
+
+/* Stock decrement + confirmation email — the "this order is really
+   happening" side effects. Split out so the GCash return flow (which
+   confirms payment on a separate page load, possibly after the
+   customer's cart has already changed) can run these off the order's
+   own stored items instead of current cart state. */
+function finalizeStockAndEmail(orderPayload, orderId){
+  if(orderPayload.customer.email){
+    sendOrderConfirmationEmail(orderPayload, orderId);
+  }
+  const stockUpdates = [];
+  orderPayload.items.forEach(it => {
+    const p = findProduct(it.id);
+    if(!p) return;
+    if(p.comboMeta){
+      stockUpdates.push({ id: p.comboMeta.drinkId, qty: it.qty, size: it.size || null });
+      stockUpdates.push({ id: p.comboMeta.pastryId, qty: it.qty, size: null });
+    } else if(typeof p.stock === 'number'){
+      stockUpdates.push({ id: it.id, qty: it.qty, size: it.size || null });
+    }
+  });
+  if(stockUpdates.length){
+    window.CCProducts.decrementStock(stockUpdates).catch(err => console.error('Stock decrement failed:', err));
+  }
+}
+
+/* Checks for ?paymongo_return=success|cancelled&order_id=... after
+   landing back from a real GCash checkout. Verification happens
+   server-side (api/paymongo/verify-payment) — this only reacts to
+   the result, it never marks anything paid itself. */
+async function handlePaymongoReturn(){
+  const params = new URLSearchParams(window.location.search);
+  const status = params.get('paymongo_return');
+  const orderId = params.get('order_id');
+  if(!status || !orderId) return;
+
+  // Strip the query params right away so refreshing the page doesn't
+  // re-trigger this (verify-payment is idempotent regardless, but no
+  // reason to hit it again on every reload).
+  window.history.replaceState({}, '', window.location.pathname + window.location.hash);
+
+  if(status === 'cancelled'){
+    showToast('GCash payment was cancelled — your order was not confirmed.', 'warning');
+    return;
+  }
+  if(status !== 'success') return;
+
+  showToast('Confirming your GCash payment…', 'info');
+  try{
+    const res = await fetch(`/api/paymongo/verify-payment?order_id=${encodeURIComponent(orderId)}`);
+    const data = await res.json();
+    if(!res.ok || !data.ok){
+      showToast("We couldn't confirm your GCash payment yet. If money left your account, please contact us with your order number.", 'error');
+      return;
+    }
+    const order = await window.CCOrders.fetchOrder(orderId);
+    if(!order){
+      showToast('Payment confirmed, but the order details could not be loaded.', 'warning');
+      return;
+    }
+    showOrderConfirmationUI(orderId, order.fulfillment, order.totals.total);
+    if(!data.alreadyPaid){
+      finalizeStockAndEmail(order, orderId);
+    }
+  } catch(err){
+    console.error(err);
+    showToast("We couldn't confirm your GCash payment. Please contact us if you were charged.", 'error');
+  }
+}
+
 async function placeOrder(){
   if(cart.length === 0) return;
 
@@ -2827,7 +2903,45 @@ async function placeOrder(){
   const $btn = $('#placeOrderBtn');
   $btn.prop('disabled', true).text('Placing order...');
 
-  if(paymentGateway){
+  if(paymentGateway === 'gcash'){
+    // Real PayMongo GCash checkout. The order is created up front
+    // (paymentStatus: 'pending') so there's something for the
+    // serverless function to attach a Checkout Session to, then the
+    // whole page redirects off-site to PayMongo/GCash — nothing past
+    // this point runs until the customer comes back via
+    // handlePaymongoReturn(), which is a separate page load entirely.
+    try{
+      await window.CCAuth.ensureSignedIn();
+      const orderPayload = {
+        items, totals: { subtotal, deliveryFee, total },
+        fulfillment, customer, paymentMethod: 'GCash (PayMongo)',
+        paymentStatus: 'pending', paymentProvider: 'paymongo_gcash', paymentTestMode: null
+      };
+      const orderId = await window.CCOrders.createOrder(orderPayload);
+      const res = await fetch('/api/paymongo/create-checkout-session', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ orderId })
+      });
+      const data = await res.json();
+      if(!res.ok || !data.checkoutUrl) throw new Error(data.error || 'checkout-session-failed');
+      // The order already exists independently in Firestore at this
+      // point, so the cart's job here is done.
+      cart = [];
+      persistCart();
+      updateCartCount();
+      checkoutSelectedAddressId = null;
+      window.location.href = data.checkoutUrl;
+      return;
+    } catch(err){
+      console.error(err);
+      $btn.prop('disabled', false).text('Place Order');
+      showToast('Could not start GCash checkout. Please try again.', 'error');
+      return;
+    }
+  }
+
+  if(paymentGateway === 'maya' || paymentGateway === 'card'){
     const authorized = await openPaymongoCheckout(paymentGateway, paymentMethod, total);
     if(!authorized){
       $btn.prop('disabled', false).text('Place Order');
@@ -2847,42 +2961,12 @@ async function placeOrder(){
       paymentTestMode: paymentGateway ? true : null
     };
     const orderId = await window.CCOrders.createOrder(orderPayload);
-    $('#confOrderNum').text('#CC-' + orderId.slice(0,6).toUpperCase());
-    $('#confFulfillment').text(fulfillment === 'delivery' ? 'Delivery' : 'Store Pickup');
-    $('#confTotal').text(peso(total));
+    showOrderConfirmationUI(orderId, fulfillment, total);
     cart = [];
     persistCart();
     updateCartCount();
     checkoutSelectedAddressId = null;
-    navigate('confirmation');
-    // Best-effort — the order is already placed at this point, so an
-    // email hiccup shouldn't show as a checkout failure to the customer.
-    if(customer.email){
-      sendOrderConfirmationEmail(orderPayload, orderId);
-    }
-    // Only decrement products that actually track stock (merch items
-    // without a stock field are skipped by decrementStock's caller here).
-    // Sized products (Shirts/Caps/Shorts/Socks) carry the size along so
-    // the per-size stock count gets decremented instead of the flat total.
-    // A combo line isn't a real product doc in Firestore — it expands
-    // into its two real component decrements instead (see comboMeta,
-    // set in buildComboProducts): the drink (with its chosen size) and
-    // the pastry (unsized), each decremented exactly like a normal
-    // order for that product would be.
-    const stockUpdates = [];
-    items.forEach(it => {
-      const p = findProduct(it.id);
-      if(!p) return;
-      if(p.comboMeta){
-        stockUpdates.push({ id: p.comboMeta.drinkId, qty: it.qty, size: it.size || null });
-        stockUpdates.push({ id: p.comboMeta.pastryId, qty: it.qty, size: null });
-      } else if(typeof p.stock === 'number'){
-        stockUpdates.push({ id: it.id, qty: it.qty, size: it.size || null });
-      }
-    });
-    if(stockUpdates.length){
-      window.CCProducts.decrementStock(stockUpdates).catch(err => console.error('Stock decrement failed:', err));
-    }
+    finalizeStockAndEmail(orderPayload, orderId);
   } catch(err){
     console.error(err);
     if(String(err.code).includes('admin-restricted-operation') || String(err.code).includes('operation-not-allowed')){
@@ -3533,6 +3617,7 @@ $(async function(){
   await loadCombosFromFirestore();
   renderAll();
   initPromoOverlay();
+  handlePaymongoReturn();
 });
 /* ================= PROMO LAUNCH BANNER ================= */
 /* Fancy "New" popup shown once per browser session on page load, its

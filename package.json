@@ -1,0 +1,7 @@
+{
+  "private": true,
+  "description": "Static site + a couple of Vercel serverless functions under /api for real PayMongo GCash payments. Everything outside /api still deploys as plain static files — this file only exists so Vercel installs firebase-admin for those functions.",
+  "dependencies": {
+    "firebase-admin": "^12.7.0"
+  }
+}
