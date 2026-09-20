@@ -2914,7 +2914,7 @@ async function placeOrder(){
       await window.CCAuth.ensureSignedIn();
       const orderPayload = {
         items, totals: { subtotal, deliveryFee, total },
-        fulfillment, customer, paymentMethod: 'GCash (PayMongo)',
+        fulfillment, customer, paymentMethod: 'GCash / QR Ph (PayMongo)',
         paymentStatus: 'pending', paymentProvider: 'paymongo_gcash', paymentTestMode: null
       };
       const orderId = await window.CCOrders.createOrder(orderPayload);

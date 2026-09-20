@@ -1,3 +1,27 @@
+/* Creates a real PayMongo Checkout Session for an order already sitting
+   in Firestore, and returns the checkout_url the browser redirects to.
+
+   SETUP (one-time):
+   1. Create a PayMongo account at https://dashboard.paymongo.com — no
+      card needed, test mode works immediately and never charges real
+      money. GCash live payouts need PayMongo to activate your account
+      (~5 business days per their docs) but test mode works right away.
+   2. Dashboard > Developers > API keys. Copy the SECRET key (starts
+      with sk_test_... in test mode, sk_live_... once activated).
+   3. Vercel dashboard > your project > Settings > Environment
+      Variables > add PAYMONGO_SECRET_KEY with that value.
+   4. Redeploy after adding it.
+
+   Only GCash and QR Ph are wired up for real payment here — Maya and
+   Card still use the simulated checkout in script.js. QR Ph needs no
+   account activation and works immediately; GCash needs PayMongo to
+   activate it on your account first (Settings > Payment Methods in
+   the dashboard) — until then it just won't appear as an option on
+   the PayMongo checkout page, QR Ph will. Extending this to Maya/Card
+   later is mostly just adding them to payment_method_types below;
+   check your dashboard's Payment Methods page for what's actually
+   active on your account first. */
+
 const admin = require('../_lib/firebaseAdmin');
 
 module.exports = async (req, res) => {
@@ -60,7 +84,7 @@ module.exports = async (req, res) => {
         data: {
           attributes: {
             line_items: lineItems,
-            payment_method_types: ['gcash'],
+            payment_method_types: ['gcash', 'qrph'],
             reference_number: orderId,
             description: `Crafts & Crumbs order #${shortId}`,
             success_url: `${siteUrl}/?paymongo_return=success&order_id=${orderId}`,
