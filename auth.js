@@ -312,5 +312,24 @@ onAuthStateChanged(auth, async (user) => {
   }));
 });
 
+/* Re-checks the role for the currently signed-in user and re-dispatches
+   authRoleReady with a fresh result, without going through a full
+   onAuthStateChanged cycle. Used by admin-boot.js/rider-boot.js as a
+   one-time double-check before showing "this account doesn't have
+   admin/rider access": a role read taken immediately after sign-in
+   occasionally lands before Firestore has fully caught up (or before
+   a just-changed role has propagated), coming back with a stale
+   default. A single quick recheck avoids flashing that message at
+   someone who genuinely does have access. */
+export async function recheckRole(){
+  const user = await waitForAuthReady();
+  if(!user || user.isAnonymous) return;
+  const { role, otpVerified, unknown } = await fetchUserRecord(user.uid);
+  window.currentRole = role;
+  document.dispatchEvent(new CustomEvent("authRoleReady", {
+    detail: { user, role, otpVerified, unknown: !!unknown }
+  }));
+}
+
 /* Expose to non-module scripts (script.js) via window */
-window.CCAuth = { registerUser, loginUser, logoutUser, ensureSignedIn, resendOtp, verifyOtp, isOtpVerified, sendResetPasswordEmail };
+window.CCAuth = { registerUser, loginUser, logoutUser, ensureSignedIn, resendOtp, verifyOtp, isOtpVerified, sendResetPasswordEmail, recheckRole };

@@ -2,6 +2,7 @@ const $gate = $('#admGate');
 const $login = $('#admLoginScreen');
 const $shell = $('#admShell');
 let dashboardBooted = false; // guards against re-running the initial data load on every future auth event
+let adminAccessRechecked = false; // guards the one-time "double check before denying" grace period below
 
 function showLoginScreen(errorMsg){
   $gate.hide();
@@ -49,6 +50,7 @@ document.addEventListener('authStateReady', function(e){
 document.addEventListener('authRoleReady', function(e){
   const { user, role, unknown } = e.detail;
   if(!user || user.isAnonymous){
+    adminAccessRechecked = false; // fresh sign-in later gets its own grace check
     showLoginScreen();
     return;
   }
@@ -64,8 +66,22 @@ document.addEventListener('authRoleReady', function(e){
     return;
   }
   if(role !== 'admin'){
+    if(!adminAccessRechecked){
+      // First non-admin verdict for this sign-in — the very first
+      // role read right after logging in can occasionally land before
+      // Firestore is fully consistent (e.g. a role that was just
+      // granted hasn't propagated yet), coming back with a stale
+      // default instead of "unknown". Rather than flash "no access"
+      // at someone who really is an admin, double-check once before
+      // deciding — this is the ONLY retry; a second non-admin verdict
+      // is treated as real.
+      adminAccessRechecked = true;
+      showLoadingGate();
+      window.CCAuth.recheckRole();
+      return;
+    }
     // TEMP DIAGNOSTIC
-    console.warn('[admin-boot] role was', role, 'not admin. unknown was', unknown);
+    console.warn('[admin-boot] role was', role, 'not admin (confirmed on recheck).');
     // Used to also call window.CCAuth.logoutUser() here, but admin,
     // rider, and customer all share one Firebase Auth session on this
     // origin — signOut() isn't scoped to this tab, it kills every
@@ -78,6 +94,7 @@ document.addEventListener('authRoleReady', function(e){
     showLoginScreen('This account does not have admin access.');
     return;
   }
+  adminAccessRechecked = true; // confirmed admin — no need to grace-check again this sign-in
   bootDashboard();
 });
 
@@ -111,6 +128,7 @@ $(document).on('click', '#admLogoutBtn', async function(){
   });
   if(!ok) return;
   dashboardBooted = false;
+  adminAccessRechecked = false;
   await window.CCAuth.logoutUser();
 });
 

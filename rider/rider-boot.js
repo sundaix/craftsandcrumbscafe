@@ -2,6 +2,7 @@ const $ridGate = $('#ridGate');
 const $ridLogin = $('#ridLoginScreen');
 const $ridShell = $('#ridShell');
 let riderAppBooted = false; // guards against re-running the initial data load on every future auth event
+let riderAccessRechecked = false; // guards the one-time "double check before denying" grace period below
 
 function showRiderLoginScreen(errorMsg){
   $ridGate.hide();
@@ -36,6 +37,7 @@ document.addEventListener('authStateReady', function(e){
 document.addEventListener('authRoleReady', function(e){
   const { user, role, unknown } = e.detail;
   if(!user || user.isAnonymous){
+    riderAccessRechecked = false; // fresh sign-in later gets its own grace check
     showRiderLoginScreen();
     return;
   }
@@ -48,8 +50,20 @@ document.addEventListener('authRoleReady', function(e){
     return;
   }
   if(role !== 'rider'){
+    if(!riderAccessRechecked){
+      // First non-rider verdict for this sign-in — see admin-boot.js's
+      // identical comment: the very first role read right after
+      // logging in can land before Firestore is fully consistent,
+      // coming back with a stale default instead of "unknown". Double
+      // check once before showing "no access" — this is the ONLY
+      // retry; a second non-rider verdict is treated as real.
+      riderAccessRechecked = true;
+      showRiderLoadingGate();
+      window.CCAuth.recheckRole();
+      return;
+    }
     // TEMP DIAGNOSTIC
-    console.warn('[rider-boot] role was', role, 'not rider. unknown was', unknown);
+    console.warn('[rider-boot] role was', role, 'not rider (confirmed on recheck).');
     // See admin-boot.js's identical comment: admin/rider/customer
     // share one Firebase Auth session on this origin, so signOut()
     // here was killing every other open tab's session too — that was
@@ -59,6 +73,7 @@ document.addEventListener('authRoleReady', function(e){
     showRiderLoginScreen('This account does not have rider access.');
     return;
   }
+  riderAccessRechecked = true; // confirmed rider — no need to grace-check again this sign-in
   bootRiderApp();
 });
 
@@ -91,6 +106,7 @@ $(document).on('click', '#ridLogoutBtn', async function(){
   });
   if(!ok) return;
   riderAppBooted = false;
+  riderAccessRechecked = false;
   await window.CCAuth.logoutUser();
 });
 

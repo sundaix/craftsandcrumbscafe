@@ -17,6 +17,14 @@ export async function createOrder({ items, totals, fulfillment, customer, paymen
     items, totals, fulfillment, customer, paymentMethod,
     userId: window.currentUser ? window.currentUser.uid : null,
     status: "pending",
+    // Explicitly null, not omitted — fetchAvailableDeliveries() and
+    // firestore.rules both filter on `riderId == null` to find
+    // unclaimed deliveries, and Firestore's `== null` query only
+    // matches documents where the field is actually present and set
+    // to null. Leaving the field out entirely (as this used to)
+    // meant no delivery order could ever match that filter, so no
+    // order ever appeared in a rider's Available Deliveries list.
+    riderId: null,
     createdAt: serverTimestamp()
   });
   return ref.id;
@@ -110,7 +118,30 @@ export async function assignRider(orderId, riderId){
   await updateDoc(doc(db, ORDERS_COL, orderId), { riderId: riderId || null });
 }
 
+/* One-time fix for delivery orders created before createOrder() started
+   writing riderId: null explicitly. Firestore's where("riderId","==",null)
+   query — and the matching firestore.rules check — only match documents
+   where riderId is actually present and set to null, not documents
+   missing the field entirely, so any order placed before that fix is
+   invisible to fetchAvailableDeliveries() and unreadable by riders,
+   forever, until backfilled here. Only touches delivery orders with no
+   riderId field at all; already-assigned orders are left untouched.
+   Safe to run more than once. */
+export async function backfillMissingRiderId(){
+  const q = query(collection(db, ORDERS_COL), where("fulfillment", "==", "delivery"));
+  const snap = await getDocs(q);
+  const fixedIds = [];
+  for(const d of snap.docs){
+    if(!('riderId' in d.data())){
+      await updateDoc(d.ref, { riderId: null });
+      fixedIds.push(d.id);
+    }
+  }
+  return fixedIds;
+}
+
 window.CCOrders = {
   createOrder, fetchAllOrders, fetchMyOrders, fetchOrder, updateOrderStatus,
-  fetchAvailableDeliveries, fetchRiderDeliveries, claimDelivery, updateDeliveryStatus, assignRider
+  fetchAvailableDeliveries, fetchRiderDeliveries, claimDelivery, updateDeliveryStatus, assignRider,
+  backfillMissingRiderId
 };

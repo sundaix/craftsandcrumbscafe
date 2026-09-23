@@ -1605,6 +1605,31 @@ $(document).on('click', '#adminCleanupFieldsBtn', async function(){
   }
 });
 
+/* ================= FIX MISSING riderId FIELD ON OLDER ORDERS ================= */
+/* See the comment on CCOrders.backfillMissingRiderId — delivery orders
+   placed before createOrder() started writing riderId: null explicitly
+   never matched fetchAvailableDeliveries()'s riderId == null query (or
+   the matching firestore.rules check), so they never appeared in any
+   rider's Available Deliveries list at all. This adds the missing
+   field to any delivery order that still lacks it. */
+$(document).on('click', '#adminBackfillRiderIdBtn', async function(){
+  const $btn = $(this);
+  const $status = $('#adminBackfillRiderIdStatus');
+  $btn.prop('disabled', true).text('Fixing...');
+  $status.text('Scanning delivery orders for a missing riderId field...');
+  try{
+    const fixedIds = await window.CCOrders.backfillMissingRiderId();
+    $status.text(fixedIds.length
+      ? `Done — fixed ${fixedIds.length} delivery order${fixedIds.length === 1 ? '' : 's'}: ${fixedIds.join(', ')}.`
+      : 'Done — every delivery order already had the riderId field.');
+  } catch(err){
+    console.error(err);
+    $status.text('Something went wrong while fixing older orders. Check the console for details.');
+  } finally {
+    $btn.prop('disabled', false).text('Fix Older Delivery Orders');
+  }
+});
+
 /* ================= FLATTEN LEGACY PER-SIZE PRICING ================= */
 /* Some Shirts/Caps/Shorts/Socks products may still carry old per-size
    pricing (a `sizes` array of {size, price} objects with different
