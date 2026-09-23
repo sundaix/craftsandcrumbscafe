@@ -2690,77 +2690,6 @@ $(document).on('click', '.pay-opt', function(){
   $(this).find('input').prop('checked', true);
 });
 
-/* Simulated PayMongo checkout — no real account, no real API calls.
-   Mirrors PayMongo's actual test-mode flow (per their docs: a
-   redirect to a PayMongo-hosted test page where you click Authorize
-   or Fail) closely enough to stand in for it in a school project.
-   Returns a Promise<boolean> — true if the simulated payment was
-   authorized, false if failed or the modal was dismissed. */
-function openPaymongoCheckout(methodKey, methodLabel, amount){
-  return new Promise((resolve) => {
-    $('#paymongoMethodLabel').text(methodLabel);
-
-    function renderConfirm(){
-      $('#paymongoModalBody').html(`
-        <div class="pm-amount">${peso(amount)}</div>
-        <p class="pm-desc">This is a simulated PayMongo checkout for testing — no real account or money is involved. Choose an outcome below.</p>
-        <button type="button" class="btn btn-primary btn-full" id="pmAuthorizeBtn">Authorize Test Payment</button>
-        <button type="button" class="btn btn-outline btn-full" id="pmFailBtn">Simulate Failed Payment</button>
-      `);
-    }
-    function renderProcessing(){
-      $('#paymongoModalBody').html(`
-        <div class="pm-processing">
-          <div class="pm-spinner"></div>
-          <p>Processing payment…</p>
-        </div>
-      `);
-    }
-    function renderSuccess(){
-      $('#paymongoModalBody').html(`
-        <div class="pm-result pm-result-success">
-          <svg width="40" height="40" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="1.5"/><path d="M7.5 12.5l3 3 6-6.5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
-          <h3>Payment successful</h3>
-          <p>Test payment of ${peso(amount)} via ${methodLabel} was authorized.</p>
-          <button type="button" class="btn btn-primary btn-full" id="pmContinueBtn">Continue</button>
-        </div>
-      `);
-    }
-    function renderFailed(){
-      $('#paymongoModalBody').html(`
-        <div class="pm-result pm-result-failed">
-          <svg width="40" height="40" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="1.5"/><path d="M9 9l6 6M15 9l-6 6" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
-          <h3>Payment failed</h3>
-          <p>The test payment was declined. No charge was made.</p>
-          <button type="button" class="btn btn-primary btn-full" id="pmRetryBtn">Try Again</button>
-          <button type="button" class="btn btn-outline btn-full" id="pmCancelBtn">Cancel</button>
-        </div>
-      `);
-    }
-
-    function finish(result){
-      $('#paymongoOverlay').removeClass('open');
-      $(document).off('click.pmflow');
-      resolve(result);
-    }
-
-    $(document).off('click.pmflow').on('click.pmflow', '#pmAuthorizeBtn', function(){
-      renderProcessing();
-      setTimeout(renderSuccess, 1200);
-    }).on('click.pmflow', '#pmFailBtn', function(){
-      renderProcessing();
-      setTimeout(renderFailed, 900);
-    }).on('click.pmflow', '#pmContinueBtn', function(){ finish(true); })
-      .on('click.pmflow', '#pmRetryBtn', function(){ renderConfirm(); })
-      .on('click.pmflow', '#pmCancelBtn', function(){ finish(false); })
-      .on('click.pmflow', '#paymongoModalClose', function(){ finish(false); })
-      .on('click.pmflow', '#paymongoOverlay', function(e){ if(e.target.id === 'paymongoOverlay') finish(false); })
-      .on('keydown.pmflow', function(e){ if(e.key === 'Escape' && $('#paymongoOverlay').hasClass('open')) finish(false); });
-
-    renderConfirm();
-    $('#paymongoOverlay').addClass('open');
-  });
-}
 
 function renderCheckoutSummary(){
   const subtotal = cartTotal();
@@ -2897,82 +2826,48 @@ async function placeOrder(){
     };
   });
   const $activePayOpt = $('.pay-opt.active');
-  const paymentGateway = $activePayOpt.data('gateway'); // 'gcash' | 'maya' | 'card', undefined for COD
-  let paymentMethod = payOptLabel($activePayOpt);
+  const paymentGateway = $activePayOpt.data('gateway'); // 'qrph' | 'card'
+  const paymentMethod = payOptLabel($activePayOpt);
 
   const $btn = $('#placeOrderBtn');
   $btn.prop('disabled', true).text('Placing order...');
 
-  if(paymentGateway === 'gcash'){
-    // Real PayMongo GCash checkout. The order is created up front
-    // (paymentStatus: 'pending') so there's something for the
-    // serverless function to attach a Checkout Session to, then the
-    // whole page redirects off-site to PayMongo/GCash — nothing past
-    // this point runs until the customer comes back via
-    // handlePaymongoReturn(), which is a separate page load entirely.
-    try{
-      await window.CCAuth.ensureSignedIn();
-      const orderPayload = {
-        items, totals: { subtotal, deliveryFee, total },
-        fulfillment, customer, paymentMethod: 'GCash / QR Ph (PayMongo)',
-        paymentStatus: 'pending', paymentProvider: 'paymongo_gcash', paymentTestMode: null
-      };
-      const orderId = await window.CCOrders.createOrder(orderPayload);
-      const res = await fetch('/api/paymongo/create-checkout-session', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ orderId })
-      });
-      const data = await res.json();
-      if(!res.ok || !data.checkoutUrl) throw new Error(data.error || 'checkout-session-failed');
-      // The order already exists independently in Firestore at this
-      // point, so the cart's job here is done.
-      cart = [];
-      persistCart();
-      updateCartCount();
-      checkoutSelectedAddressId = null;
-      window.location.href = data.checkoutUrl;
-      return;
-    } catch(err){
-      console.error(err);
-      $btn.prop('disabled', false).text('Place Order');
-      showToast('Could not start GCash checkout. Please try again.', 'error');
-      return;
-    }
-  }
-
-  if(paymentGateway === 'maya' || paymentGateway === 'card'){
-    const authorized = await openPaymongoCheckout(paymentGateway, paymentMethod, total);
-    if(!authorized){
-      $btn.prop('disabled', false).text('Place Order');
-      showToast('Payment was not completed — your order was not placed.', 'warning');
-      return;
-    }
-    paymentMethod = `${paymentMethod} (via PayMongo, Test Mode)`;
-  }
-
+  // Every payment option left on this form goes through a real
+  // PayMongo Checkout Session now. The order is created up front
+  // (paymentStatus: 'pending') so there's something for the
+  // serverless function to attach a Checkout Session to, then the
+  // whole page redirects off-site to PayMongo to actually pay.
+  // Nothing past this point runs until the customer comes back via
+  // handlePaymongoReturn(), which is a separate page load entirely.
   try{
     await window.CCAuth.ensureSignedIn();
     const orderPayload = {
       items, totals: { subtotal, deliveryFee, total },
-      fulfillment, customer, paymentMethod,
-      paymentStatus: paymentGateway ? 'paid' : 'unpaid',
-      paymentProvider: paymentGateway || null,
-      paymentTestMode: paymentGateway ? true : null
+      fulfillment, customer, paymentMethod: `${paymentMethod} (PayMongo)`,
+      paymentStatus: 'pending', paymentProvider: `paymongo_${paymentGateway}`, paymentTestMode: null
     };
     const orderId = await window.CCOrders.createOrder(orderPayload);
-    showOrderConfirmationUI(orderId, fulfillment, total);
+    const res = await fetch('/api/paymongo/create-checkout-session', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ orderId, method: paymentGateway })
+    });
+    const data = await res.json();
+    if(!res.ok || !data.checkoutUrl) throw new Error(data.error || 'checkout-session-failed');
+    // The order already exists independently in Firestore at this
+    // point, so the cart's job here is done.
     cart = [];
     persistCart();
     updateCartCount();
     checkoutSelectedAddressId = null;
-    finalizeStockAndEmail(orderPayload, orderId);
+    window.location.href = data.checkoutUrl;
+    return;
   } catch(err){
     console.error(err);
     if(String(err.code).includes('admin-restricted-operation') || String(err.code).includes('operation-not-allowed')){
       showToast('Guest checkout isn\'t enabled yet — turn on "Anonymous" sign-in in the Firebase Console.', 'error');
     } else {
-      showToast('Could not place order. Please try again.', 'error');
+      showToast('Could not start checkout. Please try again.', 'error');
     }
     $btn.prop('disabled', false).text('Place Order');
   }

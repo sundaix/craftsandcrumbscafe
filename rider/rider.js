@@ -30,6 +30,19 @@ function mapsLinkFor(address){
   return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(address || '')}`;
 }
 
+/* Same "no API key needed" reasoning as mapsLinkFor above — this is
+   the informal output=embed parameter on a regular Google Maps URL,
+   which renders as an embeddable iframe without needing a Maps
+   JavaScript API key or a Google Cloud billing account. It's not
+   Google's officially documented Embed API (that one requires a
+   key), but it's a long-standing, widely-used trick that works the
+   same way. If it ever stops working, switching to the official one
+   just means adding &key=YOUR_KEY here and pointing the base URL at
+   https://www.google.com/maps/embed/v1/place instead. */
+function mapsEmbedFor(address){
+  return `https://maps.google.com/maps?q=${encodeURIComponent(address || '')}&z=15&output=embed`;
+}
+
 function telLinkFor(phone){
   return `tel:${(phone || '').replace(/[^\d+]/g, '')}`;
 }
@@ -101,7 +114,9 @@ function renderQueue(){
         <ul class="rid-card-items">${items}</ul>
         <div class="rid-card-actions">
           <button class="btn btn-primary btn-sm" data-claim-order="${o.id}">Claim Delivery</button>
+          ${c.address ? `<button class="btn btn-outline btn-sm" data-toggle-map="${o.id}">Preview Map</button>` : ''}
         </div>
+        ${c.address ? `<div class="rid-map-wrap" id="ridMap-${o.id}"><iframe class="rid-map-frame" data-embed-src="${mapsEmbedFor(c.address)}" loading="lazy" referrerpolicy="no-referrer-when-downgrade"></iframe></div>` : ''}
       </div>
     `;
   }).join('');
@@ -141,8 +156,10 @@ function renderMine(){
         <div class="rid-card-actions">
           ${nextActionBtn}
           <a class="btn btn-outline btn-sm" href="${mapsLinkFor(c.address)}" target="_blank" rel="noopener">Navigate</a>
+          ${c.address ? `<button class="btn btn-outline btn-sm" data-toggle-map="${o.id}">Preview Map</button>` : ''}
           ${c.phone ? `<a class="btn btn-outline btn-sm" href="${telLinkFor(c.phone)}">Call</a><a class="btn btn-outline btn-sm" href="${smsLinkFor(c.phone)}">Text</a>` : ''}
         </div>
+        ${c.address ? `<div class="rid-map-wrap" id="ridMap-${o.id}"><iframe class="rid-map-frame" data-embed-src="${mapsEmbedFor(c.address)}" loading="lazy" referrerpolicy="no-referrer-when-downgrade"></iframe></div>` : ''}
       </div>
     `;
   }).join('');
@@ -262,6 +279,24 @@ $(document).on('click', '#ridProofSubmit', async function(){
     showToast('Could not confirm delivery. Please try again.', 'error');
   } finally {
     $btn.prop('disabled', false).text('Mark as Delivered');
+  }
+});
+
+/* ================= MAP PREVIEW ================= */
+$(document).on('click', '[data-toggle-map]', function(){
+  const orderId = $(this).data('toggle-map');
+  const $wrap = $(`#ridMap-${orderId}`);
+  const $iframe = $wrap.find('iframe');
+  if($wrap.hasClass('open')){
+    $wrap.removeClass('open');
+    $(this).text('Preview Map');
+  } else {
+    // Only set src the first time it's opened — avoids loading a map
+    // for every card in the list up front, most of which a rider
+    // will never actually expand.
+    if(!$iframe.attr('src')) $iframe.attr('src', $iframe.data('embed-src'));
+    $wrap.addClass('open');
+    $(this).text('Hide Map');
   }
 });
 

@@ -1,27 +1,3 @@
-/* Creates a real PayMongo Checkout Session for an order already sitting
-   in Firestore, and returns the checkout_url the browser redirects to.
-
-   SETUP (one-time):
-   1. Create a PayMongo account at https://dashboard.paymongo.com — no
-      card needed, test mode works immediately and never charges real
-      money. GCash live payouts need PayMongo to activate your account
-      (~5 business days per their docs) but test mode works right away.
-   2. Dashboard > Developers > API keys. Copy the SECRET key (starts
-      with sk_test_... in test mode, sk_live_... once activated).
-   3. Vercel dashboard > your project > Settings > Environment
-      Variables > add PAYMONGO_SECRET_KEY with that value.
-   4. Redeploy after adding it.
-
-   Only GCash and QR Ph are wired up for real payment here — Maya and
-   Card still use the simulated checkout in script.js. QR Ph needs no
-   account activation and works immediately; GCash needs PayMongo to
-   activate it on your account first (Settings > Payment Methods in
-   the dashboard) — until then it just won't appear as an option on
-   the PayMongo checkout page, QR Ph will. Extending this to Maya/Card
-   later is mostly just adding them to payment_method_types below;
-   check your dashboard's Payment Methods page for what's actually
-   active on your account first. */
-
 const admin = require('../_lib/firebaseAdmin');
 
 module.exports = async (req, res) => {
@@ -32,10 +8,14 @@ module.exports = async (req, res) => {
     return res.status(500).json({ error: 'paymongo-not-configured' });
   }
 
-  const { orderId } = req.body || {};
+  const { orderId, method } = req.body || {};
   if(!orderId){
     return res.status(400).json({ error: 'missing-order-id' });
   }
+  // Whitelist — never pass an arbitrary client-supplied string
+  // straight into the PayMongo request.
+  const ALLOWED_METHODS = ['qrph', 'card'];
+  const paymentMethodType = ALLOWED_METHODS.includes(method) ? method : 'qrph';
 
   const db = admin.firestore();
   const orderRef = db.collection('orders').doc(orderId);
@@ -84,7 +64,7 @@ module.exports = async (req, res) => {
         data: {
           attributes: {
             line_items: lineItems,
-            payment_method_types: ['gcash', 'qrph'],
+            payment_method_types: [paymentMethodType],
             reference_number: orderId,
             description: `Crafts & Crumbs order #${shortId}`,
             success_url: `${siteUrl}/?paymongo_return=success&order_id=${orderId}`,
@@ -108,7 +88,7 @@ module.exports = async (req, res) => {
   const session = pmData.data;
   await orderRef.update({
     paymongoCheckoutSessionId: session.id,
-    paymentProvider: 'paymongo_gcash',
+    paymentProvider: `paymongo_${paymentMethodType}`,
     paymentStatus: 'pending'
   });
 
