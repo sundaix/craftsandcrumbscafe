@@ -1411,6 +1411,17 @@ async function renderOrderHistory(){
     $list.html('<p class="order-history-empty">Could not load your orders. Please try again.</p>');
     return;
   }
+  // Return requests are an add-on: if they can't be loaded, the order
+  // list still shows (just without return buttons/status).
+  let returnsByOrder = {};
+  try{
+    const myReturns = await window.CCOrders.fetchMyReturns(window.currentUser.uid);
+    myReturns.forEach(r => { returnsByOrder[r.orderId || r.id] = r; });
+  } catch(err){
+    console.error('Could not load return requests.', err);
+    returnsByOrder = null;
+  }
+  ORDER_HISTORY_CACHE = orders;
 
   if(!orders.length){
     $list.html('<p class="order-history-empty">No orders yet — once you place one, it\'ll show up here.</p>');
@@ -1434,6 +1445,7 @@ async function renderOrderHistory(){
         </div>
         <p class="order-card-items">${itemsText}</p>
         ${orderStatusTracker(status)}
+        ${orderReturnBlock(o, status, returnsByOrder)}
         <div class="order-card-foot">
           <span>${toDate(o.createdAt)} · ${o.fulfillment === 'delivery' ? 'Delivery' : 'Pickup'}</span>
           <span class="order-card-total">${peso(o.totals?.total || 0)}</span>
@@ -1443,6 +1455,105 @@ async function renderOrderHistory(){
   }).join('');
   $list.html(rows);
 }
+
+/* ---------- Returns (customer side) ----------
+   Only COMPLETED orders can be returned (firestore.rules enforces the
+   same). One request per order — once it exists, the button turns into
+   a status line the customer can follow. Refund is the full order total. */
+let ORDER_HISTORY_CACHE = [];
+let returnModalOrderId = null;
+
+const RETURN_STATUS_COPY = {
+  requested: { label: 'Return requested', text: "We got your request and will review it soon. We'll email you with the update." },
+  approved:  { label: 'Return approved', text: "Your return was approved. Your refund is being processed." },
+  rejected:  { label: 'Return not approved', text: "Sorry — we couldn't approve this return." },
+  refunded:  { label: 'Refunded', text: "Your refund has been sent. Thank you for your patience!" }
+};
+
+function orderReturnBlock(order, status, returnsByOrder){
+  if(returnsByOrder === null) return '';   // couldn't load returns — show nothing rather than a wrong button
+  const ret = returnsByOrder[order.id];
+  if(ret){
+    const copy = RETURN_STATUS_COPY[ret.status] || { label: 'Return ' + ret.status, text: '' };
+    return `
+      <div class="order-return order-return-${escapeHtml(ret.status)}">
+        <div class="order-return-top"><span class="order-return-label">${escapeHtml(copy.label)}</span><span class="order-return-amt">${peso(ret.refundAmount || 0)}</span></div>
+        <p>${escapeHtml(copy.text)}</p>
+        ${ret.adminNote ? `<p class="order-return-note"><strong>Note from us:</strong> ${escapeHtml(ret.adminNote)}</p>` : ''}
+      </div>`;
+  }
+  if(status !== 'completed') return '';
+  return `
+    <div class="order-return-cta">
+      <button type="button" class="btn btn-outline btn-sm" data-return-order="${escapeHtml(order.id)}">Request a return</button>
+    </div>`;
+}
+
+function openReturnModal(orderId){
+  const order = ORDER_HISTORY_CACHE.find(o => o.id === orderId);
+  if(!order) return;
+  returnModalOrderId = orderId;
+  $('#returnReason').val('');
+  $('#returnNote').val('');
+  $('#returnSubmit').prop('disabled', false).text('Submit Request');
+  $('#returnSub').text(`Order #${order.id.slice(0,6).toUpperCase()}`);
+  const itemsText = (order.items || []).map(it => `${escapeHtml(it.name)}${it.size ? ` (${escapeHtml(it.size)})` : ''} × ${escapeHtml(it.qty)}`).join(', ');
+  $('#returnSummary').html(`
+    <div class="return-summary-items">${itemsText}</div>
+    <div class="return-summary-total"><span>Refund requested</span><strong>${peso(order.totals?.total || 0)}</strong></div>
+  `);
+  $('#returnOverlay').addClass('open');
+}
+
+function closeReturnModal(){
+  $('#returnOverlay').removeClass('open');
+  returnModalOrderId = null;
+}
+
+$(document).on('click', '[data-return-order]', function(){
+  openReturnModal(String($(this).data('return-order')));
+});
+$(document).on('click', '#returnClose, #returnCancel', closeReturnModal);
+$(document).on('click', '#returnOverlay', function(e){ if(e.target === this) closeReturnModal(); });
+$(document).on('keydown', function(e){
+  if(e.key === 'Escape' && $('#returnOverlay').hasClass('open')) closeReturnModal();
+});
+
+$(document).on('submit', '#returnForm', async function(e){
+  e.preventDefault();
+  const order = ORDER_HISTORY_CACHE.find(o => o.id === returnModalOrderId);
+  if(!order) return;
+  const reason = $('#returnReason').val();
+  if(!reason){ showToast('Please choose a reason for the return.', 'warning'); return; }
+  if(order.status !== 'completed'){ showToast('Only completed orders can be returned.', 'warning'); return; }
+  const note = $('#returnNote').val().trim().slice(0, 500);
+  const $btn = $('#returnSubmit').prop('disabled', true).text('Sending…');
+  try{
+    await window.CCOrders.createReturnRequest({ order, reason, note });
+  } catch(err){
+    console.error(err);
+    $btn.prop('disabled', false).text('Submit Request');
+    showToast("Couldn't send your request. It may already have been submitted — refresh and check.", 'error');
+    return;
+  }
+  closeReturnModal();
+  // Fire-and-forget confirmation email; failure never affects the request.
+  if(order.customer?.email && typeof window.sendReturnStatusEmail === 'function'){
+    window.sendReturnStatusEmail({
+      toEmail: order.customer.email,
+      toName: order.customer.name || 'there',
+      orderNumber: 'CC-' + order.id.slice(0, 6).toUpperCase(),
+      status: 'requested',
+      statusLabel: 'Return requested',
+      reason,
+      adminNote: '',
+      refundAmount: peso(order.totals?.total || 0),
+      refundRef: ''
+    });
+  }
+  showToast("Return request sent. We'll email you with an update.", 'success');
+  renderOrderHistory();
+});
 
 /* Visual step tracker for order history — mirrors the status values the
    admin dashboard's dropdown writes (pending/preparing/ready/completed/
@@ -3233,19 +3344,92 @@ $(document).on('keydown', function(e){
   if(e.key === 'Escape' && $('#confirmOverlay').hasClass('open')) closeConfirm(false);
 });
 
-/* ================= RESET PASSWORD MODAL ================= */
-$(document).on('click', '#forgotPasswordLink', function(){
-  $('#resetPasswordEmail').val($('#loginEmail').val().trim());
-  $('#resetPasswordOverlay').addClass('open');
-  $('#resetPasswordEmail').trigger('focus');
-});
+/* ================= RESET PASSWORD MODAL (6-digit code) =================
+   Four steps in one modal: 1 email -> 2 code -> 3 new password -> 4 done.
+   The code is generated, emailed, checked and consumed on the server
+   (api/auth/request-password-reset + confirm-password-reset); the
+   browser never sees the real code, and the password is changed with
+   the Admin SDK there — so unlike the signup OTP, this one can't be
+   skipped from dev tools. */
+const RP_RESEND_SECONDS = 60;
+let rpEmail = '';
+let rpCode = '';
+let rpTimer = null;
 
-function closeResetPasswordModal(){
-  $('#resetPasswordOverlay').removeClass('open');
-  $('#resetPasswordForm')[0].reset();
+const RP_COPY = {
+  1: { title: 'Reset your password', lead: "Enter the email on your account and we'll send you a 6-digit code." },
+  2: { title: 'Check your email', lead: '' },
+  3: { title: 'Choose a new password', lead: 'Pick something you haven\'t used here before.' },
+  4: { title: 'Password updated', lead: 'All set! You can log in with your new password now.' }
+};
+
+function rpShowStep(n){
+  $('#resetPasswordBox .rp-step').hide().removeClass('rp-in');
+  $(`#resetPasswordBox .rp-step[data-rp-step="${n}"]`).show().addClass('rp-in');
+  $('#resetPasswordTitle').text(RP_COPY[n].title);
+  $('#resetPasswordLead').text(n === 2
+    ? `We sent a 6-digit code to ${rpEmail}. It expires in 10 minutes.`
+    : RP_COPY[n].lead);
+  $('#resetPasswordIcon').toggleClass('rp-done', n === 4);
+  if(n === 1) $('#resetPasswordEmail').trigger('focus');
+  if(n === 2) $('.rp-digit').first().trigger('focus');
+  if(n === 3) $('#rpNewPassword').trigger('focus');
 }
 
-$(document).on('click', '#resetPasswordCancel', closeResetPasswordModal);
+function rpStartResendTimer(){
+  clearInterval(rpTimer);
+  let left = RP_RESEND_SECONDS;
+  const $b = $('#rpResend').prop('disabled', true).text(`resend code (${left}s)`);
+  rpTimer = setInterval(() => {
+    left--;
+    if(left <= 0){ clearInterval(rpTimer); $b.prop('disabled', false).text('resend code'); }
+    else $b.text(`resend code (${left}s)`);
+  }, 1000);
+}
+
+function rpClearDigits(){
+  $('.rp-digit').val('').removeClass('rp-digit-error');
+  $('#rpCodeError').hide();
+}
+
+function openResetPasswordModal(){
+  rpEmail = ''; rpCode = '';
+  $('#resetPasswordForm')[0].reset();
+  $('#resetNewPasswordForm')[0].reset();
+  rpClearDigits();
+  $('#resetPasswordEmail').val($('#loginEmail').val().trim());
+  rpShowStep(1);
+  $('#resetPasswordOverlay').addClass('open');
+}
+
+function closeResetPasswordModal(){
+  clearInterval(rpTimer);
+  $('#resetPasswordOverlay').removeClass('open');
+  rpEmail = ''; rpCode = '';
+  $('#resetPasswordForm')[0].reset();
+  $('#resetNewPasswordForm')[0].reset();
+  rpClearDigits();
+  $('#resetPasswordBox [data-password-toggle]').each(function(){
+    const input = document.getElementById($(this).data('password-toggle'));
+    if(input) input.type = 'password';
+    $(this).find('.eye-open').show(); $(this).find('.eye-closed').hide();
+    $(this).attr('aria-pressed', 'false').attr('aria-label', 'Show password');
+  });
+}
+
+async function rpPost(url, payload){
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload)
+  });
+  let data = {};
+  try{ data = await res.json(); } catch(e){ /* non-JSON error page */ }
+  return { ok: res.ok && data.ok === true, status: res.status, data };
+}
+
+$(document).on('click', '#forgotPasswordLink', openResetPasswordModal);
+$(document).on('click', '#resetPasswordCancel, #rpPwCancel', closeResetPasswordModal);
 $(document).on('click', '#resetPasswordOverlay', function(e){
   if(e.target.id === 'resetPasswordOverlay') closeResetPasswordModal();
 });
@@ -3253,21 +3437,147 @@ $(document).on('keydown', function(e){
   if(e.key === 'Escape' && $('#resetPasswordOverlay').hasClass('open')) closeResetPasswordModal();
 });
 
-$(document).on('submit', '#resetPasswordForm', async function(e){
-  e.preventDefault();
-  const email = $('#resetPasswordEmail').val().trim();
-  const $btn = $('#resetPasswordSubmit');
+/* Step 1 -> send the code */
+async function rpSendCode(email, $btn, idleText){
   $btn.prop('disabled', true).text('Sending...');
   try{
-    await window.CCAuth.sendResetPasswordEmail(email);
-    showToast("If that email has an account, we've sent a reset link.", 'success');
-    closeResetPasswordModal();
+    const r = await rpPost('/api/auth/request-password-reset', { email });
+    if(!r.ok){
+      showToast(r.data.error === 'invalid-email'
+        ? 'Please enter a valid email address.'
+        : 'Could not send the code right now. Please try again.', 'error');
+      return false;
+    }
+    return true;
   } catch(err){
     console.error(err);
-    showToast('Could not send the reset link right now. Please try again.', 'error');
+    showToast('Could not reach the server. Check your connection and try again.', 'error');
+    return false;
   } finally {
-    $btn.prop('disabled', false).text('Send Link');
+    $btn.prop('disabled', false).text(idleText);
   }
+}
+
+$(document).on('submit', '#resetPasswordForm', async function(e){
+  e.preventDefault();
+  const email = $('#resetPasswordEmail').val().trim().toLowerCase();
+  if(!email) return;
+  if(await rpSendCode(email, $('#resetPasswordSubmit'), 'Send Code')){
+    rpEmail = email;
+    rpClearDigits();
+    rpShowStep(2);
+    rpStartResendTimer();
+    // Same message whether or not the account exists — on purpose.
+    showToast("If that email has an account, we've sent a 6-digit code.", 'success');
+  }
+});
+
+$(document).on('click', '#rpResend', async function(){
+  if(!rpEmail) return;
+  if(await rpSendCode(rpEmail, $(this), 'resend code')){
+    rpClearDigits();
+    $('.rp-digit').first().trigger('focus');
+    rpStartResendTimer();
+    showToast('A new code is on its way.', 'success');
+  }
+});
+
+$(document).on('click', '#rpCodeBack', function(){
+  clearInterval(rpTimer);
+  rpShowStep(1);
+});
+
+/* Step 2 -> 6 digit boxes (own handlers; the signup OTP's are separate) */
+$(document).on('input', '.rp-digit', function(){
+  this.value = this.value.replace(/\D/g, '').slice(0, 1);
+  $('#rpCodeError').hide();
+  $('.rp-digit').removeClass('rp-digit-error');
+  if(this.value) $(this).next('.rp-digit').trigger('focus');
+});
+$(document).on('keydown', '.rp-digit', function(e){
+  if(e.key === 'Backspace' && !this.value) $(this).prev('.rp-digit').trigger('focus');
+});
+$(document).on('paste', '.rp-digit', function(e){
+  const text = ((e.originalEvent || e).clipboardData?.getData('text') || '').replace(/\D/g, '').slice(0, 6);
+  if(!text) return;
+  e.preventDefault();
+  const $digits = $('.rp-digit');
+  text.split('').forEach((ch, i) => $digits.eq(i).val(ch));
+  $digits.eq(Math.min(text.length, 5)).trigger('focus');
+});
+
+function rpCodeErrorText(err, attemptsLeft){
+  if(err === 'wrong-code') return `That code isn't right. ${attemptsLeft} ${attemptsLeft === 1 ? 'try' : 'tries'} left.`;
+  if(err === 'expired') return 'That code has expired. Tap "resend code" to get a new one.';
+  if(err === 'too-many-attempts') return 'Too many wrong tries. Tap "resend code" to get a new one.';
+  if(err === 'invalid-code') return "That code doesn't match. Check it, or tap \"resend code\".";
+  return 'Could not check that code. Please try again.';
+}
+
+$(document).on('submit', '#resetCodeForm', async function(e){
+  e.preventDefault();
+  const code = $('.rp-digit').map(function(){ return this.value; }).get().join('');
+  if(code.length !== 6){
+    $('#rpCodeError').text('Enter all 6 digits.').show();
+    $('.rp-digit').addClass('rp-digit-error');
+    return;
+  }
+  const $btn = $('#rpCodeSubmit').prop('disabled', true).text('Checking...');
+  try{
+    const r = await rpPost('/api/auth/confirm-password-reset', { email: rpEmail, code, checkOnly: true });
+    if(r.ok){
+      rpCode = code;
+      clearInterval(rpTimer);
+      rpShowStep(3);
+    } else {
+      $('#rpCodeError').text(rpCodeErrorText(r.data.error, r.data.attemptsLeft)).show();
+      $('.rp-digit').addClass('rp-digit-error');
+    }
+  } catch(err){
+    console.error(err);
+    $('#rpCodeError').text('Could not reach the server. Please try again.').show();
+  } finally {
+    $btn.prop('disabled', false).text('Verify');
+  }
+});
+
+/* Step 3 -> set the new password */
+$(document).on('submit', '#resetNewPasswordForm', async function(e){
+  e.preventDefault();
+  const pw = $('#rpNewPassword').val();
+  const confirm = $('#rpNewPasswordConfirm').val();
+  if(pw.length < 6){ showToast('Password should be at least 6 characters.', 'warning'); return; }
+  if(pw !== confirm){ showToast("Passwords don't match.", 'warning'); return; }
+  const $btn = $('#rpPwSubmit').prop('disabled', true).text('Saving...');
+  try{
+    const r = await rpPost('/api/auth/confirm-password-reset', { email: rpEmail, code: rpCode, newPassword: pw });
+    if(r.ok){
+      rpCode = '';
+      rpShowStep(4);
+    } else if(['expired', 'invalid-code', 'too-many-attempts', 'wrong-code'].includes(r.data.error)){
+      showToast('That code is no longer valid. Please request a new one.', 'warning');
+      rpCode = '';
+      rpClearDigits();
+      rpShowStep(1);
+    } else if(r.data.error === 'weak-password'){
+      showToast('Password should be at least 6 characters.', 'warning');
+    } else {
+      showToast('Could not reset your password right now. Please try again.', 'error');
+    }
+  } catch(err){
+    console.error(err);
+    showToast('Could not reach the server. Check your connection and try again.', 'error');
+  } finally {
+    $btn.prop('disabled', false).text('Reset Password');
+  }
+});
+
+/* Step 4 -> back to the login form with the email filled in */
+$(document).on('click', '#rpDoneBtn', function(){
+  const email = rpEmail;
+  closeResetPasswordModal();
+  $('#loginEmail').val(email);
+  $('#loginPassword').val('').trigger('focus');
 });
 
 /* ================= SCROLL PROGRESS BAR ================= */

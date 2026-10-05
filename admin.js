@@ -1607,19 +1607,22 @@ async function loadRidersCache(){
 }
 
 async function loadAndRenderAdminOrders(){
-  $('#adminOrdersBody').html(`<tr><td colspan="7" class="admin-empty-row">Loading orders...</td></tr>`);
+  $('#adminOrdersBody').html(`<tr><td colspan="8" class="admin-empty-row">Loading orders...</td></tr>`);
   try{
+    // loadReturnsCache() never throws (a returns problem must not block the orders table).
     [ADMIN_ORDERS] = await Promise.all([
       window.CCOrders.fetchAllOrders(),
-      loadRidersCache()
+      loadRidersCache(),
+      loadReturnsCache()
     ]);
   } catch(err){
     console.error(err);
-    $('#adminOrdersBody').html(`<tr><td colspan="7" class="admin-empty-row">Could not load orders. Please try refreshing.</td></tr>`);
+    $('#adminOrdersBody').html(`<tr><td colspan="8" class="admin-empty-row">Could not load orders. Please try refreshing.</td></tr>`);
     return;
   }
   renderOrderStatusFilters();
   renderAdminOrdersTable();
+  rtRenderPanel();
   renderAdminOverviewStats();
 }
 
@@ -1788,8 +1791,10 @@ function formatWaitDuration(totalMinutes){
 }
 
 function renderAdminOrdersTable(){
+  pdEnsureSelectHeader();
   if(!ADMIN_ORDERS.length){
-    $('#adminOrdersBody').html(`<tr><td colspan="7" class="admin-empty-row">No orders yet.</td></tr>`);
+    $('#adminOrdersBody').html(`<tr><td colspan="8" class="admin-empty-row">No orders yet.</td></tr>`);
+    pdSyncSelectUi();
     return;
   }
   const filtered = sortOrders(getFilteredOrders());
@@ -1798,7 +1803,8 @@ function renderAdminOrdersTable(){
     const msg = adminOrderSearch
       ? 'No orders match your search.'
       : `No ${adminOrderStatusFilter} orders.`;
-    $('#adminOrdersBody').html(`<tr><td colspan="7" class="admin-empty-row">${msg}</td></tr>`);
+    $('#adminOrdersBody').html(`<tr><td colspan="8" class="admin-empty-row">${msg}</td></tr>`);
+    pdSyncSelectUi();
     return;
   }
   const rows = filtered.map((o, i) => {
@@ -1822,8 +1828,9 @@ function renderAdminOrdersTable(){
           return `<select class="admin-status-select" data-order-rider="${o.id}">${riderOptions.join('')}</select>`;
         })();
     return `
-      <tr style="--i:${i}"${stale ? ' class="admin-order-row-stale"' : ''}>
-        <td><span class="admin-order-id">#${o.id.slice(0,6).toUpperCase()}</span></td>
+      <tr style="--i:${i}" class="${stale ? 'admin-order-row-stale' : ''}${pdSelectedOrderIds.has(o.id) ? ' pd-row-selected' : ''}">
+        <td class="pd-sel-td"><input type="checkbox" class="pd-sel" data-pd-sel="${o.id}" aria-label="Select order #${o.id.slice(0,6).toUpperCase()}" ${pdSelectedOrderIds.has(o.id) ? 'checked' : ''}></td>
+        <td><span class="admin-order-id">#${o.id.slice(0,6).toUpperCase()}</span>${rtMiniBadge(o.id)}</td>
         <td class="admin-order-placed">${formatOrderTimestamp(o.createdAt)}${stale ? `<span class="admin-order-stale-flag" title="Pending for over ${ORDER_STALE_MINUTES} minutes">⚠ ${formatWaitDuration(waited)}</span>` : ''}</td>
         <td>
           <button class="admin-customer-link" data-order-view="${o.id}">
@@ -1843,6 +1850,7 @@ function renderAdminOrdersTable(){
     `;
   }).join('');
   $('#adminOrdersBody').html(rows);
+  pdSyncSelectUi();
 }
 
 $(document).on('click', '#adminRefreshOrders', loadAndRenderAdminOrders);
@@ -1919,6 +1927,11 @@ function openOrderDetailModal(orderId){
   `);
 
   $('#orderDetailBody').html(`
+    <div class="pd-detail-actions">
+      <button type="button" class="btn btn-outline btn-sm" data-pd-open="${order.id}" data-pd-type="invoice">${PD_ICON_PRINTER} Invoice</button>
+      <button type="button" class="btn btn-outline btn-sm" data-pd-open="${order.id}" data-pd-type="slip">${PD_ICON_PRINTER} Packing slip</button>
+    </div>
+    ${rtDetailSectionHtml(order)}
     <div class="order-detail-section">
       <h4>Customer</h4>
       <div class="order-detail-grid">
@@ -1980,6 +1993,718 @@ $(document).on('change', '[data-order-status]', async function(){
     $select.prop('disabled', false);
   }
 });
+
+/* ================= PRINT INVOICES / PACKING SLIPS (Orders tab) =================
+   Two printable documents per order, shown in a popup first:
+   - Invoice: prices, totals, payment status (customer-facing receipt).
+   - Packing slip: NO prices — what to pack, options, and who it goes to.
+   "Print / Save as PDF" uses the browser's own print dialog (choose
+   "Save as PDF" as the destination), so no PDF library is needed. The
+   popup's contents are cloned into #pdPrintRoot and everything else is
+   hidden by the @media print rules in admin.css while body.pd-printing
+   is set. Works for one order (Order Detail modal) or several (the
+   checkboxes in the Orders table). */
+const PD_BUSINESS = {
+  name: 'Crafts & Crumbs',
+  tagline: 'Café & handmade goods',
+  address: 'Quezon City, Metro Manila', // TODO: replace with the shop's full address
+  phone: '',                            // TODO: shop contact number (leave '' to hide)
+  email: '',                            // TODO: shop email (leave '' to hide)
+  logo: 'crumblogo.png'
+};
+let pdSelectedOrderIds = new Set();
+let pdState = { orders: [], type: 'invoice' };
+
+const PD_ICON_PRINTER = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9V3h12v6"/><rect x="6" y="14" width="12" height="7" rx="1"/><path d="M6 17H4a2 2 0 0 1-2-2v-4a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v4a2 2 0 0 1-2 2h-2"/></svg>';
+
+function pdEsc(s){ return umEsc(s); }
+function pdOrderNo(order){ return 'CC-' + order.id.slice(0, 6).toUpperCase(); }
+function pdPayMethod(m){
+  const map = { qrph: 'QR Ph', card: 'Card', gcash: 'GCash', cash: 'Cash' };
+  return map[String(m || '').toLowerCase()] || (m || '—');
+}
+function pdLogoSrc(){
+  return (typeof resolveImageSrc === 'function') ? resolveImageSrc(PD_BUSINESS.logo) : '/' + PD_BUSINESS.logo;
+}
+
+function pdHeaderHtml(title){
+  const contact = [PD_BUSINESS.address, PD_BUSINESS.phone, PD_BUSINESS.email].filter(Boolean).map(pdEsc).join(' · ');
+  return `
+    <div class="pd-head">
+      <img class="pd-logo" src="${pdEsc(pdLogoSrc())}" alt="Crafts &amp; Crumbs logo">
+      <div class="pd-brand">
+        <div class="pd-brand-name">${pdEsc(PD_BUSINESS.name)}</div>
+        <div class="pd-brand-tag">${pdEsc(PD_BUSINESS.tagline)}</div>
+        ${contact ? `<div class="pd-brand-contact">${contact}</div>` : ''}
+      </div>
+      <div class="pd-doc-title">${title}</div>
+    </div>
+    <div class="pd-divider"></div>
+  `;
+}
+
+function pdInvoiceHtml(order){
+  const c = order.customer || {};
+  const totals = order.totals || {};
+  const isDelivery = order.fulfillment === 'delivery';
+  const status = order.status || 'pending';
+  const paid = order.paymentStatus === 'paid';
+
+  const rows = (order.items || []).map((it, i) => `
+    <tr class="pd-row" style="--i:${i}">
+      <td>
+        <div class="pd-item-name">${pdEsc(it.name)}${it.size ? ` <span class="pd-item-size">(${pdEsc(it.size)})</span>` : ''}</div>
+        ${it.optionsSummary ? `<div class="pd-item-opts">${pdEsc(it.optionsSummary)}</div>` : ''}
+      </td>
+      <td class="pd-num">${pdEsc(it.qty)}</td>
+      <td class="pd-num">${peso(it.price || 0)}</td>
+      <td class="pd-num">${peso((it.price || 0) * (it.qty || 0))}</td>
+    </tr>
+  `).join('') || `<tr><td colspan="4" class="pd-empty">No items recorded on this order.</td></tr>`;
+
+  // Cancelled wins over paid/unpaid — a cancelled order shouldn't read as a live receipt.
+  const stamp = status === 'cancelled'
+    ? `<div class="pd-stamp pd-stamp-cancelled">Cancelled</div>`
+    : paid
+      ? `<div class="pd-stamp pd-stamp-paid">Paid</div>`
+      : `<div class="pd-stamp pd-stamp-unpaid">Payment pending</div>`;
+
+  return `
+    <article class="pd-sheet pd-invoice">
+      ${pdHeaderHtml('Invoice')}
+      <div class="pd-meta">
+        <div><span>Invoice no.</span><strong>#${pdEsc(pdOrderNo(order))}</strong></div>
+        <div><span>Date</span><strong>${pdEsc(formatOrderTimestamp(order.createdAt))}</strong></div>
+        <div><span>Payment</span><strong>${pdEsc(pdPayMethod(order.paymentMethod))}</strong></div>
+        <div><span>Fulfillment</span><strong>${isDelivery ? 'Delivery' : 'Store pickup'}</strong></div>
+      </div>
+      <div class="pd-billto">
+        <span class="pd-label">Billed to</span>
+        <div class="pd-billto-name">${pdEsc(c.name || 'Guest')}</div>
+        <div class="pd-billto-line">${[c.phone, c.email].filter(Boolean).map(pdEsc).join(' · ') || '—'}</div>
+        ${isDelivery && c.address ? `<div class="pd-billto-line">${pdEsc(c.address)}</div>` : ''}
+      </div>
+      <table class="pd-table">
+        <thead><tr><th>Item</th><th class="pd-num">Qty</th><th class="pd-num">Price</th><th class="pd-num">Amount</th></tr></thead>
+        <tbody>${rows}</tbody>
+      </table>
+      <div class="pd-totals">
+        <div><span>Subtotal</span><span>${peso(totals.subtotal || 0)}</span></div>
+        <div><span>${isDelivery ? 'Delivery fee' : 'Pickup fee'}</span><span>${peso(totals.deliveryFee || 0)}</span></div>
+        <div class="pd-grand"><span>Total</span><span>${peso(totals.total || 0)}</span></div>
+      </div>
+      ${stamp}
+      <div class="pd-foot">Thank you for choosing Crafts &amp; Crumbs ☕ — see you again soon!</div>
+    </article>
+  `;
+}
+
+function pdSlipHtml(order){
+  const c = order.customer || {};
+  const isDelivery = order.fulfillment === 'delivery';
+  const itemCount = (order.items || []).reduce((s, it) => s + (it.qty || 0), 0);
+  const rider = isDelivery && order.riderId ? ADMIN_RIDERS.find(r => r.uid === order.riderId) : null;
+
+  const rows = (order.items || []).map((it, i) => `
+    <tr class="pd-row" style="--i:${i}">
+      <td class="pd-check"><span class="pd-box"></span></td>
+      <td>
+        <div class="pd-item-name">${pdEsc(it.name)}${it.size ? ` <span class="pd-item-size">(${pdEsc(it.size)})</span>` : ''}</div>
+        ${it.optionsSummary ? `<div class="pd-item-opts">${pdEsc(it.optionsSummary)}</div>` : ''}
+      </td>
+      <td class="pd-num pd-qty">× ${pdEsc(it.qty)}</td>
+    </tr>
+  `).join('') || `<tr><td colspan="3" class="pd-empty">No items recorded on this order.</td></tr>`;
+
+  return `
+    <article class="pd-sheet pd-slip">
+      ${pdHeaderHtml('Packing slip')}
+      <div class="pd-meta">
+        <div><span>Order no.</span><strong>#${pdEsc(pdOrderNo(order))}</strong></div>
+        <div><span>Date</span><strong>${pdEsc(formatOrderTimestamp(order.createdAt))}</strong></div>
+        <div><span>Fulfillment</span><strong>${isDelivery ? 'Delivery' : 'Store pickup'}</strong></div>
+        <div><span>Items</span><strong>${itemCount}</strong></div>
+      </div>
+      <div class="pd-billto">
+        <span class="pd-label">${isDelivery ? 'Deliver to' : 'Pickup for'}</span>
+        <div class="pd-billto-name">${pdEsc(c.name || 'Guest')}</div>
+        <div class="pd-billto-line">${[c.phone].filter(Boolean).map(pdEsc).join('') || '—'}</div>
+        ${isDelivery ? `<div class="pd-billto-line">${pdEsc(c.address || 'No address on file')}</div>` : ''}
+        ${rider ? `<div class="pd-billto-line">Rider: ${pdEsc(rider.name || rider.email || '')}</div>` : ''}
+      </div>
+      <table class="pd-table">
+        <thead><tr><th class="pd-check"></th><th>Item</th><th class="pd-num">Qty</th></tr></thead>
+        <tbody>${rows}</tbody>
+      </table>
+      <div class="pd-sign">
+        <div><span class="pd-sign-line"></span>Packed by</div>
+        <div><span class="pd-sign-line"></span>Checked by</div>
+      </div>
+      <div class="pd-foot">Packing slip — no prices shown. Please check every item before sealing.</div>
+    </article>
+  `;
+}
+
+function pdEnsureModal(){
+  if($('#pdOverlay').length) return;
+  $('body').append(`
+    <div class="legal-overlay" id="pdOverlay">
+      <div class="legal-modal pd-modal" role="dialog" aria-modal="true" aria-labelledby="pdTitle">
+        <button type="button" class="legal-close" id="pdClose" aria-label="Close">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M6 6l12 12M18 6L6 18" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+        </button>
+        <div class="legal-header">
+          <div class="legal-icon">${PD_ICON_PRINTER}</div>
+          <h2 id="pdTitle" style="font-size:18px;">Receipt</h2>
+          <p id="pdSub"></p>
+        </div>
+        <div class="pd-tabs" role="tablist">
+          <button type="button" class="pd-tab active" role="tab" data-pd-tab="invoice">Invoice</button>
+          <button type="button" class="pd-tab" role="tab" data-pd-tab="slip">Packing slip</button>
+        </div>
+        <div class="legal-body pd-body"><div class="pd-preview" id="pdPreview"></div></div>
+        <div class="legal-footer pd-footer">
+          <button type="button" class="btn btn-outline" id="pdCloseBtn">Close</button>
+          <button type="button" class="btn btn-primary" id="pdPrintBtn">${PD_ICON_PRINTER} Print / Save as PDF</button>
+        </div>
+      </div>
+    </div>
+  `);
+}
+
+function pdRender(){
+  const { orders, type } = pdState;
+  $('.pd-tab').removeClass('active').attr('aria-selected', 'false');
+  $(`.pd-tab[data-pd-tab="${type}"]`).addClass('active').attr('aria-selected', 'true');
+  const label = type === 'invoice' ? 'Invoice' : 'Packing slip';
+  if(orders.length === 1){
+    $('#pdTitle').text(`${label} · #${pdOrderNo(orders[0])}`);
+    $('#pdSub').text('Preview below — print it or save it as a PDF.');
+  } else {
+    $('#pdTitle').text(`${label}s · ${orders.length} orders`);
+    $('#pdSub').text('Each order prints on its own page.');
+  }
+  $('#pdPreview').html(orders.map(o => type === 'invoice' ? pdInvoiceHtml(o) : pdSlipHtml(o)).join(''));
+  $('#pdPreview').parent().scrollTop(0);
+}
+
+function pdOpen(orderIds, type){
+  const orders = orderIds.map(id => ADMIN_ORDERS.find(o => o.id === id)).filter(Boolean);
+  if(!orders.length) return;
+  pdEnsureModal();
+  pdState = { orders, type: type === 'slip' ? 'slip' : 'invoice' };
+  pdRender();
+  $('#pdOverlay').addClass('open');
+}
+
+function pdClose(){ $('#pdOverlay').removeClass('open'); }
+
+function pdPrint(){
+  const html = $('#pdPreview').html();
+  if(!html) return;
+  $('#pdPrintRoot').remove();
+  const $root = $('<div id="pdPrintRoot" aria-hidden="true"></div>').html(html).appendTo('body');
+  const prevTitle = document.title;
+  const first = pdState.orders[0];
+  // The browser uses the page title as the default PDF file name.
+  document.title = (pdState.type === 'invoice' ? 'Invoice' : 'Packing-slip') + '-' +
+    (pdState.orders.length === 1 ? pdOrderNo(first) : pdState.orders.length + '-orders');
+  document.body.classList.add('pd-printing');
+  const cleanup = () => {
+    document.body.classList.remove('pd-printing');
+    document.title = prevTitle;
+    $root.remove();
+    window.removeEventListener('afterprint', cleanup);
+  };
+  window.addEventListener('afterprint', cleanup);
+  // Give the browser a beat to lay the clone out before the dialog opens.
+  setTimeout(() => window.print(), 80);
+}
+
+$(document).on('click', '[data-pd-open]', function(){
+  pdOpen([String($(this).data('pd-open'))], $(this).data('pd-type'));
+});
+$(document).on('click', '.pd-tab', function(){
+  pdState.type = $(this).data('pd-tab');
+  pdRender(); // re-render so the paper "prints out" again
+});
+$(document).on('click', '#pdPrintBtn', pdPrint);
+$(document).on('click', '#pdClose, #pdCloseBtn', pdClose);
+$(document).on('click', '#pdOverlay', function(e){ if(e.target === this) pdClose(); });
+$(document).on('keydown', function(e){
+  if(e.key === 'Escape' && $('#pdOverlay').hasClass('open')) pdClose();
+});
+
+/* ----- Bulk selection in the Orders table ----- */
+/* The checkbox column header is added here rather than in
+   admin/index.html so this feature doesn't depend on that file. */
+function pdEnsureSelectHeader(){
+  const $tr = $('#adminOrdersBody').closest('table').find('thead tr').first();
+  if(!$tr.length || $tr.find('.pd-sel-th').length) return;
+  $tr.prepend('<th class="pd-sel-th"><input type="checkbox" id="pdSelAll" aria-label="Select all orders shown"></th>');
+}
+
+function pdEnsureSelBar(){
+  if($('#pdSelBar').length) return;
+  $('body').append(`
+    <div class="pd-selbar" id="pdSelBar" role="region" aria-label="Print selected orders">
+      <span class="pd-selbar-count" id="pdSelCount"></span>
+      <button type="button" class="btn btn-primary btn-sm" id="pdSelInvoices">${PD_ICON_PRINTER} Invoices</button>
+      <button type="button" class="btn btn-outline btn-sm" id="pdSelSlips">${PD_ICON_PRINTER} Packing slips</button>
+      <button type="button" class="pd-selbar-clear" id="pdSelClear" aria-label="Clear selection">Clear</button>
+    </div>
+  `);
+}
+
+function pdSyncSelectUi(){
+  // Drop ids that no longer exist (e.g. after a refresh).
+  pdSelectedOrderIds.forEach(id => { if(!ADMIN_ORDERS.some(o => o.id === id)) pdSelectedOrderIds.delete(id); });
+  pdEnsureSelBar();
+  const n = pdSelectedOrderIds.size;
+  $('#pdSelCount').text(`${n} selected`);
+  $('#pdSelBar').toggleClass('show', n > 0);
+  const shown = getFilteredOrders();
+  const allShown = shown.length > 0 && shown.every(o => pdSelectedOrderIds.has(o.id));
+  const someShown = shown.some(o => pdSelectedOrderIds.has(o.id));
+  $('#pdSelAll').prop('checked', allShown).prop('indeterminate', !allShown && someShown);
+}
+
+$(document).on('change', '.pd-sel', function(){
+  const id = String($(this).data('pd-sel'));
+  if(this.checked) pdSelectedOrderIds.add(id); else pdSelectedOrderIds.delete(id);
+  $(this).closest('tr').toggleClass('pd-row-selected', this.checked);
+  pdSyncSelectUi();
+});
+$(document).on('change', '#pdSelAll', function(){
+  const on = this.checked;
+  getFilteredOrders().forEach(o => { if(on) pdSelectedOrderIds.add(o.id); else pdSelectedOrderIds.delete(o.id); });
+  renderAdminOrdersTable();
+});
+$(document).on('click', '#pdSelInvoices', () => pdOpen([...pdSelectedOrderIds], 'invoice'));
+$(document).on('click', '#pdSelSlips', () => pdOpen([...pdSelectedOrderIds], 'slip'));
+$(document).on('click', '#pdSelClear', function(){
+  pdSelectedOrderIds.clear();
+  renderAdminOrdersTable();
+});
+
+/* ================= RETURNS & REFUNDS (Orders tab) =================
+   Customers request a return from Order History on the storefront
+   (completed orders only). Here the admin moves each request through
+   Requested -> Approved | Rejected -> Refunded. Refunds are recorded
+   MANUALLY: the admin sends the money back themselves (PayMongo
+   dashboard / GCash) and then marks it refunded here; no payment API is
+   called. Restocking is the admin's choice, item by item, when marking
+   a return refunded. Docs live in the `returns` collection (doc id =
+   order id); see orders-service.js + firestore.rules. */
+const RT_STATUSES = ['requested', 'approved', 'rejected', 'refunded'];
+const RT_LABELS = { requested: 'Requested', approved: 'Approved', rejected: 'Rejected', refunded: 'Refunded' };
+let ADMIN_RETURNS = [];
+let rtLoadFailed = false;
+let rtFilter = 'all';
+let rtOpenId = null; // order id of the return currently open in the modal
+
+async function loadReturnsCache(){
+  try{
+    ADMIN_RETURNS = await window.CCOrders.fetchAllReturns();
+    rtLoadFailed = false;
+  } catch(err){
+    // Never let a returns problem (e.g. rules not deployed yet) break the Orders table.
+    console.error('Could not load return requests.', err);
+    ADMIN_RETURNS = [];
+    rtLoadFailed = true;
+  }
+}
+
+function rtFor(orderId){ return ADMIN_RETURNS.find(r => r.id === orderId) || null; }
+
+function rtMiniBadge(orderId){
+  const r = rtFor(orderId);
+  return r ? `<span class="rt-mini rt-mini-${pdEsc(r.status)}" title="Return request: ${pdEsc(RT_LABELS[r.status] || r.status)}">↩ ${pdEsc(RT_LABELS[r.status] || r.status)}</span>` : '';
+}
+
+function rtEnsurePanel(){
+  if($('#rtPanel').length) return;
+  const $panel = $(`
+    <section class="rt-card" id="rtPanel">
+      <button type="button" class="rt-toggle" id="rtToggle" aria-expanded="false" aria-controls="rtDropdown">
+        <span class="rt-toggle-icon" aria-hidden="true">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 14 4 9l5-5"/><path d="M4 9h10.5a5.5 5.5 0 0 1 0 11H11"/></svg>
+        </span>
+        <span class="rt-toggle-main">
+          <span class="rt-toggle-title">Returns &amp; Refunds</span>
+          <span class="rt-toggle-sub" id="rtSub"></span>
+        </span>
+        <span class="rt-chips" id="rtChips"></span>
+        <span class="rt-toggle-label">Show requests</span>
+        <svg class="rt-chevron" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>
+      </button>
+      <div class="rt-dropdown" id="rtDropdown">
+        <div class="rt-dropdown-inner">
+          <div class="rt-dropdown-pad">
+            <div class="rt-toolbar">
+              <div class="rt-pills" id="rtPills"></div>
+              <button type="button" class="btn btn-outline btn-sm" id="rtRefresh">Refresh</button>
+            </div>
+            <div class="rt-list" id="rtList"></div>
+          </div>
+        </div>
+      </div>
+    </section>
+  `);
+  // Sit directly above the status filters / table, below the tab's own heading.
+  const $anchor = $('#orderStatusFilters').closest('.admin-panel[data-admin-panel="orders"] > *');
+  if($anchor.length) $anchor.before($panel);
+  else $('.admin-panel[data-admin-panel="orders"]').prepend($panel);
+}
+
+function rtStepsHtml(status){
+  const flow = status === 'rejected' ? ['requested', 'rejected'] : ['requested', 'approved', 'refunded'];
+  const idx = flow.indexOf(status);
+  return `<div class="rt-steps">${flow.map((s, i) => `
+    <span class="rt-step ${i <= idx ? 'done' : ''} ${i === idx ? 'current' : ''} ${s === 'rejected' ? 'bad' : ''}">
+      <span class="rt-step-dot"></span><span class="rt-step-label">${RT_LABELS[s]}</span>
+    </span>`).join('<span class="rt-step-bar"></span>')}</div>`;
+}
+
+function rtRenderPanel(){
+  rtEnsurePanel();
+  const counts = { all: ADMIN_RETURNS.length };
+  RT_STATUSES.forEach(s => { counts[s] = 0; });
+  ADMIN_RETURNS.forEach(r => { if(counts[r.status] !== undefined) counts[r.status]++; });
+
+  $('#rtSub').text(rtLoadFailed
+    ? 'Could not load return requests'
+    : counts.requested
+      ? `${counts.requested} waiting for your review`
+      : ADMIN_RETURNS.length ? 'No requests waiting' : 'No return requests yet');
+
+  $('#rtChips').html(RT_STATUSES.map(s =>
+    `<span class="rt-chip rt-chip-${s}${s === 'requested' && counts.requested ? ' attn' : ''}">${RT_LABELS[s]} <b>${counts[s]}</b></span>`).join(''));
+
+  $('#rtPills').html(['all', ...RT_STATUSES].map(f => `
+    <button type="button" class="order-filter-pill${f === rtFilter ? ' active' : ''}" data-rt-filter="${f}">
+      ${f === 'all' ? 'All' : RT_LABELS[f]} <span class="order-filter-count">${counts[f] || 0}</span>
+    </button>`).join(''));
+
+  if(rtLoadFailed){
+    $('#rtList').html('<p class="rt-empty">Could not load return requests. Make sure the latest firestore.rules is deployed, then press Refresh.</p>');
+    return;
+  }
+  const list = rtFilter === 'all' ? ADMIN_RETURNS : ADMIN_RETURNS.filter(r => r.status === rtFilter);
+  if(!list.length){
+    $('#rtList').html(`<p class="rt-empty">${ADMIN_RETURNS.length ? `No ${pdEsc(RT_LABELS[rtFilter] || '').toLowerCase()} requests.` : 'Return requests from customers will show up here.'}</p>`);
+    return;
+  }
+  $('#rtList').html(list.map((r, i) => {
+    const c = r.customer || {};
+    return `
+      <div class="rt-row" style="--i:${i}">
+        <div class="rt-row-main">
+          <div class="rt-row-top">
+            <span class="admin-order-id">#CC-${pdEsc(r.id.slice(0, 6).toUpperCase())}</span>
+            <span class="rt-badge rt-badge-${pdEsc(r.status)}">${pdEsc(RT_LABELS[r.status] || r.status)}</span>
+          </div>
+          <div class="rt-row-cust">${pdEsc(c.name || 'Customer')} · ${pdEsc(r.reason || '—')}</div>
+          <div class="rt-row-meta">Requested ${pdEsc(formatOrderTimestamp(r.createdAt))} · Refund ${peso(r.refundAmount || 0)}</div>
+          ${rtStepsHtml(r.status)}
+        </div>
+        <button type="button" class="btn btn-outline btn-sm" data-rt-open="${pdEsc(r.id)}">${r.status === 'requested' || r.status === 'approved' ? 'Review' : 'View'}</button>
+      </div>`;
+  }).join(''));
+}
+
+$(document).on('click', '#rtToggle', function(){
+  const open = $('#rtPanel').toggleClass('is-open').hasClass('is-open');
+  $(this).attr('aria-expanded', open).find('.rt-toggle-label').text(open ? 'Hide requests' : 'Show requests');
+});
+$(document).on('click', '[data-rt-filter]', function(){
+  rtFilter = $(this).data('rt-filter');
+  rtRenderPanel();
+});
+$(document).on('click', '#rtRefresh', async function(){
+  const $b = $(this).prop('disabled', true);
+  await loadReturnsCache();
+  rtRenderPanel();
+  renderAdminOrdersTable();
+  $b.prop('disabled', false);
+});
+
+/* ----- Return modal ----- */
+function rtEnsureModal(){
+  if($('#rtOverlay').length) return;
+  $('body').append(`
+    <div class="legal-overlay" id="rtOverlay">
+      <div class="legal-modal order-detail-modal rt-modal" role="dialog" aria-modal="true" aria-labelledby="rtTitle">
+        <button type="button" class="legal-close" id="rtClose" aria-label="Close">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M6 6l12 12M18 6L6 18" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+        </button>
+        <div class="legal-header order-detail-header">
+          <h2 id="rtTitle" style="font-size:18px;">Return request</h2>
+          <div class="order-detail-subtitle" id="rtSubtitle"></div>
+        </div>
+        <div class="legal-body order-detail-body" id="rtBody"></div>
+        <div class="legal-footer rt-footer" id="rtFooter"></div>
+      </div>
+    </div>
+  `);
+}
+
+/* Which product docs would a returned order line put stock back on?
+   Mirrors finalizeStockAndEmail() in the storefront's script.js: combos
+   draw down their drink (+size) and pastry, everything else its own
+   count. Only products that already TRACK a numeric stock are returned,
+   so restocking never starts tracking stock on an untracked product. */
+function rtStockUpdatesFor(item){
+  const out = [];
+  if(String(item.id).startsWith('combo_')){
+    const combo = COMBOS.find(c => 'combo_' + c.id === item.id);
+    if(!combo) return out;
+    const drink = PRODUCTS.find(p => p.id === combo.drinkId);
+    const pastry = PRODUCTS.find(p => p.id === combo.pastryId);
+    if(drink && typeof drink.stock === 'number') out.push({ id: drink.id, qty: item.qty, size: item.size || null });
+    if(pastry && typeof pastry.stock === 'number') out.push({ id: pastry.id, qty: item.qty, size: null });
+  } else {
+    const p = PRODUCTS.find(x => x.id === item.id);
+    if(p && typeof p.stock === 'number') out.push({ id: p.id, qty: item.qty, size: item.size || null });
+  }
+  return out;
+}
+
+async function rtOpen(orderId){
+  const ret = rtFor(orderId);
+  if(!ret) return;
+  rtEnsureModal();
+  rtOpenId = orderId;
+
+  // Combo lines can only be mapped to their drink/pastry once combos are loaded.
+  if((ret.items || []).some(it => String(it.id).startsWith('combo_')) && !COMBOS.length){
+    try{ COMBOS = await window.CCCombos.fetchAllCombos(); } catch(err){ console.error(err); }
+  }
+
+  const c = ret.customer || {};
+  const status = ret.status;
+  const editable = status === 'requested' || status === 'approved';
+
+  $('#rtTitle').text(`Return · #CC-${ret.id.slice(0, 6).toUpperCase()}`);
+  $('#rtSubtitle').html(`
+    <span class="rt-badge rt-badge-${pdEsc(status)}">${pdEsc(RT_LABELS[status] || status)}</span>
+    <span class="order-detail-meta">Requested ${pdEsc(formatOrderTimestamp(ret.createdAt))}</span>
+  `);
+
+  const showRestock = status === 'approved';
+  const itemsHtml = (ret.items || []).map((it, i) => {
+    const tracked = rtStockUpdatesFor(it).length > 0;
+    return `
+      <label class="rt-item${showRestock && !tracked ? ' rt-item-off' : ''}">
+        ${showRestock ? `<input type="checkbox" class="rt-restock" data-idx="${i}" ${tracked ? '' : 'disabled'}>` : ''}
+        <span class="rt-item-info">
+          <span class="rt-item-name">${pdEsc(it.name)}${it.size ? ` <span class="cart-dd-size">(${pdEsc(it.size)})</span>` : ''}</span>
+          ${it.optionsSummary ? `<span class="rt-item-opts">${pdEsc(it.optionsSummary)}</span>` : ''}
+          ${showRestock && !tracked ? `<span class="rt-item-opts">Stock isn't tracked for this item</span>` : ''}
+        </span>
+        <span class="rt-item-qty">× ${pdEsc(it.qty)}</span>
+      </label>`;
+  }).join('') || '<p class="order-detail-empty">No items recorded.</p>';
+
+  const noteBlock = editable
+    ? `<div class="order-detail-section">
+         <h4>Your note ${status === 'requested' ? '(required if rejecting — the customer sees it)' : '(optional — the customer sees it)'}</h4>
+         <textarea id="rtAdminNote" class="rt-textarea" rows="3" maxlength="500" placeholder="e.g. Approved — please bring the item to the shop / Rejected because…">${pdEsc(ret.adminNote || '')}</textarea>
+       </div>`
+    : (ret.adminNote ? `<div class="order-detail-section"><h4>Admin note</h4><div class="rt-quote">${pdEsc(ret.adminNote)}</div></div>` : '');
+
+  const refundBlock = status === 'approved'
+    ? `<div class="order-detail-section">
+         <h4>Refund details</h4>
+         <p class="rt-hint">Send ${peso(ret.refundAmount || 0)} back to the customer first (PayMongo dashboard / GCash), then mark it refunded here. Nothing is sent automatically.</p>
+         <input id="rtRefundRef" class="rt-input" type="text" maxlength="80" placeholder="Refund reference / how it was sent (optional)">
+       </div>`
+    : (status === 'refunded' ? `<div class="order-detail-section"><h4>Refund</h4>
+         <div class="order-detail-grid">
+           <div class="order-detail-field"><label>Amount refunded</label><span>${peso(ret.refundAmount || 0)}</span></div>
+           <div class="order-detail-field"><label>Refunded on</label><span>${pdEsc(formatOrderTimestamp(ret.refundedAt))}</span></div>
+           <div class="order-detail-field order-detail-field-full"><label>Reference</label><span>${pdEsc(ret.refundRef || '—')}</span></div>
+           <div class="order-detail-field order-detail-field-full"><label>Restocked</label><span>${pdEsc(ret.restockedSummary || 'Nothing was restocked')}</span></div>
+         </div></div>` : '');
+
+  $('#rtBody').html(`
+    <div class="order-detail-section">${rtStepsHtml(status)}</div>
+    <div class="order-detail-section">
+      <h4>Customer</h4>
+      <div class="order-detail-grid">
+        <div class="order-detail-field"><label>Name</label><span>${pdEsc(c.name || '—')}</span></div>
+        <div class="order-detail-field"><label>Phone</label><span>${pdEsc(c.phone || '—')}</span></div>
+        <div class="order-detail-field"><label>Email</label><span>${pdEsc(c.email || '—')}</span></div>
+        <div class="order-detail-field"><label>Refund amount (full)</label><span>${peso(ret.refundAmount || 0)}</span></div>
+      </div>
+    </div>
+    <div class="order-detail-section">
+      <h4>Reason</h4>
+      <div class="rt-quote"><strong>${pdEsc(ret.reason || '—')}</strong>${ret.customerNote ? `<br>${pdEsc(ret.customerNote)}` : ''}</div>
+    </div>
+    <div class="order-detail-section">
+      <h4>Items${showRestock ? ' — tick what goes back on the shelf' : ''}</h4>
+      <div class="rt-items">${itemsHtml}</div>
+    </div>
+    ${refundBlock}
+    ${noteBlock}
+  `);
+
+  const footer = [];
+  if(status === 'requested'){
+    footer.push('<button type="button" class="btn btn-outline" data-rt-act="reject" style="color:var(--adm-danger);">Reject</button>');
+    footer.push('<button type="button" class="btn btn-primary" data-rt-act="approve">Approve return</button>');
+  } else if(status === 'approved'){
+    footer.push('<button type="button" class="btn btn-outline" data-rt-act="close">Close</button>');
+    footer.push('<button type="button" class="btn btn-primary" data-rt-act="refund">Mark as refunded</button>');
+  } else {
+    footer.push('<button type="button" class="btn btn-outline" data-rt-act="close" style="flex:1;">Close</button>');
+  }
+  $('#rtFooter').html(footer.join(''));
+  $('#rtOverlay').addClass('open');
+}
+
+function rtClose(){ $('#rtOverlay').removeClass('open'); rtOpenId = null; }
+
+function rtActorName(){
+  const u = window.currentUser;
+  return (u && (u.displayName || u.email)) || 'Admin';
+}
+
+/* Fire-and-forget, like logActivity(): an email problem must never undo
+   or block a return decision that already went through. The sender
+   (window.sendReturnStatusEmail) lives in email-notifications.js; until
+   it's added there, this quietly does nothing. */
+function rtNotifyCustomer(ret, status){
+  const c = ret.customer || {};
+  if(typeof window.sendReturnStatusEmail !== 'function' || !c.email) return;
+  Promise.resolve(window.sendReturnStatusEmail({
+    toEmail: c.email,
+    toName: c.name || 'there',
+    orderNumber: 'CC-' + ret.id.slice(0, 6).toUpperCase(),
+    status,
+    statusLabel: RT_LABELS[status] || status,
+    reason: ret.reason || '',
+    adminNote: ret.adminNote || '',
+    refundAmount: peso(ret.refundAmount || 0),
+    refundRef: ret.refundRef || ''
+  })).catch(err => console.error('Return status email failed (non-fatal):', err));
+}
+
+$(document).on('click', '[data-rt-open]', function(){ rtOpen(String($(this).data('rt-open'))); });
+$(document).on('click', '#rtClose', rtClose);
+$(document).on('click', '#rtOverlay', function(e){ if(e.target === this) rtClose(); });
+$(document).on('keydown', function(e){
+  if(e.key === 'Escape' && $('#rtOverlay').hasClass('open') && !$('#admConfirmOverlay').hasClass('open')) rtClose();
+});
+
+$(document).on('click', '[data-rt-act]', async function(){
+  const act = $(this).data('rt-act');
+  if(act === 'close'){ rtClose(); return; }
+  const ret = rtFor(rtOpenId);
+  if(!ret) return;
+  const tag = `#CC-${ret.id.slice(0, 6).toUpperCase()}`;
+  const adminNote = ($('#rtAdminNote').val() || '').trim();
+
+  let nextStatus, fields, confirmOpts, doneMsg, logAction, logSummary;
+  const now = new Date().toISOString();
+
+  if(act === 'approve'){
+    nextStatus = 'approved';
+    fields = { status: 'approved', adminNote, reviewedBy: rtActorName(), reviewedAt: now };
+    confirmOpts = { title: 'Approve this return?', message: `The customer will be told return ${tag} was approved. You still record the refund separately afterwards.`, confirmText: 'Approve' };
+    doneMsg = `Return ${tag} approved.`;
+    logAction = 'return-approve'; logSummary = `Approved return request for order ${tag}`;
+  } else if(act === 'reject'){
+    if(!adminNote){ showToast('Add a note explaining why — the customer will see it.', 'warning'); $('#rtAdminNote').trigger('focus'); return; }
+    nextStatus = 'rejected';
+    fields = { status: 'rejected', adminNote, reviewedBy: rtActorName(), reviewedAt: now };
+    confirmOpts = { title: 'Reject this return?', message: `The customer will see your note. A rejected request can't be re-submitted for the same order.`, confirmText: 'Reject', danger: true };
+    doneMsg = `Return ${tag} rejected.`;
+    logAction = 'return-reject'; logSummary = `Rejected return request for order ${tag}`;
+  } else if(act === 'refund'){
+    nextStatus = 'refunded';
+    const picked = $('.rt-restock:checked').map(function(){ return Number($(this).data('idx')); }).get();
+    const pickedItems = picked.map(i => (ret.items || [])[i]).filter(Boolean);
+    const summary = pickedItems.length
+      ? pickedItems.map(it => `${it.name}${it.size ? ` (${it.size})` : ''} × ${it.qty}`).join(', ')
+      : '';
+    fields = {
+      status: 'refunded', adminNote, refundRef: ($('#rtRefundRef').val() || '').trim(),
+      restocked: pickedItems.length > 0, restockedSummary: summary,
+      reviewedBy: rtActorName(), refundedAt: now
+    };
+    confirmOpts = {
+      title: 'Mark as refunded?',
+      message: `Confirm you've already sent ${peso(ret.refundAmount || 0)} back to the customer.${pickedItems.length ? ` ${pickedItems.length} item line(s) will be added back to stock.` : ' Nothing will be restocked.'}`,
+      confirmText: 'Yes, refunded'
+    };
+    doneMsg = `Return ${tag} marked refunded.`;
+    logAction = 'return-refund';
+    logSummary = `Marked return for order ${tag} refunded (${peso(ret.refundAmount || 0)})${pickedItems.length ? `; restocked: ${summary}` : ''}`;
+    fields._pickedItems = pickedItems; // stripped below, never written to Firestore
+  } else return;
+
+  const ok = await showConfirm(confirmOpts);
+  if(!ok) return;
+
+  const pickedItems = fields._pickedItems || [];
+  delete fields._pickedItems;
+
+  const $btns = $('#rtFooter .btn').prop('disabled', true);
+  try{
+    await window.CCOrders.updateReturn(ret.id, fields);
+  } catch(err){
+    console.error(err);
+    showToast('Could not update that return. Please try again.', 'error');
+    $btns.prop('disabled', false);
+    return;
+  }
+  Object.assign(ret, fields);
+  logActivity(logAction, 'order', ret.id, logSummary);
+
+  // Restock AFTER the refund is saved: if this part fails the return is
+  // still correctly recorded (and can't be restocked twice by a retry).
+  let restockFailed = false;
+  if(nextStatus === 'refunded' && pickedItems.length){
+    try{
+      const updates = pickedItems.flatMap(it => rtStockUpdatesFor(it));
+      if(updates.length){
+        await window.CCProducts.incrementStock(updates);
+        await loadProductsFromFirestore();
+        if(typeof renderAdminProductsTable === 'function') renderAdminProductsTable();
+        if(typeof renderInventoryAlerts === 'function') renderInventoryAlerts();
+        renderAdminOverviewStats();
+      }
+    } catch(err){
+      console.error('Restock failed after refund was recorded.', err);
+      restockFailed = true;
+    }
+  }
+
+  rtNotifyCustomer(ret, nextStatus);
+  rtClose();
+  rtRenderPanel();
+  renderAdminOrdersTable();
+  showToast(restockFailed
+    ? `${doneMsg} But restocking failed — please adjust stock manually in Products.`
+    : doneMsg, restockFailed ? 'warning' : 'success');
+});
+
+/* Small "Return request" strip inside the Order Detail modal. */
+function rtDetailSectionHtml(order){
+  const r = rtFor(order.id);
+  if(!r) return '';
+  return `
+    <div class="order-detail-section">
+      <h4>Return request</h4>
+      <div class="rt-detail-strip">
+        <span class="rt-badge rt-badge-${pdEsc(r.status)}">${pdEsc(RT_LABELS[r.status] || r.status)}</span>
+        <span class="rt-detail-reason">${pdEsc(r.reason || '')}</span>
+        <button type="button" class="btn btn-outline btn-sm" data-rt-open="${pdEsc(r.id)}">Open</button>
+      </div>
+    </div>`;
+}
 
 /* Sync the Ingredients/Allergens vs Sizes-and-Prices fields to whatever
    category is selected by default (the form's first <option>) on first

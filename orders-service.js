@@ -1,6 +1,6 @@
 import { db } from "./firebase-config.js";
 import {
-  collection, addDoc, serverTimestamp, getDocs, getDoc, doc, updateDoc, query, where
+  collection, addDoc, setDoc, serverTimestamp, getDocs, getDoc, doc, updateDoc, query, where
 } from "https://www.gstatic.com/firebasejs/12.17.0/firebase-firestore-lite.js";
 
 const ORDERS_COL = "orders";
@@ -140,8 +140,67 @@ export async function backfillMissingRiderId(){
   return fixedIds;
 }
 
+/* ---------- Returns & refunds ----------
+   One return request per order: the doc id IS the order id, so a second
+   request for the same order can't be created (the rules only allow
+   `create`, and the doc already exists). Customers create + read their
+   own; only admins can move a request through its statuses.
+   Statuses: requested -> approved | rejected -> refunded.
+   Refunds are recorded manually (the admin sends the money back through
+   PayMongo / GCash themselves, then marks it refunded here). */
+const RETURNS_COL = "returns";
+
+export async function createReturnRequest({ order, reason, note }){
+  const c = order.customer || {};
+  const payload = {
+    orderId: order.id,
+    userId: window.currentUser ? window.currentUser.uid : null,
+    status: "requested",
+    reason,
+    customerNote: note || "",
+    customer: { name: c.name || "", email: c.email || "", phone: c.phone || "" },
+    // Snapshot of what was ordered, so the admin sees exactly what the
+    // customer is returning even if a product is later renamed/deleted.
+    items: (order.items || []).map(it => ({
+      id: it.id, name: it.name, qty: it.qty, price: it.price,
+      size: it.size || null,
+      optionsSummary: it.optionsSummary || null
+    })),
+    refundAmount: (order.totals && order.totals.total) || 0,
+    createdAt: serverTimestamp()
+  };
+  await setDoc(doc(db, RETURNS_COL, order.id), payload);
+}
+
+export async function fetchMyReturns(uid){
+  const q = query(collection(db, RETURNS_COL), where("userId", "==", uid));
+  const snap = await getDocs(q);
+  return snap.docs.map(d => ({ id: d.id, ...d.data() }));
+}
+
+export async function fetchAllReturns(){
+  const snap = await getDocs(collection(db, RETURNS_COL));
+  const list = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+  const toSeconds = (val) => {
+    if(!val) return 0;
+    if(typeof val.seconds === 'number') return val.seconds;
+    const parsed = new Date(val).getTime();
+    return isNaN(parsed) ? 0 : parsed / 1000;
+  };
+  list.sort((a, b) => toSeconds(b.createdAt) - toSeconds(a.createdAt));
+  return list;
+}
+
+/* Admin only (firestore.rules). `fields` may only contain the keys the
+   returns rule allows: status, adminNote, refundRef, restocked,
+   restockedSummary, reviewedBy, reviewedAt, refundedAt. */
+export async function updateReturn(returnId, fields){
+  await updateDoc(doc(db, RETURNS_COL, returnId), fields);
+}
+
 window.CCOrders = {
   createOrder, fetchAllOrders, fetchMyOrders, fetchOrder, updateOrderStatus,
   fetchAvailableDeliveries, fetchRiderDeliveries, claimDelivery, updateDeliveryStatus, assignRider,
-  backfillMissingRiderId
+  backfillMissingRiderId,
+  createReturnRequest, fetchMyReturns, fetchAllReturns, updateReturn
 };

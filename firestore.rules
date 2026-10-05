@@ -111,6 +111,39 @@ service cloud.firestore {
         get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin';
     }
 
+    // Returns & refunds. Doc id == the order id, so each order can have at
+    // most ONE request (customers can only `create`, never update, so a
+    // rejected request can't be re-submitted over the top). Create is
+    // locked down four ways: signed-in non-guest account, the order must
+    // really belong to the requester AND already be `completed`, the new
+    // doc must start at status 'requested', and only the listed fields may
+    // be written (no pre-approved/refunded docs, no admin fields).
+    // Read: the requester or an admin. Update: admin only, and only the
+    // workflow fields. Delete: never (kept as a record).
+    match /returns/{returnId} {
+      allow read: if request.auth != null && (
+        resource.data.userId == request.auth.uid ||
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin'
+      );
+      allow create: if request.auth != null &&
+        request.auth.token.firebase.sign_in_provider != 'anonymous' &&
+        request.resource.data.keys().hasOnly(['orderId', 'userId', 'status', 'reason', 'customerNote', 'customer', 'items', 'refundAmount', 'createdAt']) &&
+        request.resource.data.orderId == returnId &&
+        request.resource.data.userId == request.auth.uid &&
+        request.resource.data.status == 'requested' &&
+        request.resource.data.reason is string &&
+        request.resource.data.reason.size() > 0 && request.resource.data.reason.size() <= 80 &&
+        request.resource.data.customerNote is string &&
+        request.resource.data.customerNote.size() <= 500 &&
+        get(/databases/$(database)/documents/orders/$(returnId)).data.userId == request.auth.uid &&
+        get(/databases/$(database)/documents/orders/$(returnId)).data.status == 'completed';
+      allow update: if request.auth != null &&
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin' &&
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'adminNote', 'refundRef', 'restocked', 'restockedSummary', 'reviewedBy', 'reviewedAt', 'refundedAt']) &&
+        request.resource.data.status in ['requested', 'approved', 'rejected', 'refunded'];
+      allow delete: if false;
+    }
+
     // Users can read/edit only their own profile doc — PLUS, for the
     // admin dashboard's User Management tab: an admin can read any
     // profile, list the whole collection, and update another account's

@@ -535,7 +535,7 @@
             <span class="faq-toggle-icon"></span>
           </button>
           <div class="faq-answer">
-            <p>Click "Forgot password?" on the login page, enter your email, and we'll send you a link to set a new one. If it doesn't arrive within a few minutes, check your spam folder or reach out through our Contact page.</p>
+            <p>Click "Forgot password?" on the login page, enter your email, and we'll send you a 6-digit code. Enter the code, choose a new password, and you're back in. The code expires after 10 minutes. If it doesn't arrive within a few minutes, check your spam folder or reach out through our Contact page.</p>
           </div>
         </div>
       </div>
@@ -843,19 +843,74 @@
 </div>
 
 <div class="confirm-overlay" id="resetPasswordOverlay">
-  <div class="confirm-dialog" id="resetPasswordBox" role="alertdialog" aria-modal="true" aria-labelledby="resetPasswordTitle">
+  <div class="confirm-dialog rp-dialog" id="resetPasswordBox" role="alertdialog" aria-modal="true" aria-labelledby="resetPasswordTitle">
     <div class="confirm-dialog-icon" id="resetPasswordIcon">
       <svg width="20" height="20" viewBox="0 0 24 24" fill="none"><rect x="4" y="10.5" width="16" height="10" rx="2" stroke="currentColor" stroke-width="1.6"/><path d="M7.5 10.5V7.2a4.5 4.5 0 0 1 9 0v3.3" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
     </div>
     <h3 id="resetPasswordTitle">Reset your password</h3>
-    <p>Enter the email on your account and we'll send a link to set a new password.</p>
-    <form id="resetPasswordForm">
+    <p id="resetPasswordLead">Enter the email on your account and we'll send you a 6-digit code.</p>
+
+    <!-- Step 1: email -->
+    <form id="resetPasswordForm" class="rp-step" data-rp-step="1">
       <div class="form-group"><label for="resetPasswordEmail">Email address</label><input id="resetPasswordEmail" type="email" placeholder="you@email.com" required></div>
       <div class="confirm-dialog-actions">
         <button type="button" class="btn btn-outline" id="resetPasswordCancel">Cancel</button>
-        <button type="submit" class="btn btn-primary" id="resetPasswordSubmit">Send Link</button>
+        <button type="submit" class="btn btn-primary" id="resetPasswordSubmit">Send Code</button>
       </div>
     </form>
+
+    <!-- Step 2: 6-digit code -->
+    <form id="resetCodeForm" class="rp-step" data-rp-step="2" style="display:none;">
+      <div class="rp-digit-row" id="rpDigitRow">
+        <input type="text" inputmode="numeric" maxlength="1" class="rp-digit" data-rp-index="0" autocomplete="one-time-code" aria-label="Digit 1">
+        <input type="text" inputmode="numeric" maxlength="1" class="rp-digit" data-rp-index="1" aria-label="Digit 2">
+        <input type="text" inputmode="numeric" maxlength="1" class="rp-digit" data-rp-index="2" aria-label="Digit 3">
+        <input type="text" inputmode="numeric" maxlength="1" class="rp-digit" data-rp-index="3" aria-label="Digit 4">
+        <input type="text" inputmode="numeric" maxlength="1" class="rp-digit" data-rp-index="4" aria-label="Digit 5">
+        <input type="text" inputmode="numeric" maxlength="1" class="rp-digit" data-rp-index="5" aria-label="Digit 6">
+      </div>
+      <p class="rp-error" id="rpCodeError" style="display:none;"></p>
+      <p class="rp-resend">Didn't get it? Check your spam folder or <button type="button" class="link-btn" id="rpResend" disabled>resend code</button></p>
+      <div class="confirm-dialog-actions">
+        <button type="button" class="btn btn-outline" id="rpCodeBack">Back</button>
+        <button type="submit" class="btn btn-primary" id="rpCodeSubmit">Verify</button>
+      </div>
+    </form>
+
+    <!-- Step 3: new password -->
+    <form id="resetNewPasswordForm" class="rp-step" data-rp-step="3" style="display:none;">
+      <div class="form-group">
+        <label for="rpNewPassword">New password</label>
+        <div class="password-field">
+          <input id="rpNewPassword" type="password" placeholder="At least 6 characters" autocomplete="new-password" required>
+          <button type="button" class="password-toggle-btn" data-password-toggle="rpNewPassword" aria-label="Show password" aria-pressed="false">
+            <svg class="eye-open" width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M1.5 12S5 5 12 5s10.5 7 10.5 7-3.5 7-10.5 7S1.5 12 1.5 12Z" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/><circle cx="12" cy="12" r="3.2" stroke="currentColor" stroke-width="1.6"/></svg>
+                <svg class="eye-closed" width="18" height="18" viewBox="0 0 24 24" fill="none" style="display:none;"><path d="M3 3l18 18" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/><path d="M10.6 5.2A10.7 10.7 0 0 1 12 5c7 0 10.5 7 10.5 7a13.4 13.4 0 0 1-3.2 4.1M6.6 6.6C3.4 8.7 1.5 12 1.5 12s3.5 7 10.5 7c1.4 0 2.7-.28 3.85-.75" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/><path d="M9.9 10c-.25.4-.4.87-.4 1.4a2.5 2.5 0 0 0 3.7 2.2" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
+          </button>
+        </div>
+      </div>
+      <div class="form-group">
+        <label for="rpNewPasswordConfirm">Confirm new password</label>
+        <div class="password-field">
+          <input id="rpNewPasswordConfirm" type="password" placeholder="••••••••" autocomplete="new-password" required>
+          <button type="button" class="password-toggle-btn" data-password-toggle="rpNewPasswordConfirm" aria-label="Show password" aria-pressed="false">
+            <svg class="eye-open" width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M1.5 12S5 5 12 5s10.5 7 10.5 7-3.5 7-10.5 7S1.5 12 1.5 12Z" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/><circle cx="12" cy="12" r="3.2" stroke="currentColor" stroke-width="1.6"/></svg>
+                <svg class="eye-closed" width="18" height="18" viewBox="0 0 24 24" fill="none" style="display:none;"><path d="M3 3l18 18" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/><path d="M10.6 5.2A10.7 10.7 0 0 1 12 5c7 0 10.5 7 10.5 7a13.4 13.4 0 0 1-3.2 4.1M6.6 6.6C3.4 8.7 1.5 12 1.5 12s3.5 7 10.5 7c1.4 0 2.7-.28 3.85-.75" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/><path d="M9.9 10c-.25.4-.4.87-.4 1.4a2.5 2.5 0 0 0 3.7 2.2" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
+          </button>
+        </div>
+      </div>
+      <div class="confirm-dialog-actions">
+        <button type="button" class="btn btn-outline" id="rpPwCancel">Cancel</button>
+        <button type="submit" class="btn btn-primary" id="rpPwSubmit">Reset Password</button>
+      </div>
+    </form>
+
+    <!-- Step 4: done -->
+    <div class="rp-step" data-rp-step="4" style="display:none;">
+      <div class="confirm-dialog-actions">
+        <button type="button" class="btn btn-primary" id="rpDoneBtn" style="flex:1;">Back to Login</button>
+      </div>
+    </div>
   </div>
 </div>
 
@@ -895,6 +950,44 @@
     <div class="legal-footer" style="display:flex; gap:10px;">
       <button type="button" class="btn btn-outline" id="addressFormCancel" style="flex:1;">Cancel</button>
       <button type="submit" form="addressForm" class="btn btn-primary" id="addressFormSubmit" style="flex:1;">Save Address</button>
+    </div>
+  </div>
+</div>
+
+<!-- Return request modal (opened from Order History on a completed order) -->
+<div class="legal-overlay" id="returnOverlay">
+  <div class="legal-modal return-modal" role="dialog" aria-modal="true" aria-labelledby="returnTitle">
+    <button type="button" class="legal-close" id="returnClose" aria-label="Close">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M6 6l12 12M18 6L6 18" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+    </button>
+    <div class="legal-header" style="padding-bottom:8px;">
+      <h2 id="returnTitle">Request a Return</h2>
+      <p id="returnSub">Tell us what went wrong and we'll take a look.</p>
+    </div>
+    <div class="legal-body">
+      <div class="return-summary" id="returnSummary"></div>
+      <form id="returnForm">
+        <div class="form-group">
+          <label for="returnReason">What's the issue?</label>
+          <select id="returnReason" required>
+            <option value="">Choose a reason…</option>
+            <option>Wrong item received</option>
+            <option>Item damaged or spoiled</option>
+            <option>Missing item in my order</option>
+            <option>Quality not as expected</option>
+            <option>Other</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label for="returnNote">Tell us more <span class="return-optional">(optional)</span></label>
+          <textarea id="returnNote" rows="3" maxlength="500" placeholder="What happened? The more detail, the faster we can sort it out."></textarea>
+        </div>
+        <p class="form-hint">This requests a full refund of the order. We'll review it and email you once there's an update.</p>
+      </form>
+    </div>
+    <div class="legal-footer" style="display:flex; gap:10px;">
+      <button type="button" class="btn btn-outline" id="returnCancel" style="flex:1;">Cancel</button>
+      <button type="submit" form="returnForm" class="btn btn-primary" id="returnSubmit" style="flex:1;">Submit Request</button>
     </div>
   </div>
 </div>

@@ -159,6 +159,44 @@ export async function decrementStock(items){
   }
 }
 
+/* Mirror image of decrementStock() for returns: puts returned units back
+   on the shelf. items: [{id, qty, size}]. Same three cases as above
+   (per-size wearables rewrite the sizes array and re-sum the top-level
+   stock; drinks / unsized products use increment()). Callers should only
+   pass items whose product already tracks a numeric stock, so this never
+   starts "tracking" stock on a product that didn't have any. */
+export async function incrementStock(items){
+  for(const item of items){
+    const ref = doc(db, PRODUCTS_COL, item.id);
+    if(item.size){
+      const snap = await getDoc(ref);
+      if(!snap.exists()) continue;
+      const data = snap.data();
+      const hasPerSizeStock = Array.isArray(data.sizes) &&
+        data.sizes.some(s => typeof s === 'object' && s !== null && typeof s.stock === 'number');
+
+      if(hasPerSizeStock){
+        let touched = false;
+        const newSizes = data.sizes.map(s => {
+          if(typeof s === 'string' || s.size !== item.size || typeof s.stock !== 'number') return s;
+          touched = true;
+          return { ...s, stock: s.stock + item.qty };
+        });
+        if(touched){
+          const totalStock = newSizes.reduce((sum, s) =>
+            sum + (typeof s === 'object' && typeof s.stock === 'number' ? s.stock : 0), 0);
+          await updateDoc(ref, { sizes: newSizes, stock: totalStock });
+          patchCachedProduct(item.id, { sizes: newSizes, stock: totalStock });
+          continue;
+        }
+      }
+      await updateDoc(ref, { stock: increment(item.qty) });
+    } else {
+      await updateDoc(ref, { stock: increment(item.qty) });
+    }
+  }
+}
+
 /* One-off cleanup for merch products that still carry stray
    ingredients/allergens fields written before category-aware saving
    existed (see the comment on updateProduct above). Normally those
@@ -426,4 +464,4 @@ export async function fixBrokenProductImages(){
   }
   return fixed;
 }
-window.CCProducts = { fetchAllProducts, addProduct, updateProduct, deleteProduct, seedProducts, getCachedProducts, decrementStock, cleanupLegacyFoodFields, flattenSizePricing, fillMissingDrinkDetails, normalizeDrinkSizes, fixBrokenProductImages };
+window.CCProducts = { fetchAllProducts, addProduct, updateProduct, deleteProduct, seedProducts, getCachedProducts, decrementStock, incrementStock, cleanupLegacyFoodFields, flattenSizePricing, fillMissingDrinkDetails, normalizeDrinkSizes, fixBrokenProductImages };
