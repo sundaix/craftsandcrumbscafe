@@ -22,6 +22,9 @@ async function listUserProfiles() {
         uid: d.id,
         email: data.email || null,
         name: data.fullName || null,
+        // phone added for User Management; existing callers (the rider
+        // dropdown on Orders) ignore it, so the shape stays compatible.
+        phone: data.phone || null,
         role: data.role === 'admin' || data.role === 'rider' ? data.role : 'customer',
         disabled: !!data.disabled
       };
@@ -50,4 +53,17 @@ async function setUserDisabled(uid, disabled) {
   }
 }
 
-window.CCAccounts = { listUserProfiles, setUserRole, setUserDisabled };
+/* User Management "Edit": name + phone ONLY (fullName is the profile
+   field auth.js writes at signup). Email/role/disabled are deliberately
+   not touched here — firestore.rules only lets an admin change
+   fullName/phone/role/disabled on someone else's profile. */
+async function updateUserProfile(uid, { fullName, phone }) {
+  try {
+    await updateDoc(doc(db, 'users', uid), { fullName, phone });
+  } catch (err) {
+    console.error(err);
+    throw new Error(friendlyError(err));
+  }
+}
+
+window.CCAccounts = { listUserProfiles, setUserRole, setUserDisabled, updateUserProfile };

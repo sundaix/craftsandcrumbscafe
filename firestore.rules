@@ -48,6 +48,20 @@ service cloud.firestore {
         get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin';
     }
 
+    // Activity Log — one entry per admin action (products, categories,
+    // combos, orders, settings, accounts). Admin-only both ways, unlike
+    // categories/settings above, since entries contain staff names and
+    // emails rather than public-facing data. create-only: no update or
+    // delete allowed through the app at all, so this stays a genuine
+    // append-only trail rather than something editable after the fact.
+    match /activityLog/{logId} {
+      allow read: if request.auth != null &&
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin';
+      allow create: if request.auth != null &&
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin';
+      allow update, delete: if false;
+    }
+
     // Any signed-in customer can create their own order; the order's
     // owner, an admin, or (for delivery orders) a rider can read it back.
     // Rider read access: an unclaimed delivery order that's ready for
@@ -98,13 +112,13 @@ service cloud.firestore {
     }
 
     // Users can read/edit only their own profile doc — PLUS, for the
-    // admin dashboard's Accounts tab: an admin can read any profile,
-    // list the whole collection, and update another account's role or
-    // disabled flag specifically (never any other field on someone
-    // else's profile, and never their OWN role/disabled — that's what
-    // stops an admin from silently self-blocking or self-demoting by
-    // accident, or a compromised admin session escalating itself
-    // further). Registration always writes role:'customer' (see
+    // admin dashboard's User Management tab: an admin can read any
+    // profile, list the whole collection, and update another account's
+    // role, disabled flag, fullName or phone (never any other field on
+    // someone else's profile — email in particular stays locked — and
+    // never their OWN role/disabled through this admin branch, which is
+    // what stops an admin from silently self-blocking or self-demoting
+    // by accident). Registration always writes role:'customer' (see
     // auth.js), so create requires that too — nobody can self-register
     // as admin.
     match /users/{userId} {
@@ -123,11 +137,11 @@ service cloud.firestore {
           !('role' in request.resource.data.diff(resource.data).affectedKeys()) ||
           get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin'
         )) ||
-        // An admin managing a DIFFERENT account's role/disabled flag —
-        // this is the new part the Accounts tab needs.
+        // An admin managing a DIFFERENT account — role/disabled as
+        // before, plus fullName/phone for User Management's Edit.
         (request.auth.uid != userId &&
           get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin' &&
-          request.resource.data.diff(resource.data).affectedKeys().hasOnly(['role', 'disabled']))
+          request.resource.data.diff(resource.data).affectedKeys().hasOnly(['role', 'disabled', 'fullName', 'phone']))
       );
     }
 

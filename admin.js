@@ -2,6 +2,14 @@ let ADMIN_ORDERS = [];
 let adminEditingId = null; // set while editing an existing product, null when adding a new one
 let adminProductSearch = '';    // current text in the Products search box
 let adminCategoryFilter = 'All'; // current selection in the category filter dropdown
+let adminStatusFilter = 'All';   // All | active | inactive | low | out (Products table)
+let adminSelectedIds = new Set(); // product ids ticked for bulk activate/deactivate
+let adminInvFilter = 'all';      // Overview inventory alerts list: all | out | low | inactive
+
+// The dashboard must keep seeing inactive products (so they can be
+// re-activated); the storefront never sets this. See setCatalogProducts()
+// in shared-catalog.js.
+window.CC_SHOW_INACTIVE = true;
 let apOptionGroups = [];
 
 const DRINK_SIZES = ['16oz', '20oz', '24oz'];
@@ -92,6 +100,7 @@ $(document).on('click', '[data-admin-category-delete]', async function(){
   $btn.prop('disabled', true);
   try{
     await window.CCCategories.deleteCategory(id);
+    logActivity('delete', 'category', id, `Deleted category "${c.label}"`);
     CUSTOM_CATEGORIES = CUSTOM_CATEGORIES.filter(x => x.id !== id);
     removeCustomCategoryEffectsCore(c);
     renderExistingCategoriesList();
@@ -170,6 +179,7 @@ $(document).on('submit', '#addCategoryForm', async function(e){
   $btn.prop('disabled', true).text('Adding...');
   try{
     await window.CCCategories.addCategory(category);
+    logActivity('create', 'category', id, `Added category "${label}"`);
     CUSTOM_CATEGORIES.push(category);
     applyCustomCategoryCore(category);
     renderAdminCategorySelects();
@@ -207,7 +217,94 @@ function renderAdminDashboard(){
   loadAndRenderAdminPromo();
   loadAndRenderAdminPopularSection();
   loadAndRenderAdminAccounts();
+  loadAndRenderActivityLog();
 }
+
+/* ================= ACTIVITY LOG =================
+   One entry per admin action, written by logActivity() right after
+   each real write below already succeeded. See audit-log-service.js
+   for the Firestore side (admin-read/admin-create-only, no update or
+   delete allowed through the app at all). */
+let ADMIN_ACTIVITY_LOG = [];
+let adminActivityTypeFilter = 'All';
+let adminActivitySearch = '';
+
+const ACTIVITY_TYPE_LABELS = {
+  product: 'Product', category: 'Category', combo: 'Combo',
+  order: 'Order', settings: 'Settings', account: 'Account'
+};
+
+/* Fire-and-forget on purpose: a logging failure is console-only,
+   never surfaced to the admin and never allowed to block or roll
+   back the real action it's describing — losing one log entry is far
+   better than scaring someone about (or undoing) a product/order/
+   account change that actually went through fine. Every call site
+   below sits right after its real write already resolved. */
+function logActivity(action, entityType, entityId, summary){
+  if(!window.CCAuditLog) return;
+  window.CCAuditLog.writeActivityLog({ action, entityType, entityId, summary })
+    .catch(err => console.error('Activity log write failed (non-fatal):', err));
+}
+
+async function loadAndRenderActivityLog(){
+  $('#adminActivityBody').html(`<tr><td colspan="4" class="admin-empty-row">Loading activity...</td></tr>`);
+  try{
+    ADMIN_ACTIVITY_LOG = await window.CCAuditLog.fetchActivityLog();
+    renderAdminActivityTable();
+  } catch(err){
+    console.error(err);
+    $('#adminActivityBody').html(`<tr><td colspan="4" class="admin-empty-row">Could not load the activity log. Please try again.</td></tr>`);
+  }
+}
+
+function renderAdminActivityTable(){
+  let filtered = ADMIN_ACTIVITY_LOG;
+  if(adminActivityTypeFilter !== 'All'){
+    filtered = filtered.filter(e => e.entityType === adminActivityTypeFilter);
+  }
+  const q = adminActivitySearch.trim().toLowerCase();
+  if(q){
+    filtered = filtered.filter(e =>
+      (e.adminName || '').toLowerCase().includes(q) ||
+      (e.adminEmail || '').toLowerCase().includes(q) ||
+      (e.summary || '').toLowerCase().includes(q)
+    );
+  }
+
+  if(!ADMIN_ACTIVITY_LOG.length){
+    $('#adminActivityBody').html(`<tr><td colspan="4" class="admin-empty-row">No activity recorded yet — actions taken from this dashboard will start showing up here.</td></tr>`);
+    return;
+  }
+  if(!filtered.length){
+    $('#adminActivityBody').html(`<tr><td colspan="4" class="admin-empty-row">No activity matches your filters.</td></tr>`);
+    return;
+  }
+
+  const rows = filtered.map(e => `
+    <tr>
+      <td>${formatOrderTimestamp(e.createdAt)}</td>
+      <td>
+        <div class="admin-customer-link" style="cursor:default;">
+          <span class="admin-avatar">${customerInitials(e.adminEmail || e.adminName || '?')}</span>
+          <span>${e.adminName || e.adminEmail || 'Unknown admin'}</span>
+        </div>
+      </td>
+      <td>${ACTIVITY_TYPE_LABELS[e.entityType] || e.entityType || '—'}</td>
+      <td>${e.summary || '—'}</td>
+    </tr>
+  `).join('');
+  $('#adminActivityBody').html(rows);
+}
+
+$(document).on('change', '#adminActivityTypeFilter', function(){
+  adminActivityTypeFilter = $(this).val();
+  renderAdminActivityTable();
+});
+$(document).on('input', '#adminActivitySearch', function(){
+  adminActivitySearch = $(this).val();
+  renderAdminActivityTable();
+});
+$(document).on('click', '#adminRefreshActivity', loadAndRenderActivityLog);
 
 /* ================= TABS ================= */
 $(document).on('click', '.admin-tab', function(){
@@ -286,8 +383,178 @@ function renderAdminOverviewStats(){
   $('#statPendingOrders').text(ADMIN_ORDERS.length ? pending : '—');
   const revenue = ADMIN_ORDERS.reduce((sum, o) => sum + (o.totals?.total || 0), 0);
   $('#statTotalRevenue').text(ADMIN_ORDERS.length ? peso(revenue) : '—');
+  renderInventoryAlerts();
   renderOverviewAnalytics();
 }
+
+/* ================= INVENTORY ALERTS (Overview tab) =================
+   Works off the PRODUCTS already in memory, so like everything else
+   here it's a snapshot (no realtime listeners on Firestore Lite): the
+   Refresh button re-fetches the catalog. Inactive products are listed
+   under "Inactive" only — an admin who deliberately hid something
+   (a seasonal item, say) shouldn't be nagged about its stock too. */
+function computeInventoryAlerts(){
+  const out = [], low = [], inactive = [];
+  PRODUCTS.forEach(p => {
+    if(!isProductActive(p)){ inactive.push(p); return; }
+    const state = getProductStockState(p);
+    if(state === 'out') out.push(p);
+    else if(state === 'low') low.push(p);
+  });
+  const lowestStock = p => {
+    const tracked = getSizeOptions(p).filter(o => typeof o.stock === 'number');
+    return tracked.length ? Math.min(...tracked.map(o => o.stock)) : (typeof p.stock === 'number' ? p.stock : 0);
+  };
+  low.sort((a, b) => lowestStock(a) - lowestStock(b));
+  return { out, low, inactive };
+}
+
+/* "M: 0 · L: 2" for sized products, "3 left" for flat stock. */
+function inventoryDetailText(p){
+  const tracked = getSizeOptions(p).filter(o => typeof o.stock === 'number');
+  if(tracked.length){
+    const flagged = tracked.filter(o => o.stock <= LOW_STOCK_THRESHOLD);
+    return flagged.map(o => `${o.size}: ${o.stock}`).join(' · ');
+  }
+  return typeof p.stock === 'number' ? `${p.stock} left` : '';
+}
+
+const INV_FILTERS = [
+  { key: 'all', label: 'All' },
+  { key: 'out', label: 'Out of stock' },
+  { key: 'low', label: 'Low stock' },
+  { key: 'inactive', label: 'Inactive' }
+];
+const INV_LIST_LIMIT = 6;
+
+function renderInventoryAlerts(){
+  if(!$('#inventoryAlerts').length) return;
+  const { out, low, inactive } = computeInventoryAlerts();
+  $('#invOutCount').text(out.length);
+  $('#invLowCount').text(low.length);
+  $('#invInactiveCount').text(inactive.length);
+  $('#invLowHint').text(`at or under ${LOW_STOCK_THRESHOLD}`);
+
+  // Red badge on the sidebar Products tab = things that need restocking.
+  const needAttention = out.length + low.length;
+  $('#productsTabBadge').text(needAttention).prop('hidden', needAttention === 0);
+
+  $('#invFilters').html(INV_FILTERS.map(f => {
+    const count = f.key === 'all' ? out.length + low.length + inactive.length
+      : f.key === 'out' ? out.length : f.key === 'low' ? low.length : inactive.length;
+    return `<button type="button" class="range-filter-pill${f.key === adminInvFilter ? ' active' : ''}" data-inv-filter="${f.key}">${f.label} (${count})</button>`;
+  }).join(''));
+
+  const rowsFor = (list, kind) => list.map(p => ({ p, kind }));
+  let items = [];
+  if(adminInvFilter === 'all') items = [...rowsFor(out, 'out'), ...rowsFor(low, 'low'), ...rowsFor(inactive, 'inactive')];
+  else if(adminInvFilter === 'out') items = rowsFor(out, 'out');
+  else if(adminInvFilter === 'low') items = rowsFor(low, 'low');
+  else items = rowsFor(inactive, 'inactive');
+
+  if(!items.length){
+    $('#invAlertList').html(`<div class="inv-empty">${
+      adminInvFilter === 'all' ? 'All clear — every active product is stocked and nothing is hidden.' : 'Nothing here right now.'
+    }</div>`);
+    $('#invViewAll').hide();
+    return;
+  }
+
+  $('#invAlertList').html(items.slice(0, INV_LIST_LIMIT).map(({ p, kind }) => {
+    const badge = kind === 'out' ? '<span class="admin-stock-badge admin-stock-out">Out of stock</span>'
+      : kind === 'low' ? `<span class="admin-stock-badge admin-stock-low">${inventoryDetailText(p) || 'Low'}</span>`
+      : '<span class="admin-stock-badge admin-stock-unknown">Inactive</span>';
+    const action = kind === 'inactive'
+      ? `<button type="button" class="btn btn-activate btn-sm" data-admin-product-toggle="${p.id}">Activate</button>`
+      : `<button type="button" class="btn btn-restock btn-sm" data-admin-edit="${p.id}"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>Restock</button>`;
+    return `
+      <div class="inv-row">
+        <img src="${resolveImageSrc(p.img)}" alt="${p.name}">
+        <div class="inv-row-main">
+          <span class="inv-row-name">${p.name}</span>
+          ${badge}
+        </div>
+        ${action}
+      </div>`;
+  }).join(''));
+
+  const hidden = items.length - INV_LIST_LIMIT;
+  $('#invViewAll')
+    .toggle(true)
+    .text(hidden > 0 ? `View all ${items.length} in Products` : 'Open in Products')
+    .attr('data-inv-view', adminInvFilter);
+}
+
+$(document).on('click', '[data-inv-filter]', function(){
+  adminInvFilter = $(this).data('inv-filter');
+  renderInventoryAlerts();
+});
+
+/* Jump to the Products catalog pre-filtered to what the admin was just
+   looking at ('all' = both stock problems and inactive, so no filter). */
+$(document).on('click', '[data-inv-view]', function(){
+  const view = $(this).attr('data-inv-view');
+  adminStatusFilter = (view === 'all') ? 'All' : view;
+  $('.admin-tab[data-admin-tab="products"]').trigger('click');
+  goToProductsSubtab('catalog');
+  $('#adminStatusFilter').val(adminStatusFilter);
+  renderAdminProductsTable();
+});
+
+/* No realtime updates, and customer checkouts decrement stock behind the
+   dashboard's back — so this re-reads the catalog. Calls fetchAllProducts
+   directly instead of loadProductsFromFirestore() because that one falls
+   back to the demo seed list on a network error, which would replace the
+   real catalog in memory. */
+$(document).on('click', '#invRefreshBtn', async function(){
+  const $btn = $(this);
+  $btn.prop('disabled', true).addClass('is-loading').find('.btn-refresh-label').text('Refreshing...');
+  try{
+    setCatalogProducts(await window.CCProducts.fetchAllProducts());
+    renderAdminProductsTable();
+    renderInventoryAlerts();
+    $('#invUpdatedAt').text('Updated ' + new Date().toLocaleTimeString('en-PH', { hour: 'numeric', minute: '2-digit' }));
+    showToast('Inventory refreshed.', 'success');
+  } catch(err){
+    console.error(err);
+    showToast('Could not refresh inventory. Please try again.', 'error');
+  } finally {
+    $btn.prop('disabled', false).removeClass('is-loading').find('.btn-refresh-label').text('Refresh');
+  }
+});
+
+/* ================= INVENTORY DROPDOWN + CLICK FEEDBACK (Overview tab) =================
+   The Inventory Alerts product list starts collapsed (the three count chips
+   stay visible). Open state lives on #inventoryAlerts, which renderInventoryAlerts()
+   never rebuilds, so refreshing / switching filters doesn't snap it shut. */
+$(document).on('click', '#invToggle', function(){
+  const open = $('#inventoryAlerts').toggleClass('is-open').hasClass('is-open');
+  $(this).attr('aria-expanded', open).find('.inv-toggle-label').text(open ? 'Hide products' : 'Show products');
+});
+
+/* The other Refresh buttons (Orders / Accounts / Activity) reload through
+   their own loaders with no loading hook, so they just spin briefly. */
+$(document).on('click', '.btn-refresh:not(#invRefreshBtn)', function(){
+  const $b = $(this).addClass('is-loading');
+  setTimeout(() => $b.removeClass('is-loading'), 900);
+});
+
+/* Re-triggers the small "pop" on a number that just changed. */
+function popValue(sel){
+  $(sel).each(function(){ this.classList.remove('adm-pop'); void this.offsetWidth; this.classList.add('adm-pop'); });
+}
+
+/* Ripple on press for buttons, pills, tabs and quick actions. Skipped when
+   the OS asks for reduced motion; the CSS also disables the animation. */
+$(document).on('pointerdown', '.btn, .admin-quick-action, .range-filter-pill, .admin-tab, .admin-subtab, .um-subtab, .inv-toggle', function(e){
+  if(this.disabled || (window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches)) return;
+  const oe = e.originalEvent || e, rect = this.getBoundingClientRect(), size = Math.max(rect.width, rect.height) * 2;
+  const $r = $('<span class="adm-ripple" aria-hidden="true"></span>').css({
+    width: size, height: size, left: oe.clientX - rect.left - size / 2, top: oe.clientY - rect.top - size / 2
+  });
+  $(this).append($r);
+  setTimeout(() => $r.remove(), 600);
+});
 
 /* ================= REPORTS & ANALYTICS (Overview tab) =================
    Everything here works off ADMIN_ORDERS, already fetched for the Orders
@@ -315,6 +582,7 @@ $(document).on('click', '[data-overview-range]', function(){
   adminOverviewRange = $(this).data('overview-range');
   renderOverviewRangeFilters();
   renderOverviewAnalytics();
+  popValue('#statRangeRevenue, #statRangeOrders, #statRangeAOV');
 });
 
 function getOrdersInRange(){
@@ -513,13 +781,52 @@ $(document).on('click', '[data-nav-to-add-product]', function(){
   goToProductsSubtab('add-product');
 });
 
+/* Stock badge for the Stock column. Colour comes from the shared stock
+   state (so per-size wearables flag a single low size), text from the
+   total, same as before. The low threshold is no longer hardcoded to 5. */
+function stockBadgeHtml(p){
+  if(p.stock === undefined || p.stock === null) return '<span class="admin-stock-badge admin-stock-unknown">—</span>';
+  const state = getProductStockState(p);
+  if(state === 'out') return '<span class="admin-stock-badge admin-stock-out">Out of stock</span>';
+  if(state === 'low') return `<span class="admin-stock-badge admin-stock-low">${p.stock} left</span>`;
+  return `<span class="admin-stock-badge admin-stock-ok">${p.stock}</span>`;
+}
+
+function statusBadgeHtml(p){
+  return isProductActive(p)
+    ? '<span class="admin-stock-badge admin-stock-ok">Active</span>'
+    : '<span class="admin-stock-badge admin-stock-unknown">Inactive</span>';
+}
+
+/* The Low / Out filters only match ACTIVE products, same as the Overview
+   alerts, so the counts there and the rows here always line up. */
+function productMatchesStatusFilter(p){
+  if(adminStatusFilter === 'All') return true;
+  if(adminStatusFilter === 'active') return isProductActive(p);
+  if(adminStatusFilter === 'inactive') return !isProductActive(p);
+  if(!isProductActive(p)) return false;
+  return getProductStockState(p) === adminStatusFilter; // 'low' | 'out'
+}
+
 function renderAdminProductsTable(){
   const q = adminProductSearch.trim().toLowerCase();
-  const rows = PRODUCTS
+  const visible = PRODUCTS
     .filter(p => adminCategoryFilter === 'All' || p.cat === adminCategoryFilter)
-    .filter(p => !q || p.name.toLowerCase().includes(q) || p.cat.toLowerCase().includes(q))
-    .map(p => `
-      <tr data-product-row="${p.id}">
+    .filter(productMatchesStatusFilter)
+    .filter(p => !q || p.name.toLowerCase().includes(q) || p.cat.toLowerCase().includes(q));
+
+  // Drop ticks on rows that are no longer visible (filter/search changed,
+  // product deleted) so a bulk action can never hit something off-screen.
+  const visibleIds = new Set(visible.map(p => p.id));
+  adminSelectedIds = new Set([...adminSelectedIds].filter(id => visibleIds.has(id)));
+
+  const rows = visible.map(p => {
+    const active = isProductActive(p);
+    return `
+      <tr data-product-row="${p.id}" class="${active ? '' : 'admin-row-inactive'}">
+        <td class="admin-td-check">
+          <input type="checkbox" data-admin-select="${p.id}" aria-label="Select ${p.name}"${adminSelectedIds.has(p.id) ? ' checked' : ''}>
+        </td>
         <td class="admin-td-product">
           <div class="admin-td-product-inner">
             <img src="${resolveImageSrc(p.img)}" alt="${p.name}">
@@ -528,18 +835,12 @@ function renderAdminProductsTable(){
         </td>
         <td>${categoryBadge(p.cat)}</td>
         <td>${priceLabel(p)}</td>
-        <td>
-          ${
-            p.stock === undefined || p.stock === null
-              ? '<span class="admin-stock-badge admin-stock-unknown">—</span>'
-              : p.stock === 0
-                ? '<span class="admin-stock-badge admin-stock-out">Out of stock</span>'
-                : p.stock <= 5
-                  ? `<span class="admin-stock-badge admin-stock-low">${p.stock} left</span>`
-                  : `<span class="admin-stock-badge admin-stock-ok">${p.stock}</span>`
-          }
-        </td>
+        <td>${stockBadgeHtml(p)}</td>
+        <td>${statusBadgeHtml(p)}</td>
         <td class="admin-td-actions">
+          <button class="admin-icon-btn" data-admin-product-toggle="${p.id}" title="${active ? 'Deactivate' : 'Activate'}" aria-label="${active ? 'Deactivate' : 'Activate'} ${p.name}">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none"><path d="M12 3v8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/><path d="M6.3 6.8a8 8 0 1 0 11.4 0" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+          </button>
           <button class="admin-icon-btn" data-admin-edit="${p.id}" title="Edit" aria-label="Edit ${p.name}">
             <svg width="15" height="15" viewBox="0 0 24 24" fill="none"><path d="M4 20l1-4L16.5 4.5a1.5 1.5 0 0 1 2 0l1 1a1.5 1.5 0 0 1 0 2L8 19l-4 1Z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/></svg>
           </button>
@@ -551,14 +852,131 @@ function renderAdminProductsTable(){
           </button>
         </td>
       </tr>
-    `).join('');
-  const emptyMsg = q && adminCategoryFilter !== 'All'
-    ? 'No products match that search in this category.'
-    : adminCategoryFilter !== 'All'
-      ? 'No products in this category yet.'
-      : 'No products match that search.';
-  $('#adminProductsBody').html(rows || `<tr><td colspan="4" class="admin-empty-row">${emptyMsg}</td></tr>`);
+    `;
+  }).join('');
+
+  const filtered = q || adminCategoryFilter !== 'All' || adminStatusFilter !== 'All';
+  const emptyMsg = filtered ? 'No products match those filters.' : 'No products yet.';
+  $('#adminProductsBody').html(rows || `<tr><td colspan="7" class="admin-empty-row">${emptyMsg}</td></tr>`);
+  updateBulkBar(visible.length);
 }
+
+/* Bulk bar + header "select all" checkbox state. */
+function updateBulkBar(visibleCount){
+  const n = adminSelectedIds.size;
+  $('#adminBulkBar').prop('hidden', n === 0);
+  $('#adminBulkCount').text(`${n} selected`);
+  const $all = $('#adminSelectAll');
+  $all.prop('checked', visibleCount > 0 && n === visibleCount);
+  $all.prop('indeterminate', n > 0 && n < visibleCount);
+}
+
+$(document).on('change', '[data-admin-select]', function(){
+  const id = $(this).data('admin-select');
+  if(this.checked) adminSelectedIds.add(id); else adminSelectedIds.delete(id);
+  updateBulkBar($('#adminProductsBody [data-admin-select]').length);
+});
+
+$(document).on('change', '#adminSelectAll', function(){
+  const on = this.checked;
+  $('#adminProductsBody [data-admin-select]').each(function(){
+    const id = $(this).data('admin-select');
+    if(on) adminSelectedIds.add(id); else adminSelectedIds.delete(id);
+    $(this).prop('checked', on);
+  });
+  updateBulkBar($('#adminProductsBody [data-admin-select]').length);
+});
+
+$(document).on('change', '#adminStatusFilter', function(){
+  adminStatusFilter = $(this).val();
+  renderAdminProductsTable();
+});
+
+/* ================= PRODUCT STATUS (active / inactive) =================
+   Single toggle and bulk both go through here. updateProduct() only
+   sends {active} (an admin write, already allowed by firestore.rules)
+   and keeps the local products cache in sync. Inactive products drop off
+   the storefront the next time a customer's catalog loads — their
+   localStorage cache is stale-while-revalidate, so it can take one
+   page load. Bulk writes are one request per product (small catalog,
+   and Firestore Lite has no realtime/batch helpers wired up here); a
+   partial failure reports how many went through. */
+async function setProductsActive(ids, active){
+  const targets = ids
+    .map(id => PRODUCTS.find(p => p.id === id))
+    .filter(p => p && isProductActive(p) !== active);
+  if(!targets.length){
+    showToast(`Already ${active ? 'active' : 'inactive'}.`, 'info');
+    return;
+  }
+  const results = await Promise.allSettled(
+    targets.map(p => window.CCProducts.updateProduct(p.id, { active }))
+  );
+  const done = targets.filter((p, i) => results[i].status === 'fulfilled');
+  const failed = targets.length - done.length;
+  done.forEach(p => { p.active = active; });
+
+  if(done.length){
+    // Logged after the real writes succeeded, like every other call site.
+    if(done.length === 1){
+      logActivity('update', 'product', done[0].id, `"${done[0].name}" set to ${active ? 'active' : 'inactive'}`);
+    } else {
+      const names = done.slice(0, 5).map(p => `"${p.name}"`).join(', ') + (done.length > 5 ? `, +${done.length - 5} more` : '');
+      logActivity('update', 'product', 'bulk', `${active ? 'Activated' : 'Deactivated'} ${done.length} products: ${names}`);
+    }
+    adminSelectedIds.clear();
+    buildComboProducts();
+    renderAdminProductsTable();
+    renderInventoryAlerts();
+  }
+  if(failed){
+    results.filter(r => r.status === 'rejected').forEach(r => console.error(r.reason));
+    showToast(`${done.length} updated, ${failed} failed. Please try the rest again.`, 'error');
+  } else if(done.length === 1){
+    showToast(`"${done[0].name}" is now ${active ? 'active' : 'inactive'}.`, 'success');
+  } else {
+    showToast(`${done.length} products ${active ? 'activated' : 'deactivated'}.`, 'success');
+  }
+}
+
+$(document).on('click', '[data-admin-product-toggle]', async function(){
+  const id = $(this).data('admin-product-toggle');
+  const p = PRODUCTS.find(x => x.id === id);
+  if(!p) return;
+  const $btn = $(this);
+  $btn.prop('disabled', true);
+  try{
+    await setProductsActive([id], !isProductActive(p));
+  } finally {
+    $btn.prop('disabled', false);
+  }
+});
+
+$(document).on('click', '[data-admin-bulk]', async function(){
+  const active = $(this).data('admin-bulk') === 'activate';
+  const ids = [...adminSelectedIds];
+  if(!ids.length) return;
+  if(!active){
+    const ok = await showConfirm({
+      title: `Deactivate ${ids.length} product${ids.length !== 1 ? 's' : ''}?`,
+      message: "They'll be hidden from customers until you activate them again. Nothing is deleted.",
+      confirmText: 'Deactivate',
+      danger: true
+    });
+    if(!ok) return;
+  }
+  const $btns = $('[data-admin-bulk]').prop('disabled', true);
+  try{
+    await setProductsActive(ids, active);
+  } finally {
+    $btns.prop('disabled', false);
+  }
+});
+
+$(document).on('click', '#adminBulkClear', function(){
+  adminSelectedIds.clear();
+  renderAdminProductsTable();
+});
 
 $(document).on('input', '#adminProductSearch', function(){
   adminProductSearch = $(this).val();
@@ -603,6 +1021,7 @@ $(document).on('click', '[data-admin-edit]', function(){
   $('#apIngredients').val(p.ingredients || '');
   $('#apAllergens').val(p.allergens || '');
   $('#apStock').val(p.stock !== undefined && p.stock !== null ? p.stock : '');
+  $('#apActive').prop('checked', isProductActive(p));
   populateDrinkDetailsFields(p);
   toggleFoodFields(p.cat);
   renderSizePriceRows(p.cat, p);
@@ -626,6 +1045,7 @@ $(document).on('click', '[data-admin-duplicate]', function(){
 
   adminEditingId = null;
   $('#apEditId').val('');
+  $('#apActive').prop('checked', isProductActive(p));
   $('#apName').val(p.name + ' (Copy)');
   $('#apPrice').val(p.price);
   $('#apCategory').val(p.cat);
@@ -914,7 +1334,9 @@ $(document).on('click', '[data-admin-delete]', async function(){
 
   try{
     await window.CCProducts.deleteProduct(id);
+    logActivity('delete', 'product', id, `Deleted product "${p.name}"`);
     PRODUCTS = PRODUCTS.filter(x => x.id !== id);
+    adminSelectedIds.delete(id);
     renderAdminProductsTable();
     renderAdminOverviewStats();
     if(typeof renderMenuPage === 'function') renderMenuPage();
@@ -1034,6 +1456,7 @@ $(document).on('submit', '#adminAddProductForm', async function(e){
     name, cat, price, desc,
     img, imgs: [img],
     stock,
+    active: $('#apActive').prop('checked'),
   };
   if(isStockSized || isPriceSized) fields.sizes = sizes;
   if(isFood){
@@ -1104,6 +1527,17 @@ $(document).on('submit', '#adminAddProductForm', async function(e){
     }
     try{
       await window.CCProducts.updateProduct(adminEditingId, fields, fieldsToDelete);
+      // Status/stock changes get spelled out in the entry so the Activity
+      // Log shows what changed, not just that something did.
+      const notes = [];
+      if(prevProduct && isProductActive(prevProduct) !== fields.active){
+        notes.push(`set to ${fields.active ? 'active' : 'inactive'}`);
+      }
+      if(prevProduct && prevProduct.stock !== fields.stock){
+        notes.push(`stock ${prevProduct.stock ?? '—'} → ${fields.stock}`);
+      }
+      logActivity('update', 'product', adminEditingId,
+        `Updated product "${name}"${notes.length ? ' (' + notes.join(', ') + ')' : ''}`);
       const idx = PRODUCTS.findIndex(x => x.id === adminEditingId);
       if(idx > -1){
         const merged = { id: adminEditingId, ...prevProduct, ...fields };
@@ -1113,6 +1547,7 @@ $(document).on('submit', '#adminAddProductForm', async function(e){
       showToast(`Updated "${name}".`, 'success');
       resetAdminProductForm();
       renderAdminProductsTable();
+      renderInventoryAlerts();
       if(typeof renderMenuPage === 'function') renderMenuPage();
       if(typeof renderMerchPage === 'function') renderMerchPage();
       buildComboProducts();
@@ -1136,6 +1571,7 @@ $(document).on('submit', '#adminAddProductForm', async function(e){
   $btn.prop('disabled', true).text('Adding...');
   try{
     const newId = await window.CCProducts.addProduct(fields);
+    logActivity('create', 'product', newId, `Added product "${name}"`);
     PRODUCTS.push({ id: newId, ...fields });
     showToast(`Added "${name}" to inventory.`, 'success');
     resetAdminProductForm();
@@ -1421,9 +1857,13 @@ $(document).on('change', '[data-order-rider]', async function(){
     await window.CCOrders.assignRider(orderId, riderId);
     const order = ADMIN_ORDERS.find(o => o.id === orderId);
     if(order) order.riderId = riderId;
+    const orderTag = `#${orderId.slice(0,6).toUpperCase()}`;
+    logActivity('update', 'order', orderId, riderId
+      ? `Assigned order ${orderTag} to rider ${rider?.name || rider?.email || riderId}`
+      : `Unassigned rider from order ${orderTag}`);
     showToast(riderId
-      ? `Order #${orderId.slice(0,6).toUpperCase()} assigned to ${rider?.name || rider?.email || 'rider'}.`
-      : `Order #${orderId.slice(0,6).toUpperCase()} unassigned.`, 'success');
+      ? `Order ${orderTag} assigned to ${rider?.name || rider?.email || 'rider'}.`
+      : `Order ${orderTag} unassigned.`, 'success');
   } catch(err){
     console.error(err);
     showToast('Could not assign that rider. Please try again.', 'error');
@@ -1529,6 +1969,7 @@ $(document).on('change', '[data-order-status]', async function(){
     await window.CCOrders.updateOrderStatus(orderId, newStatus);
     const order = ADMIN_ORDERS.find(o => o.id === orderId);
     if(order) order.status = newStatus;
+    logActivity('status-change', 'order', orderId, `Order #${orderId.slice(0,6).toUpperCase()} marked ${newStatus}`);
     showToast(`Order #${orderId.slice(0,6).toUpperCase()} marked ${newStatus}.`, 'success');
     renderOrderStatusFilters();
     renderAdminOrdersTable();
@@ -1785,6 +2226,12 @@ async function loadAndRenderAdminSettings(){
     const settings = await window.CCSettings.fetchSettings();
     DELIVERY_FEE = settings.deliveryFee;
     $('#asDeliveryFee').val(settings.deliveryFee);
+    LOW_STOCK_THRESHOLD = Number.isInteger(settings.lowStockThreshold) ? settings.lowStockThreshold : window.CCSettings.DEFAULT_LOW_STOCK_THRESHOLD;
+    $('#asLowStock').val(LOW_STOCK_THRESHOLD);
+    // Products render before settings finish loading, so redo the parts
+    // that depend on the threshold.
+    renderAdminProductsTable();
+    renderInventoryAlerts();
   } catch(err){
     console.error('Could not load settings from Firestore.', err);
     // Fall back to whatever's cached (or the built-in default) so the
@@ -1806,6 +2253,7 @@ $(document).on('submit', '#adminSettingsForm', async function(e){
   $status.text('');
   try{
     await window.CCSettings.updateDeliveryFee(fee);
+    logActivity('update', 'settings', 'deliveryFee', `Updated delivery fee to ${peso(fee)}`);
     // Update the in-memory value script.js reads at checkout, so the
     // new fee takes effect immediately without a page reload.
     DELIVERY_FEE = fee;
@@ -1815,6 +2263,34 @@ $(document).on('submit', '#adminSettingsForm', async function(e){
     $status.text('Something went wrong while saving. Check the console for details.');
   } finally {
     $btn.prop('disabled', false).text('Save Delivery Fee');
+  }
+});
+
+/* Inventory alert threshold. Whole number >= 1: 0 would make "low" and
+   "out of stock" the same thing. */
+$(document).on('submit', '#adminLowStockForm', async function(e){
+  e.preventDefault();
+  const n = Number($('#asLowStock').val());
+  const $status = $('#adminLowStockStatus');
+  if(!Number.isInteger(n) || n < 1 || n > 9999){
+    $status.text('Enter a whole number between 1 and 9999.');
+    return;
+  }
+  const $btn = $('#adminLowStockSubmitBtn');
+  $btn.prop('disabled', true).text('Saving...');
+  $status.text('');
+  try{
+    await window.CCSettings.updateLowStockThreshold(n);
+    logActivity('update', 'settings', 'lowStockThreshold', `Updated low-stock threshold to ${n}`);
+    LOW_STOCK_THRESHOLD = n;
+    renderAdminProductsTable();
+    renderInventoryAlerts();
+    $status.text('Saved — alerts now flag products at or under ' + n + '.');
+  } catch(err){
+    console.error(err);
+    $status.text('Something went wrong while saving. Check the console for details.');
+  } finally {
+    $btn.prop('disabled', false).text('Save Threshold');
   }
 });
 
@@ -1991,6 +2467,7 @@ $(document).on('submit', '#adminPromoForm', async function(e){
   $status.text('');
   try{
     await window.CCSettings.updatePromoPopup(promoPopup);
+    logActivity('update', 'settings', 'promoPopup', 'Updated Launch Popup settings');
     // Update the in-memory config script.js reads when it decides
     // whether/what to show, so a freshly-saved popup takes effect on
     // this browser's very next fresh session without a redeploy.
@@ -2180,6 +2657,7 @@ $(document).on('submit', '#adminBsForm', async function(e){
   $status.text('');
   try{
     await window.CCSettings.updatePopularSection(popularSection);
+    logActivity('update', 'settings', 'popularSection', 'Updated homepage Popular Section settings');
     // See the equivalent comment on the promo popup save above — this
     // only matters if admin.js happens to be running inside the full
     // customer page; harmless no-op on the standalone admin app.
@@ -2194,153 +2672,238 @@ $(document).on('submit', '#adminBsForm', async function(e){
   }
 });
 
-/* ================= ACCOUNTS ================= */
-/* Free-tier version: everything here reads/writes the users/{uid}
-   Firestore docs directly through window.CCAccounts (accounts-
-   service.js) — no Cloud Functions, so this only needs the free
-   Spark plan. Two real limitations that come with that:
-   1. This only shows accounts that HAVE a users/{uid} profile doc
-      (created at signup — see auth.js) — there's no way to list raw
-      Firebase Auth accounts from the client at all, on any plan.
-   2. "Disable" here is an app-enforced flag (disabled:true on the
-      profile doc), not a true Firebase Auth-level disable. Firestore
-      rules block a disabled account from writing anything, and
-      auth.js's onAuthStateChanged is expected to sign them straight
-      back out if their own profile comes back disabled (see the
-      snippet given alongside this file) — but the underlying Auth
-      login technically still exists. There's no delete here at all:
-      permanently removing a login is Admin-SDK-only, i.e. the paid
-      Cloud Functions route, not this one.
-   Every role/disabled write is still gated by firestore.rules
-   requiring the caller to be an existing admin AND not acting on
-   their own account — see the rules snippet given alongside this
-   file. The last-admin check below is a client-side courtesy check
-   only (not a hard security guarantee) since counting documents
-   inside a security rule is expensive/awkward — acceptable for a
-   small internal team, not something to rely on at scale. */
+/* ================= USER MANAGEMENT (tab id "accounts") =================
+   Customers: view, edit (name + phone), suspend/reactivate.
+   Admins: view, add (promote a registered account), edit (name + phone),
+   remove admin access (demote to customer — the account itself is kept).
+   Free-tier version: everything reads/writes the users/{uid} Firestore
+   docs directly through window.CCAccounts (accounts-service.js), so:
+   1. Only accounts with a users/{uid} profile doc are listed (signup
+      creates it — see auth.js); raw Firebase Auth accounts can't be
+      listed from the client.
+   2. "Suspend" is the app-enforced disabled flag, not an Auth-level
+      disable: auth.js signs a disabled account out on its next check.
+   3. There is no true account delete (Admin-SDK only), which is why
+      "delete admin" means remove admin access.
+   Every write is gated by firestore.rules (admin-only, never on your OWN
+   role/disabled; only fullName/phone/role/disabled on someone else's
+   doc). The disabled buttons on your own row are a courtesy only. */
 
-/* auth.js already exposes the signed-in user globally — no guessing
-   needed here, just read it. Used to grey out "act on myself"
-   buttons; the real enforcement is in firestore.rules regardless. */
 function currentAdminUid(){
   return (window.currentUser && window.currentUser.uid) || null;
 }
 
+/* Names/phones are typed by customers and shown here to admins, so they
+   are escaped before going into innerHTML. */
+function umEsc(s){
+  return String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' }[c]));
+}
+
 let ADMIN_ACCOUNTS = [];
-let adminAccountSearch = ''; // current text in the Accounts search box
+let adminAccountSearch = ''; // current text in the User Management search box
+let umEditingUid = null;
+const UM_PHONE_RE = /^[0-9+()\-\s]{7,20}$/;
 
 async function loadAndRenderAdminAccounts(){
-  $('#adminAccountsBody').html(`<tr><td colspan="5" class="admin-empty-row">Loading accounts...</td></tr>`);
+  $('#adminAccountsBody').html(`<tr><td colspan="6" class="admin-empty-row">Loading accounts...</td></tr>`);
+  $('#adminAdminsBody').html(`<tr><td colspan="4" class="admin-empty-row">Loading accounts...</td></tr>`);
   try{
     ADMIN_ACCOUNTS = await window.CCAccounts.listUserProfiles();
   } catch(err){
     console.error(err);
-    $('#adminAccountsBody').html(`<tr><td colspan="5" class="admin-empty-row">${err.message || 'Could not load accounts.'}</td></tr>`);
+    const msg = umEsc(err.message || 'Could not load accounts.');
+    $('#adminAccountsBody').html(`<tr><td colspan="6" class="admin-empty-row">${msg}</td></tr>`);
+    $('#adminAdminsBody').html(`<tr><td colspan="4" class="admin-empty-row">${msg}</td></tr>`);
     return;
   }
   renderAdminAccountsTable();
 }
 
+function umMatches(u, q){
+  if(!q) return true;
+  return (u.email || '').toLowerCase().includes(q) || (u.name || '').toLowerCase().includes(q) ||
+    (u.phone || '').toLowerCase().includes(q) || u.uid.toLowerCase().includes(q);
+}
+
+const UM_ICON_EDIT = '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z"/></svg>';
+const UM_ICON_SUSPEND = '<svg width="15" height="15" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="1.6"/><path d="M9 9l6 6M15 9l-6 6" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>';
+const UM_ICON_REACTIVATE = '<svg width="15" height="15" viewBox="0 0 24 24" fill="none"><path d="M9 12l2 2 4-4" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/><circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="1.6"/></svg>';
+const UM_ICON_REMOVE = '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H7a4 4 0 0 0-4 4v2"/><circle cx="10" cy="7" r="4"/><path d="M17 8l5 5M22 8l-5 5"/></svg>';
+
+function umAccountCell(u){
+  return `<div class="admin-customer-link" style="cursor:default;">
+    <span class="admin-avatar">${umEsc(customerInitials(u.email || u.name || '?'))}</span>
+    <span>${umEsc(u.email || '(no email)')}</span>
+  </div>`;
+}
+
 function renderAdminAccountsTable(){
   const q = adminAccountSearch.trim().toLowerCase();
-  const filtered = !q ? ADMIN_ACCOUNTS : ADMIN_ACCOUNTS.filter(u =>
-    (u.email || '').toLowerCase().includes(q) ||
-    (u.name || '').toLowerCase().includes(q) ||
-    u.uid.toLowerCase().includes(q)
-  );
+  const customers = ADMIN_ACCOUNTS.filter(u => u.role !== 'admin');
+  const admins = ADMIN_ACCOUNTS.filter(u => u.role === 'admin');
+  $('#umCustomerCount').text(customers.length);
+  $('#umAdminCount').text(admins.length);
 
-  if(!ADMIN_ACCOUNTS.length){
-    $('#adminAccountsBody').html(`<tr><td colspan="5" class="admin-empty-row">No accounts found.</td></tr>`);
-    return;
-  }
-  if(!filtered.length){
-    $('#adminAccountsBody').html(`<tr><td colspan="5" class="admin-empty-row">No accounts match your search.</td></tr>`);
-    return;
-  }
+  const cList = customers.filter(u => umMatches(u, q));
+  if(!customers.length) $('#adminAccountsBody').html(`<tr><td colspan="6" class="admin-empty-row">No customer accounts yet.</td></tr>`);
+  else if(!cList.length) $('#adminAccountsBody').html(`<tr><td colspan="6" class="admin-empty-row">No customers match your search.</td></tr>`);
+  else $('#adminAccountsBody').html(cList.map(u => `
+    <tr${u.disabled ? ' class="admin-row-inactive"' : ''}>
+      <td>${umAccountCell(u)}</td>
+      <td>${umEsc(u.name || 'No name')}</td>
+      <td>${umEsc(u.phone || '—')}</td>
+      <td>
+        <select class="admin-status-select admin-role-${u.role === 'rider' ? 'rider' : 'customer'}" data-um-role="${umEsc(u.uid)}">
+          <option value="customer" ${u.role !== 'rider' ? 'selected' : ''}>Customer</option>
+          <option value="rider" ${u.role === 'rider' ? 'selected' : ''}>Rider</option>
+        </select>
+      </td>
+      <td>${u.disabled
+        ? '<span class="admin-stock-badge admin-stock-out">Suspended</span>'
+        : '<span class="admin-stock-badge admin-stock-ok">Active</span>'}</td>
+      <td class="admin-td-actions">
+        <button type="button" class="admin-icon-btn" data-um-edit="${umEsc(u.uid)}" title="Edit name &amp; phone" aria-label="Edit ${umEsc(u.email || u.name || 'account')}">${UM_ICON_EDIT}</button>
+        <button type="button" class="admin-icon-btn${u.disabled ? '' : ' admin-icon-btn-danger'}" data-um-suspend="${umEsc(u.uid)}" data-disabled="${!!u.disabled}" title="${u.disabled ? 'Reactivate' : 'Suspend'} account" aria-label="${u.disabled ? 'Reactivate' : 'Suspend'} ${umEsc(u.email || u.name || 'account')}">${u.disabled ? UM_ICON_REACTIVATE : UM_ICON_SUSPEND}</button>
+      </td>
+    </tr>`).join(''));
 
-  const rows = filtered.map(u => {
-    const name = u.name || 'No name';
+  const aList = admins.filter(u => umMatches(u, q));
+  if(!admins.length) $('#adminAdminsBody').html(`<tr><td colspan="4" class="admin-empty-row">No admin accounts found.</td></tr>`);
+  else if(!aList.length) $('#adminAdminsBody').html(`<tr><td colspan="4" class="admin-empty-row">No admins match your search.</td></tr>`);
+  else $('#adminAdminsBody').html(aList.map(u => {
     const isSelf = u.uid === currentAdminUid();
     return `
-      <tr>
-        <td>
-          <div class="admin-customer-link" style="cursor:default;">
-            <span class="admin-avatar">${customerInitials(u.email || name)}</span>
-            <span>${u.email || '(no email)'}</span>
-          </div>
-        </td>
-        <td>${name}</td>
-        <td>
-          <select class="admin-status-select admin-role-${u.role === 'admin' ? 'admin' : (u.role === 'rider' ? 'rider' : 'customer')}" data-account-role="${u.uid}" ${isSelf ? 'disabled title="You can\'t change your own role"' : ''}>
-            <option value="customer" ${u.role !== 'admin' && u.role !== 'rider' ? 'selected' : ''}>Customer</option>
-            <option value="rider" ${u.role === 'rider' ? 'selected' : ''}>Rider</option>
-            <option value="admin" ${u.role === 'admin' ? 'selected' : ''}>Admin</option>
-          </select>
-        </td>
-        <td>${u.disabled
-          ? '<span class="admin-stock-badge admin-stock-out">Blocked</span>'
-          : '<span class="admin-stock-badge admin-stock-ok">Active</span>'}</td>
-        <td class="admin-td-actions">
-          <button class="admin-icon-btn" data-account-toggle-disabled="${u.uid}" data-disabled="${!!u.disabled}" ${isSelf ? 'disabled title="You can\'t block your own account"' : ''} title="${u.disabled ? 'Unblock' : 'Block'} account" aria-label="${u.disabled ? 'Unblock' : 'Block'} ${u.email || name}">
-            ${u.disabled
-              ? '<svg width="15" height="15" viewBox="0 0 24 24" fill="none"><path d="M9 12l2 2 4-4" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/><circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="1.6"/></svg>'
-              : '<svg width="15" height="15" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="1.6"/><path d="M9 9l6 6M15 9l-6 6" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>'}
-          </button>
-        </td>
-      </tr>
-    `;
-  }).join('');
-  $('#adminAccountsBody').html(rows);
+    <tr>
+      <td>${umAccountCell(u)}${isSelf ? ' <span class="um-you">You</span>' : ''}</td>
+      <td>${umEsc(u.name || 'No name')}</td>
+      <td>${umEsc(u.phone || '—')}</td>
+      <td class="admin-td-actions">
+        <button type="button" class="admin-icon-btn" data-um-edit="${umEsc(u.uid)}" title="Edit name &amp; phone" aria-label="Edit ${umEsc(u.email || u.name || 'admin')}">${UM_ICON_EDIT}</button>
+        <button type="button" class="admin-icon-btn admin-icon-btn-danger" data-um-remove-admin="${umEsc(u.uid)}" ${isSelf ? 'disabled title="You can\'t remove your own admin access"' : 'title="Remove admin access"'} aria-label="Remove admin access for ${umEsc(u.email || u.name || 'admin')}">${UM_ICON_REMOVE}</button>
+      </td>
+    </tr>`;
+  }).join(''));
 }
 
 $(document).on('input', '#adminAccountSearch', function(){
   adminAccountSearch = $(this).val();
   renderAdminAccountsTable();
 });
-
 $(document).on('click', '#adminRefreshAccounts', loadAndRenderAdminAccounts);
 
-/* Role changes are privileged and easy to fat-finger, so this
-   confirms before writing — same pattern as deleting a product, just
-   with higher stakes. Also does a soft "don't leave zero admins"
-   check: advisory only (see the section comment above), not a hard
-   guarantee. */
-const ROLE_LABELS = { admin: 'an admin', rider: 'a rider', customer: 'a customer' };
+/* Customers / Admins sub-tabs — own classes (.um-subtab / .um-panel) so
+   they never collide with the Products tab's .admin-subtab handler. */
+$(document).on('click', '.um-subtab', function(){
+  const tab = $(this).data('um-tab');
+  $('.um-subtab').removeClass('active');
+  $(this).addClass('active');
+  $('.um-panel').removeClass('active');
+  $(`.um-panel[data-um-panel="${tab}"]`).addClass('active');
+});
 
-$(document).on('change', '[data-account-role]', async function(){
+/* ---------- Edit (name + phone) ---------- */
+function umCloseEdit(){ $('#umEditOverlay').removeClass('open'); umEditingUid = null; }
+
+$(document).on('click', '[data-um-edit]', function(){
+  const uid = $(this).attr('data-um-edit');
+  const user = ADMIN_ACCOUNTS.find(u => u.uid === uid);
+  if(!user) return;
+  umEditingUid = uid;
+  $('#umEditEmail').text(user.email || uid);
+  $('#umEditName').val(user.name || '');
+  $('#umEditPhone').val(user.phone || '');
+  $('#umEditError').hide().text('');
+  $('#umEditOverlay').addClass('open');
+  setTimeout(() => $('#umEditName').trigger('focus'), 50);
+});
+$(document).on('click', '#umEditClose', umCloseEdit);
+$(document).on('click', '#umEditOverlay', function(e){ if(e.target === this) umCloseEdit(); });
+
+$(document).on('submit', '#umEditForm', async function(e){
+  e.preventDefault();
+  const user = ADMIN_ACCOUNTS.find(u => u.uid === umEditingUid);
+  if(!user) return;
+  const fullName = $('#umEditName').val().trim();
+  const phone = $('#umEditPhone').val().trim();
+  const fail = msg => $('#umEditError').text(msg).show();
+  if(!fullName) return fail('Name is required.');
+  if(fullName.length > 80) return fail('Name must be 80 characters or fewer.');
+  if(!UM_PHONE_RE.test(phone) || phone.replace(/\D/g, '').length < 7) return fail('Enter a valid phone number (digits, spaces, + ( ) and - only).');
+  if(fullName === (user.name || '') && phone === (user.phone || '')){ umCloseEdit(); return; }
+
+  const $save = $('#umEditSave').prop('disabled', true).text('Saving...');
+  try{
+    await window.CCAccounts.updateUserProfile(user.uid, { fullName, phone });
+    logActivity('update', 'account', user.uid, `Edited name/phone for ${user.email || user.uid}`);
+    user.name = fullName; user.phone = phone;
+    renderAdminAccountsTable();
+    umCloseEdit();
+    showToast('Account updated.', 'success');
+  } catch(err){
+    console.error(err);
+    fail(err.message || 'Could not save changes.');
+  } finally {
+    $save.prop('disabled', false).text('Save changes');
+  }
+});
+
+/* ---------- Customers: suspend / reactivate, and the Customer/Rider role ---------- */
+$(document).on('click', '[data-um-suspend]', async function(){
+  const $btn = $(this);
+  const uid = $btn.attr('data-um-suspend');
+  const user = ADMIN_ACCOUNTS.find(u => u.uid === uid);
+  const nextDisabled = $btn.attr('data-disabled') !== 'true';
+
+  const ok = await showConfirm({
+    title: nextDisabled ? 'Suspend this account?' : 'Reactivate this account?',
+    message: nextDisabled
+      ? `${user?.email || uid} won't be able to use the site until you reactivate them. They are signed out the next time the app checks their account.`
+      : `${user?.email || uid} will be able to use the site again.`,
+    confirmText: nextDisabled ? 'Suspend' : 'Reactivate',
+    danger: nextDisabled
+  });
+  if(!ok) return;
+
+  $btn.prop('disabled', true);
+  try{
+    await window.CCAccounts.setUserDisabled(uid, nextDisabled);
+    logActivity('update', 'account', uid, `${nextDisabled ? 'Suspended' : 'Reactivated'} account ${user?.email || uid}`);
+    if(user) user.disabled = nextDisabled;
+    showToast(`${user?.email || uid} is now ${nextDisabled ? 'suspended' : 'active'}.`, 'success');
+    renderAdminAccountsTable();
+  } catch(err){
+    console.error(err);
+    showToast(err.message || 'Could not update that account.', 'error');
+    $btn.prop('disabled', false);
+  }
+});
+
+/* Kept from the old Accounts tab: the rider app and the Orders "assign
+   rider" dropdown depend on accounts having role:'rider', and this is
+   the only place that role gets assigned. */
+$(document).on('change', '[data-um-role]', async function(){
   const $select = $(this);
-  const uid = $select.data('account-role');
+  const uid = $select.attr('data-um-role');
   const newRole = $select.val();
   const user = ADMIN_ACCOUNTS.find(u => u.uid === uid);
   const prevRole = user ? user.role : 'customer';
   if(newRole === prevRole) return;
 
-  if(newRole !== 'admin' && prevRole === 'admin'){
-    const adminCount = ADMIN_ACCOUNTS.filter(u => u.role === 'admin').length;
-    if(adminCount <= 1){
-      showToast("Can't remove the last remaining admin account.", 'warning');
-      $select.val(prevRole);
-      return;
-    }
-  }
-
   const ok = await showConfirm({
-    title: newRole === 'admin' ? 'Grant admin access?' : `Make this account ${ROLE_LABELS[newRole]}?`,
-    message: newRole === 'admin'
-      ? `${user?.email || uid} will be able to sign in to this dashboard and manage products, orders, and other accounts.`
-      : newRole === 'rider'
-        ? `${user?.email || uid} will be able to sign in to the rider app and claim/deliver orders.${prevRole === 'admin' ? ' They will lose admin access.' : ''}`
-        : `${user?.email || uid} will lose ${prevRole === 'admin' ? 'admin dashboard' : 'rider app'} access.`,
-    confirmText: newRole === 'admin' ? 'Grant Admin' : (newRole === 'rider' ? 'Make Rider' : 'Make Customer'),
-    danger: prevRole === 'admin' && newRole !== 'admin'
+    title: newRole === 'rider' ? 'Make this account a rider?' : 'Make this account a customer?',
+    message: newRole === 'rider'
+      ? `${user?.email || uid} will be able to sign in to the rider app and claim/deliver orders.`
+      : `${user?.email || uid} will lose rider app access.`,
+    confirmText: newRole === 'rider' ? 'Make Rider' : 'Make Customer'
   });
   if(!ok){ $select.val(prevRole); return; }
 
   $select.prop('disabled', true);
   try{
     await window.CCAccounts.setUserRole(uid, newRole);
+    logActivity('update', 'account', uid, `Changed ${user?.email || uid}'s role to ${newRole === 'rider' ? 'a rider' : 'a customer'}`);
     if(user) user.role = newRole;
-    showToast(`${user?.email || uid} is now ${ROLE_LABELS[newRole] || newRole}.`, 'success');
+    showToast(`${user?.email || uid} is now ${newRole === 'rider' ? 'a rider' : 'a customer'}.`, 'success');
     renderAdminAccountsTable();
   } catch(err){
     console.error(err);
@@ -2349,34 +2912,93 @@ $(document).on('change', '[data-account-role]', async function(){
   }
 });
 
-$(document).on('click', '[data-account-toggle-disabled]', async function(){
-  const $btn = $(this);
-  const uid = $btn.data('account-toggle-disabled');
-  const currentlyDisabled = $btn.attr('data-disabled') === 'true';
-  const user = ADMIN_ACCOUNTS.find(u => u.uid === uid);
-  const nextDisabled = !currentlyDisabled;
+/* ---------- Admins: add (promote) / remove access ---------- */
+function umCloseAddAdmin(){ $('#umAddAdminOverlay').removeClass('open'); }
 
+function renderUmAddAdminList(){
+  const q = ($('#umAddAdminSearch').val() || '').trim().toLowerCase();
+  // Suspended accounts are left out: auth.js would sign them straight back out.
+  const pool = ADMIN_ACCOUNTS.filter(u => u.role !== 'admin' && !u.disabled && umMatches(u, q));
+  if(!pool.length){
+    $('#umAddAdminList').html(`<div class="inv-empty">${q ? 'No registered accounts match that search.' : 'No accounts available to promote.'}</div>`);
+    return;
+  }
+  $('#umAddAdminList').html(pool.slice(0, 8).map(u => `
+    <div class="um-pick-row">
+      <span class="admin-avatar">${umEsc(customerInitials(u.email || u.name || '?'))}</span>
+      <div class="um-pick-main"><strong>${umEsc(u.name || 'No name')}</strong><span>${umEsc(u.email || '(no email)')}</span></div>
+      <button type="button" class="btn btn-outline btn-sm" data-um-make-admin="${umEsc(u.uid)}">Make admin</button>
+    </div>`).join('') + (pool.length > 8 ? `<p class="form-hint">Showing 8 of ${pool.length} — type to narrow it down.</p>` : ''));
+}
+
+$(document).on('click', '#umAddAdminBtn', function(){
+  $('#umAddAdminSearch').val('');
+  renderUmAddAdminList();
+  $('#umAddAdminOverlay').addClass('open');
+  setTimeout(() => $('#umAddAdminSearch').trigger('focus'), 50);
+});
+$(document).on('input', '#umAddAdminSearch', renderUmAddAdminList);
+$(document).on('click', '#umAddAdminClose', umCloseAddAdmin);
+$(document).on('click', '#umAddAdminOverlay', function(e){ if(e.target === this) umCloseAddAdmin(); });
+
+$(document).on('click', '[data-um-make-admin]', async function(){
+  const $btn = $(this);
+  const uid = $btn.attr('data-um-make-admin');
+  const user = ADMIN_ACCOUNTS.find(u => u.uid === uid);
+  if(!user) return;
   const ok = await showConfirm({
-    title: nextDisabled ? 'Block this account?' : 'Unblock this account?',
-    message: nextDisabled
-      ? `${user?.email || uid} won't be able to use the site until you unblock them. This is enforced by Firestore rules and by the app signing them out — see the setup notes for the auth.js snippet this depends on.`
-      : `${user?.email || uid} will be able to use the site again.`,
-    confirmText: nextDisabled ? 'Block' : 'Unblock',
-    danger: nextDisabled
+    title: 'Grant admin access?',
+    message: `${user.email || uid} will be able to sign in to this dashboard and manage products, orders, and other accounts.`,
+    confirmText: 'Make Admin'
   });
   if(!ok) return;
-
   $btn.prop('disabled', true);
   try{
-    await window.CCAccounts.setUserDisabled(uid, nextDisabled);
-    if(user) user.disabled = nextDisabled;
-    showToast(`${user?.email || uid} is now ${nextDisabled ? 'blocked' : 'active'}.`, 'success');
+    await window.CCAccounts.setUserRole(uid, 'admin');
+    logActivity('update', 'account', uid, `Added ${user.email || uid} as an admin`);
+    user.role = 'admin';
     renderAdminAccountsTable();
+    umCloseAddAdmin();
+    showToast(`${user.email || uid} is now an admin.`, 'success');
   } catch(err){
     console.error(err);
-    showToast(err.message || 'Could not update that account.', 'error');
+    showToast(err.message || 'Could not add that admin.', 'error');
     $btn.prop('disabled', false);
   }
+});
+
+$(document).on('click', '[data-um-remove-admin]', async function(){
+  const $btn = $(this);
+  const uid = $btn.attr('data-um-remove-admin');
+  const user = ADMIN_ACCOUNTS.find(u => u.uid === uid);
+  if(!user || uid === currentAdminUid()) return;
+  const ok = await showConfirm({
+    title: 'Remove admin access?',
+    message: `${user.email || uid} will become a regular customer account and lose access to this dashboard. The account itself is not deleted.`,
+    confirmText: 'Remove Access',
+    danger: true
+  });
+  if(!ok) return;
+  $btn.prop('disabled', true);
+  try{
+    await window.CCAccounts.setUserRole(uid, 'customer');
+    logActivity('update', 'account', uid, `Removed admin access from ${user.email || uid}`);
+    user.role = 'customer';
+    renderAdminAccountsTable();
+    showToast(`${user.email || uid} is no longer an admin.`, 'success');
+  } catch(err){
+    console.error(err);
+    showToast(err.message || 'Could not remove admin access.', 'error');
+    $btn.prop('disabled', false);
+  }
+});
+
+/* Escape closes the two modals above, unless a confirm dialog sitting on
+   top of them is the thing being dismissed (admin-ui.js handles that one). */
+$(document).on('keydown', function(e){
+  if(e.key !== 'Escape' || $('#admConfirmOverlay').hasClass('open')) return;
+  if($('#umEditOverlay').hasClass('open')) umCloseEdit();
+  if($('#umAddAdminOverlay').hasClass('open')) umCloseAddAdmin();
 });
 
 /* ================= COMBOS ================= */
@@ -2507,6 +3129,7 @@ $(document).on('click', '[data-admin-combo-toggle]', async function(){
   try{
     await window.CCCombos.updateCombo(id, { active: !c.active });
     c.active = !c.active;
+    logActivity('update', 'combo', id, `"${c.name}" set to ${c.active ? 'active' : 'inactive'}`);
     buildComboProducts();
     if(typeof renderFeaturedCombos === 'function') renderFeaturedCombos();
     renderAdminCombosTable();
@@ -2532,6 +3155,7 @@ $(document).on('click', '[data-admin-combo-delete]', async function(){
   if(!ok) return;
   try{
     await window.CCCombos.deleteCombo(id);
+    logActivity('delete', 'combo', id, `Deleted combo "${c.name}"`);
     COMBOS = COMBOS.filter(x => x.id !== id);
     buildComboProducts();
     if(typeof renderFeaturedCombos === 'function') renderFeaturedCombos();
@@ -2568,6 +3192,7 @@ $(document).on('submit', '#adminAddComboForm', async function(e){
     $btn.prop('disabled', true).text('Updating...');
     try{
       await window.CCCombos.updateCombo(adminEditingComboId, fields);
+      logActivity('update', 'combo', adminEditingComboId, `Updated combo "${fields.name}"`);
       const idx = COMBOS.findIndex(x => x.id === adminEditingComboId);
       if(idx > -1) COMBOS[idx] = { id: adminEditingComboId, ...fields };
       buildComboProducts();
@@ -2587,6 +3212,7 @@ $(document).on('submit', '#adminAddComboForm', async function(e){
   $btn.prop('disabled', true).text('Adding...');
   try{
     const newId = await window.CCCombos.addCombo(fields);
+    logActivity('create', 'combo', newId, `Added combo "${fields.name}"`);
     COMBOS.push({ id: newId, ...fields });
     buildComboProducts();
     if(typeof renderFeaturedCombos === 'function') renderFeaturedCombos();

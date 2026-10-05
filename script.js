@@ -2897,14 +2897,36 @@ $(document).on('click', '[data-password-toggle]', function(){
 });
 
 /* ================= AUTH FORMS (real Firebase Auth) ================= */
+/* Resolves with the next authRoleReady detail (or null after `ms`).
+   Used by the login form: auth.js signs a SUSPENDED account straight back
+   out after sign-in succeeds (it only learns about disabled:true from the
+   Firestore read that follows), so "login succeeded" alone isn't enough
+   to say "Welcome back". Call it BEFORE loginUser() so the event can't
+   fire first; cancel() removes the listener if login itself fails. */
+function waitForNextRoleReady(ms){
+  let done = false, timer, handler;
+  const promise = new Promise(resolve => {
+    handler = e => { if(done) return; done = true; clearTimeout(timer); document.removeEventListener('authRoleReady', handler); resolve(e.detail || null); };
+    timer = setTimeout(() => { if(done) return; done = true; document.removeEventListener('authRoleReady', handler); resolve(null); }, ms);
+    document.addEventListener('authRoleReady', handler);
+  });
+  promise.cancel = () => { if(done) return; done = true; clearTimeout(timer); document.removeEventListener('authRoleReady', handler); };
+  return promise;
+}
+
 $('#loginForm').on('submit', async function(e){
   e.preventDefault();
   const $btn = $(this).find('button[type="submit"]');
   const email = $(this).find('input[type="email"]').val().trim();
   const password = $('#loginPassword').val();
   $btn.prop('disabled', true).text('Logging in...');
+  const roleReady = waitForNextRoleReady(15000);
   try{
     const user = await window.CCAuth.loginUser(email, password);
+    const roleInfo = await roleReady;
+    // Suspended: the authRoleReady handler below already showed the
+    // "suspended" message — don't also welcome them or route anywhere.
+    if(roleInfo && roleInfo.blocked) return;
     showToast('Welcome back! Logged in successfully.', 'success');
     const verified = await window.CCAuth.isOtpVerified();
     if(!verified){
@@ -2913,6 +2935,7 @@ $('#loginForm').on('submit', async function(e){
       navigate('home');
     }
   } catch(err){
+    roleReady.cancel();
     showToast(friendlyAuthError(err), 'error');
   } finally {
     $btn.prop('disabled', false).text('Login');
@@ -3110,7 +3133,14 @@ document.addEventListener('authStateReady', function(e){
    (it needs a Firestore read), so the dot/dropdown update here once
    authRoleReady fires rather than in authStateReady above. */
 document.addEventListener('authRoleReady', function(e){
-  const { user, otpVerified } = e.detail;
+  const { user, otpVerified, blocked } = e.detail;
+  // auth.js sets blocked:true when it signs out an account an admin
+  // suspended (User Management → Suspend). Without this the person was
+  // just silently logged out with no explanation.
+  if(blocked){
+    showToast('Your account has been suspended. Please contact us if you think this is a mistake.', 'error');
+    navigate('home');
+  }
   const realUser = user && !user.isAnonymous ? user : null;
   $('#accountStatusDot').toggleClass('unverified', !!(realUser && !otpVerified));
   renderAccountDropdown(realUser, otpVerified);

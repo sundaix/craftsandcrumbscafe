@@ -56,6 +56,7 @@
     <button class="admin-tab" data-admin-tab="products">
       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M20 7 12 3 4 7v10l8 4 8-4z"/><path d="M4 7l8 4 8-4"/><path d="M12 11v10"/></svg>
       Products
+      <span class="admin-tab-badge" id="productsTabBadge" hidden>0</span>
     </button>
     <button class="admin-tab" data-admin-tab="orders">
       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M6 2h9l5 5v13a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2z"/><path d="M14 2v5h5"/><path d="M8 13h8M8 17h5"/></svg>
@@ -63,11 +64,15 @@
     </button>
     <button class="admin-tab" data-admin-tab="accounts">
       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H7a4 4 0 0 0-4 4v2"/><circle cx="10" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
-      Accounts
+      User Management
     </button>
     <button class="admin-tab" data-admin-tab="settings">
       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .34 1.87l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.7 1.7 0 0 0-1.87-.34 1.7 1.7 0 0 0-1.04 1.56V21a2 2 0 0 1-4 0v-.09A1.7 1.7 0 0 0 9 19.4a1.7 1.7 0 0 0-1.87.34l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.7 1.7 0 0 0 4.6 15a1.7 1.7 0 0 0-1.56-1.04H3a2 2 0 0 1 0-4h.09A1.7 1.7 0 0 0 4.6 9a1.7 1.7 0 0 0-.34-1.87l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.7 1.7 0 0 0 9 4.6a1.7 1.7 0 0 0 1.04-1.56V3a2 2 0 0 1 4 0v.09A1.7 1.7 0 0 0 15 4.6a1.7 1.7 0 0 0 1.87-.34l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.7 1.7 0 0 0 19.4 9a1.7 1.7 0 0 0 1.56 1.04H21a2 2 0 0 1 0 4h-.09A1.7 1.7 0 0 0 19.4 15z"/></svg>
       Settings
+    </button>
+    <button class="admin-tab" data-admin-tab="activity">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 8v4l3 3"/><circle cx="12" cy="12" r="9"/></svg>
+      Activity Log
     </button>
     <div class="admin-sidebar-foot">
       <button class="admin-sidebar-logout" id="admLogoutBtn" type="button">
@@ -87,7 +92,7 @@
 
       <!-- overview -->
       <div class="admin-panel active" data-admin-panel="overview">
-        <div class="admin-stats">
+        <div class="admin-stats ov-section ov-rise">
           <div class="admin-stat-card">
             <div class="admin-stat-icon admin-stat-icon-accent">
               <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M20 7 12 3 4 7v10l8 4 8-4z"/><path d="M4 7l8 4 8-4"/><path d="M12 11v10"/></svg>
@@ -126,12 +131,14 @@
           </div>
         </div>
 
-        <div class="admin-section-head">
-          <h2>Reports &amp; Analytics</h2>
-          <p>Sales, orders, and product performance — pick a range to filter everything below.</p>
+        <section class="ov-section ov-rise" id="reportsAnalytics" style="--d:.06s">
+        <div class="ov-head">
+          <div class="admin-section-head">
+            <h2>Reports &amp; Analytics</h2>
+            <p>Sales, orders, and product performance — pick a range to filter everything below.</p>
+          </div>
+          <div class="range-filters" id="overviewRangeFilters"></div>
         </div>
-
-        <div class="range-filters" id="overviewRangeFilters"></div>
 
         <div class="admin-stats admin-stats-compact">
           <div class="admin-stat-card">
@@ -195,7 +202,40 @@
             </table>
           </div>
         </div>
+        </section>
 
+        <!-- inventory alerts: summary chips always visible, product list is a dropdown -->
+        <section class="ov-section ov-rise" id="inventoryAlerts" style="--d:.12s">
+          <div class="admin-section-head">
+            <h2>Inventory Alerts</h2>
+            <p>Products that need restocking or are hidden from customers. <span id="invUpdatedAt"></span></p>
+          </div>
+          <div class="inv-card">
+            <button type="button" class="inv-toggle" id="invToggle" aria-expanded="false" aria-controls="invDropdown">
+              <span class="inv-summary">
+                <span class="inv-chip inv-chip-danger"><b id="invOutCount">&mdash;</b> Out of stock</span>
+                <span class="inv-chip inv-chip-warning"><b id="invLowCount">&mdash;</b> Low stock <span class="inv-hint" id="invLowHint"></span></span>
+                <span class="inv-chip inv-chip-muted"><b id="invInactiveCount">&mdash;</b> Inactive</span>
+              </span>
+              <span class="inv-toggle-label">Show products</span>
+              <svg class="inv-toggle-chevron" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>
+            </button>
+            <div class="inv-dropdown" id="invDropdown">
+              <div class="inv-dropdown-inner">
+                <div class="inv-dropdown-pad">
+                  <div class="inv-panel-head">
+                    <div class="range-filters" id="invFilters"></div>
+                    <button type="button" class="btn btn-refresh btn-sm" id="invRefreshBtn"><svg class="btn-refresh-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12a9 9 0 1 1-2.64-6.36"/><path d="M21 3v6h-6"/></svg><span class="btn-refresh-label">Refresh</span></button>
+                  </div>
+                  <div id="invAlertList"></div>
+                  <button type="button" class="btn btn-outline btn-sm inv-view-all" id="invViewAll" data-inv-view="all" style="display:none;">Open in Products</button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section class="ov-section ov-rise" style="--d:.18s">
         <div class="admin-section-head">
           <h2>Quick Actions</h2>
         </div>
@@ -217,13 +257,14 @@
             Settings
           </button>
         </div>
+        </section>
 
-        <div class="admin-section-head">
+        <div class="admin-section-head ov-rise" style="--d:.24s">
           <h2>Maintenance Tools</h2>
           <p>One-click, idempotent catalog fixes. Safe to run more than once — expand a tool to read what it does before running it.</p>
         </div>
 
-        <div class="admin-tools-grid">
+        <div class="admin-tools-grid ov-rise" style="--d:.28s">
           <details class="tool-card">
             <summary>
               <div class="tool-card-icon tool-card-icon-accent">
@@ -383,14 +424,29 @@
               <select id="adminCategoryFilter" class="admin-search-input admin-category-filter">
                 <option value="All">All Categories</option>
               </select>
+              <select id="adminStatusFilter" class="admin-search-input admin-category-filter" aria-label="Filter by status">
+                <option value="All">All statuses</option>
+                <option value="active">Active</option>
+                <option value="inactive">Inactive</option>
+                <option value="low">Low stock</option>
+                <option value="out">Out of stock</option>
+              </select>
               <input type="text" id="adminProductSearch" class="admin-search-input" placeholder="Search products">
               <button type="button" class="btn btn-outline btn-sm" id="openAddCategoryBtn">+ Add Category</button>
+            </div>
+          </div>
+          <div class="admin-bulk-bar" id="adminBulkBar" hidden>
+            <span id="adminBulkCount">0 selected</span>
+            <div class="admin-bulk-actions">
+              <button type="button" class="btn btn-primary btn-sm" data-admin-bulk="activate">Activate</button>
+              <button type="button" class="btn btn-outline btn-sm" data-admin-bulk="deactivate">Deactivate</button>
+              <button type="button" class="btn btn-outline btn-sm" id="adminBulkClear">Clear</button>
             </div>
           </div>
           <div class="admin-table-wrap">
             <table class="admin-table">
               <thead>
-                <tr><th>Product</th><th>Category</th><th>Price</th><th>Stock</th><th></th></tr>
+                <tr><th class="admin-td-check"><input type="checkbox" id="adminSelectAll" aria-label="Select all products"></th><th>Product</th><th>Category</th><th>Price</th><th>Stock</th><th>Status</th><th></th></tr>
               </thead>
               <tbody id="adminProductsBody"></tbody>
             </table>
@@ -410,6 +466,9 @@
               <div class="form-row">
                 <div class="form-group" id="apStockGroup"><label for="apStock">Stock quantity</label><input type="number" id="apStock" min="0" step="1" placeholder="e.g. 50" required></div>
               </div>
+              <label class="check-row" style="margin-bottom:18px;">
+                <input type="checkbox" id="apActive" checked> Active &mdash; visible to customers (untick to hide it without deleting)
+              </label>
               <div class="form-group">
                 <label for="apCategory">Category</label>
                 <select id="apCategory" class="form-select" required>
@@ -582,7 +641,7 @@
               <svg class="admin-search-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><circle cx="11" cy="11" r="7"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
               <input type="text" id="adminOrderSearch" class="admin-search-input" placeholder="Search order #, name, phone...">
             </div>
-            <button class="btn btn-outline btn-sm" id="adminRefreshOrders">Refresh</button>
+            <button type="button" class="btn btn-refresh btn-sm" id="adminRefreshOrders"><svg class="btn-refresh-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12a9 9 0 1 1-2.64-6.36"/><path d="M21 3v6h-6"/></svg><span class="btn-refresh-label">Refresh</span></button>
           </div>
         </div>
 
@@ -606,34 +665,51 @@
         </div>
       </div>
 
-      <!-- accounts -->
+      <!-- user management (tab id stays "accounts" so data-nav-to-accounts keeps working) -->
       <div class="admin-panel" data-admin-panel="accounts">
         <div class="admin-panel-head">
-          <h3>Accounts</h3>
+          <h3>User Management</h3>
           <div class="admin-panel-head-controls">
             <div class="admin-search-wrap">
               <svg class="admin-search-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><circle cx="11" cy="11" r="7"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
-              <input type="text" id="adminAccountSearch" class="admin-search-input" placeholder="Search email, name, uid...">
+              <input type="text" id="adminAccountSearch" class="admin-search-input" placeholder="Search name, email, phone...">
             </div>
-            <button class="btn btn-outline btn-sm" id="adminRefreshAccounts">Refresh</button>
+            <button type="button" class="btn btn-refresh btn-sm" id="adminRefreshAccounts"><svg class="btn-refresh-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12a9 9 0 1 1-2.64-6.36"/><path d="M21 3v6h-6"/></svg><span class="btn-refresh-label">Refresh</span></button>
           </div>
         </div>
 
-        <p class="form-hint" style="margin:0 0 12px;">Role changes and blocking accounts go through secured Firestore rules — this only lists accounts that have signed up through the app.</p>
+        <div class="admin-subtabs um-subtabs">
+          <button type="button" class="um-subtab active" data-um-tab="customers">Customers <span class="um-count" id="umCustomerCount"></span></button>
+          <button type="button" class="um-subtab" data-um-tab="admins">Admins <span class="um-count" id="umAdminCount"></span></button>
+        </div>
 
-        <div class="admin-table-wrap">
-          <table class="admin-table">
-            <thead>
-              <tr>
-                <th>Account</th>
-                <th>Name</th>
-                <th>Role</th>
-                <th>Status</th>
-                <th>Actions</th>
-              </tr>
-            </thead>
-            <tbody id="adminAccountsBody"></tbody>
-          </table>
+        <!-- customers -->
+        <div class="um-panel active" data-um-panel="customers">
+          <p class="form-hint um-hint">Only accounts that have signed up through the app are listed. Suspending an account signs that person out on their next check; reactivate any time.</p>
+          <div class="admin-table-wrap">
+            <table class="admin-table">
+              <thead>
+                <tr><th>Customer</th><th>Name</th><th>Phone</th><th>Role</th><th>Status</th><th>Actions</th></tr>
+              </thead>
+              <tbody id="adminAccountsBody"></tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- admins -->
+        <div class="um-panel" data-um-panel="admins">
+          <div class="um-toolbar">
+            <p class="form-hint um-hint">Admins can sign in to this dashboard. Add one by promoting an account that has already registered.</p>
+            <button type="button" class="btn btn-primary btn-sm" id="umAddAdminBtn">+ Add admin</button>
+          </div>
+          <div class="admin-table-wrap">
+            <table class="admin-table">
+              <thead>
+                <tr><th>Admin</th><th>Name</th><th>Phone</th><th>Actions</th></tr>
+              </thead>
+              <tbody id="adminAdminsBody"></tbody>
+            </table>
+          </div>
         </div>
       </div>
 
@@ -649,6 +725,19 @@
             </div>
             <button type="submit" class="btn btn-primary" id="adminSettingsSubmitBtn">Save Delivery Fee</button>
             <p id="adminSettingsStatus" style="margin-top:10px;"></p>
+          </form>
+        </div>
+
+        <div class="form-card">
+          <h3>Inventory Alerts</h3>
+          <p>A product counts as low stock when its stock (or any one size's stock) is at or under this number. Used by the Products table and the Overview alerts.</p>
+          <form id="adminLowStockForm">
+            <div class="form-group">
+              <label for="asLowStock">Low-stock threshold (units)</label>
+              <input type="number" id="asLowStock" min="1" max="9999" step="1" required>
+            </div>
+            <button type="submit" class="btn btn-primary" id="adminLowStockSubmitBtn">Save Threshold</button>
+            <p id="adminLowStockStatus" style="margin-top:10px;"></p>
           </form>
         </div>
 
@@ -738,6 +827,45 @@
         </div>
       </div>
 
+      <!-- activity log -->
+      <div class="admin-panel" data-admin-panel="activity">
+        <div class="admin-panel-head">
+          <h3>Activity Log</h3>
+          <div class="admin-panel-head-controls">
+            <select id="adminActivityTypeFilter" class="admin-search-input admin-category-filter">
+              <option value="All">All Types</option>
+              <option value="product">Products</option>
+              <option value="category">Categories</option>
+              <option value="combo">Combos</option>
+              <option value="order">Orders</option>
+              <option value="settings">Settings</option>
+              <option value="account">Accounts</option>
+            </select>
+            <div class="admin-search-wrap">
+              <svg class="admin-search-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><circle cx="11" cy="11" r="7"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
+              <input type="text" id="adminActivitySearch" class="admin-search-input" placeholder="Search admin or details...">
+            </div>
+            <button type="button" class="btn btn-refresh btn-sm" id="adminRefreshActivity"><svg class="btn-refresh-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12a9 9 0 1 1-2.64-6.36"/><path d="M21 3v6h-6"/></svg><span class="btn-refresh-label">Refresh</span></button>
+          </div>
+        </div>
+
+        <p class="form-hint" style="margin:0 0 12px;">A running record of every product, category, combo, order, settings, and account change made from this dashboard — newest first. Entries can't be edited or deleted from here, including by you.</p>
+
+        <div class="admin-table-wrap">
+          <table class="admin-table">
+            <thead>
+              <tr>
+                <th>When</th>
+                <th>Admin</th>
+                <th>Type</th>
+                <th>Details</th>
+              </tr>
+            </thead>
+            <tbody id="adminActivityBody"></tbody>
+          </table>
+        </div>
+      </div>
+
     </div>
 
   </div>
@@ -797,6 +925,37 @@
     </form>
   </div>
 </div>
+<div class="legal-overlay" id="umEditOverlay">
+  <div class="legal-modal" style="max-width:440px;" role="dialog" aria-modal="true" aria-labelledby="umEditTitle">
+    <button type="button" class="legal-close" id="umEditClose" aria-label="Close"><svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M6 6l12 12M18 6L6 18" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg></button>
+    <div class="legal-header">
+      <h2 id="umEditTitle">Edit account</h2>
+      <p id="umEditEmail"></p>
+    </div>
+    <form id="umEditForm" novalidate>
+      <div class="legal-body" style="padding-top:14px;">
+        <div class="form-group"><label for="umEditName">Name</label><input type="text" id="umEditName" maxlength="80" autocomplete="off"></div>
+        <div class="form-group"><label for="umEditPhone">Phone</label><input type="tel" id="umEditPhone" maxlength="20" autocomplete="off"><p class="form-hint">Digits, spaces, + ( ) and - only.</p></div>
+        <p class="form-hint" id="umEditError" style="color:var(--adm-danger-dark);display:none;"></p>
+      </div>
+      <div class="legal-footer"><button type="submit" class="btn btn-primary btn-full" id="umEditSave">Save changes</button></div>
+    </form>
+  </div>
+</div>
+<div class="legal-overlay" id="umAddAdminOverlay">
+  <div class="legal-modal" style="max-width:480px;" role="dialog" aria-modal="true" aria-labelledby="umAddAdminTitle">
+    <button type="button" class="legal-close" id="umAddAdminClose" aria-label="Close"><svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M6 6l12 12M18 6L6 18" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg></button>
+    <div class="legal-header">
+      <h2 id="umAddAdminTitle">Add admin</h2>
+      <p>Pick a registered account to give admin access. They must already have signed up.</p>
+    </div>
+    <div class="legal-body" style="padding-top:14px;">
+      <div class="form-group"><input type="text" id="umAddAdminSearch" placeholder="Search name or email..." autocomplete="off"></div>
+      <div id="umAddAdminList" class="um-pick-list"></div>
+    </div>
+    <div class="legal-footer" style="padding-top:6px;"></div>
+  </div>
+</div>
 <div class="legal-overlay" id="orderDetailOverlay">
   <div class="legal-modal order-detail-modal" id="orderDetailModal" role="dialog" aria-modal="true" aria-labelledby="orderDetailTitle">
     <button class="legal-close" id="orderDetailClose" aria-label="Close">
@@ -854,6 +1013,7 @@
 <script type="module" src="../combos-service.js"></script>
 <script type="module" src="../orders-service.js"></script>
 <script type="module" src="../accounts-service.js"></script>
+<script type="module" src="../audit-log-service.js"></script>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
 <script src="../image-upload-service.js"></script>

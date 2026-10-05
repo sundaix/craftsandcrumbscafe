@@ -8,6 +8,7 @@ const GENERAL_DOC_ID = "general";
 const CACHE_KEY = "cc_settings_cache_v1";
 
 export const DEFAULT_DELIVERY_FEE = 60;
+export const DEFAULT_LOW_STOCK_THRESHOLD = 5;
 
 export const DEFAULT_PROMO_POPUP = {
   enabled: true,
@@ -54,6 +55,7 @@ export async function fetchSettings(){
   const data = snap.exists() ? snap.data() : {};
   const settings = {
     deliveryFee: DEFAULT_DELIVERY_FEE,
+    lowStockThreshold: DEFAULT_LOW_STOCK_THRESHOLD,
     ...data,
     promoPopup: { ...DEFAULT_PROMO_POPUP, ...(data.promoPopup || {}) },
     popularSection: { ...DEFAULT_POPULAR_SECTION, ...(data.popularSection || {}) }
@@ -66,6 +68,13 @@ export async function updateDeliveryFee(fee){
   await setDoc(doc(db, SETTINGS_COL, GENERAL_DOC_ID), { deliveryFee: fee }, { merge: true });
   const cached = getCachedSettings() || { deliveryFee: DEFAULT_DELIVERY_FEE };
   setCachedSettings({ ...cached, deliveryFee: fee });
+}
+
+/* Same single-field merge pattern as updateDeliveryFee. */
+export async function updateLowStockThreshold(threshold){
+  await setDoc(doc(db, SETTINGS_COL, GENERAL_DOC_ID), { lowStockThreshold: threshold }, { merge: true });
+  const cached = getCachedSettings() || { deliveryFee: DEFAULT_DELIVERY_FEE };
+  setCachedSettings({ ...cached, lowStockThreshold: threshold });
 }
 
 /* promoPopup is always saved as a whole object (the admin form always
@@ -85,6 +94,6 @@ export async function updatePopularSection(popularSection){
 }
 
 window.CCSettings = {
-  fetchSettings, updateDeliveryFee, updatePromoPopup, updatePopularSection, getCachedSettings,
-  DEFAULT_DELIVERY_FEE, DEFAULT_PROMO_POPUP, DEFAULT_POPULAR_SECTION
+  fetchSettings, updateDeliveryFee, updateLowStockThreshold, updatePromoPopup, updatePopularSection, getCachedSettings,
+  DEFAULT_DELIVERY_FEE, DEFAULT_LOW_STOCK_THRESHOLD, DEFAULT_PROMO_POPUP, DEFAULT_POPULAR_SECTION
 };

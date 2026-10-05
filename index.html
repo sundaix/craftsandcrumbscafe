@@ -3,7 +3,18 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Crafts & Crumbs</title>
+<title>Crafts & Crumbs | Handcrafted Coffee, Pastries & Merch in Quezon City</title>
+<link rel="canonical" href="https://craftsandcrumbscafe.vercel.app/">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="Crafts & Crumbs">
+<meta property="og:title" content="Crafts & Crumbs | Handcrafted Coffee, Pastries & Merch">
+<meta property="og:description" content="Handcrafted coffee, freshly baked pastries, and charming accessories — delivered or ready for pickup.">
+<meta property="og:url" content="https://craftsandcrumbscafe.vercel.app/">
+<meta property="og:image" content="https://craftsandcrumbscafe.vercel.app/hero-banner.jpg">
+<meta name="twitter:card" content="summary_large_image">
+<!-- The hero image is an inline CSS background, so the browser only discovers
+     it late. Preloading it makes the hero appear noticeably faster. -->
+<link rel="preload" as="image" href="hero-banner.jpg" fetchpriority="high">
 <meta name="description" content="Handcrafted coffee, freshly baked pastries, and charming accessories — brewed and made in small batches, delivered or ready for pickup.">
 
 <link rel="icon" href="favicon.ico" sizes="any">
@@ -34,7 +45,7 @@
 <header class="site-nav">
   <div class="nav-inner">
     <div class="nav-left">
-      <button class="hamburger" id="hamburgerBtn" aria-label="Menu">
+      <button class="hamburger" id="hamburgerBtn" aria-label="Menu" aria-expanded="false" aria-controls="navLinks">
         <span></span><span></span><span></span>
       </button>
       <div class="search-box header-search">
@@ -91,7 +102,7 @@
         <p class="lead">Discover handcrafted coffee, freshly baked pastries, and charming accessories made to brighten your day.</p>
         <div class="hero-actions">
           <button class="btn btn-primary" data-nav="menu">Order Now</button>
-          <button class="btn btn-secondary-outline" data-nav="menu">Explore Menu</button>
+          <button class="btn btn-secondary-outline" data-nav="merchandise">Shop Merch</button>
         </div>
       </div>
     </div>
@@ -111,15 +122,58 @@
     </div>
   </section>
 
+  <section class="reveal best-sellers">
+    <div class="container">
+      <div class="section-head">
+        <div>
+          <div class="eyebrow" id="bestSellersEyebrow">Loved by regulars</div>
+          <h2 id="bestSellersHeading">Popular this week</h2>
+          <p id="bestSellersSubtext">Favorites our regulars keep reordering.</p>
+        </div>
+        <button class="btn btn-outline" data-nav="menu" id="bestSellersViewMenuBtn">View full menu</button>
+      </div>
+
+      <div class="carousel" id="bestSellerCarousel" role="region" aria-roledescription="carousel" aria-label="Popular this week">
+        <div class="carousel-track-wrap">
+          <div class="carousel-track" id="bestSellerGrid"></div>
+        </div>
+        <div class="carousel-controls">
+          <div class="carousel-progress" aria-hidden="true"><div class="carousel-progress-fill" id="bsProgressFill"></div></div>
+          <div class="carousel-arrows">
+            <button class="carousel-arrow prev" id="bsPrev" aria-label="Previous">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M15 5l-7 7 7 7" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            </button>
+            <button class="carousel-arrow next" id="bsNext" aria-label="Next">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M9 5l7 7-7 7" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="reveal best-sellers" id="featuredCombosSection" style="display:none;">
+    <div class="container">
+      <div class="section-head">
+        <div>
+          <div class="eyebrow">Better together</div>
+          <h2>Combo sets</h2>
+          <p>A drink and a pastry, paired and discounted.</p>
+        </div>
+      </div>
+      <div class="product-grid" id="featuredCombosGrid"></div>
+    </div>
+  </section>
+
   <section class="reveal">
     <div class="container brewed-split">
       <div class="brewed-img">
-        <img src="espresso-pic.jpg" alt="Espresso being pulled into white cups on a machine">
+        <img src="espresso-pic.jpg" alt="Espresso being pulled into white cups on a machine" loading="lazy" decoding="async">
       </div>
       <div class="brewed-text">
         <h2>Brewed to Perfection</h2>
         <p>Every cup starts with carefully sourced beans, roasted in small batches to bring out their fullest flavor. From the first pour to the last sip, we take our time to get it right — because great coffee isn't rushed, it's crafted.</p>
-        <button class="btn btn-outline">Discover More</button>
+        <button class="btn btn-outline" data-menu-filter="Coffee">Discover More</button>
       </div>
     </div>
   </section>
@@ -138,47 +192,8 @@
         </div>
       </div>
       <div class="about-img">
-        <img src="ourstory.png" alt="Laptop, coffee cup, and an open notebook on a desk, planning the Crafts and Crumbs project">
+        <img src="ourstory.png" alt="Laptop, coffee cup, and an open notebook on a desk, planning the Crafts and Crumbs project" loading="lazy" decoding="async">
       </div>
-    </div>
-  </section>
-
-  <section class="reveal best-sellers">
-    <div class="container">
-      <div class="section-head">
-        <div>
-          <div class="eyebrow" id="bestSellersEyebrow">Loved by regulars</div>
-          <h2 id="bestSellersHeading">Popular this week</h2>
-          <p id="bestSellersSubtext">Favorites our regulars keep reordering.</p>
-        </div>
-        <button class="btn btn-outline" data-nav="menu" id="bestSellersViewMenuBtn">View full menu</button>
-      </div>
-
-      <div class="carousel" id="bestSellerCarousel">
-        <button class="carousel-arrow prev" id="bsPrev" aria-label="Previous best sellers">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M15 6l-6 6 6 6" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>
-        </button>
-        <div class="carousel-track-wrap">
-          <div class="carousel-track" id="bestSellerGrid"></div>
-        </div>
-        <button class="carousel-arrow next" id="bsNext" aria-label="Next best sellers">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M9 6l6 6-6 6" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>
-        </button>
-      </div>
-      <div class="carousel-progress"><div class="carousel-progress-fill" id="bsProgressFill"></div></div>
-    </div>
-  </section>
-
-  <section class="reveal best-sellers" id="featuredCombosSection" style="display:none;">
-    <div class="container">
-      <div class="section-head">
-        <div>
-          <div class="eyebrow">Better together</div>
-          <h2>Combo sets</h2>
-          <p>A drink and a pastry, paired and discounted.</p>
-        </div>
-      </div>
-      <div class="product-grid" id="featuredCombosGrid"></div>
     </div>
   </section>
 
@@ -187,28 +202,22 @@
       <div class="merch-promo-text">
         <div class="eyebrow">Wear the craft</div>
         <h2>Take the Comfort With You</h2>
-        <p>Shirts, shorts, tote bags, keychains, bracelets — our merch is made with the same handcrafted care as your favorite brew, so you can carry a little bit of Crafts & Crumbs wherever you go.</p>
-        <button class="btn btn-primary" data-nav="merchandise">Shop Now</button>
+        <p>Shirts, totes, and small keepsakes made with the same care as your favorite brew.</p>
+        <button class="btn btn-primary" data-nav="merchandise">Shop the Merch</button>
       </div>
       <div class="merch-promo-grid">
-        <div class="merch-promo-card">
-          <div class="merch-promo-placeholder">
-            <svg width="46" height="46" viewBox="0 0 24 24" fill="none"><path d="M8 4 4 7l2 3 2-1.5V20h8V8.5L18 10l2-3-4-3-1 1a3 3 0 0 1-6 0z" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round" stroke-linecap="round"/></svg>
-          </div>
-          <span class="merch-promo-label">Shirts & Shorts</span>
-        </div>
-        <div class="merch-promo-card">
-          <div class="merch-promo-placeholder">
-            <svg width="46" height="46" viewBox="0 0 24 24" fill="none"><path d="M7 8V6a5 5 0 0 1 10 0v2" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/><path d="M4.5 8h15l1 12.5a1.5 1.5 0 0 1-1.5 1.5H5a1.5 1.5 0 0 1-1.5-1.5L4.5 8z" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/></svg>
-          </div>
-          <span class="merch-promo-label">Tote Bags</span>
-        </div>
-        <div class="merch-promo-card">
-          <div class="merch-promo-placeholder">
-            <svg width="46" height="46" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="7.2" stroke="currentColor" stroke-width="1.4"/><circle cx="12" cy="12" r="2.4" stroke="currentColor" stroke-width="1.4"/><path d="M19.2 12h3.1M12 4.8V2" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>
-          </div>
-          <span class="merch-promo-label">Bracelets & Keychains</span>
-        </div>
+        <a href="#" class="merch-promo-card" data-merch-link="Shirts">
+          <div class="merch-promo-img"><img src="shirt1.png" alt="Crafts &amp; Crumbs shirt" loading="lazy"></div>
+          <span class="merch-promo-label">Shirts &amp; Shorts <span class="merch-promo-arrow" aria-hidden="true">&rarr;</span></span>
+        </a>
+        <a href="#" class="merch-promo-card" data-merch-link="ToteBags">
+          <div class="merch-promo-img"><img src="tote1.png" alt="Crafts &amp; Crumbs tote bag" loading="lazy"></div>
+          <span class="merch-promo-label">Tote Bags <span class="merch-promo-arrow" aria-hidden="true">&rarr;</span></span>
+        </a>
+        <a href="#" class="merch-promo-card" data-merch-link="Keychains">
+          <div class="merch-promo-img"><img src="croissantkeychain.png" alt="Croissant keychain" loading="lazy"></div>
+          <span class="merch-promo-label">Bracelets &amp; Keychains <span class="merch-promo-arrow" aria-hidden="true">&rarr;</span></span>
+        </a>
       </div>
     </div>
   </section>

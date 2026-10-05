@@ -32,8 +32,51 @@ function resolveImageSrc(src){
 }
 window.resolveImageSrc = resolveImageSrc;
 
-/* ================= PRODUCTS / COMBOS STATE =================
+/* ================= PRODUCTS / COMBOS STATE ================= */
 let PRODUCTS = [];
+
+/* ALL_PRODUCTS is every product doc, active or not. PRODUCTS is what the
+   current app should work with: the admin dashboard sets
+   window.CC_SHOW_INACTIVE = true (see admin.js) so it keeps seeing
+   everything, while the storefront gets active products only. That one
+   switch is what hides inactive products from the menu, merch, search,
+   popular, wishlist, related items AND combos (buildComboProducts()
+   already drops a combo whose linked drink/pastry can't be found).
+   Out-of-stock products are deliberately NOT filtered here: they stay
+   visible and are shown as out of stock, exactly as before. */
+let ALL_PRODUCTS = [];
+
+/* Products created before the status feature have no `active` field at
+   all, so only an explicit false means inactive. */
+function isProductActive(p){
+  return !p || p.active !== false;
+}
+
+function setCatalogProducts(list){
+  ALL_PRODUCTS = list;
+  PRODUCTS = window.CC_SHOW_INACTIVE ? list : list.filter(isProductActive);
+}
+
+/* Admin-configurable (Admin > Settings > Inventory Alerts). Used by the
+   admin Products table and the Overview inventory alerts. */
+let LOW_STOCK_THRESHOLD = 5;
+
+/* 'out' | 'low' | 'ok' | 'untracked'. Mirrors isProductOutOfStock() in
+   script.js for the 'out' case so the storefront and the dashboard always
+   agree: per-size products (wearables) are out only when every size that
+   tracks stock is at 0; a product is 'low' when any tracked size (or the
+   flat stock) is at or under the threshold. */
+function getProductStockState(p){
+  const tracked = getSizeOptions(p).filter(o => typeof o.stock === 'number');
+  if(tracked.length){
+    if(tracked.every(o => o.stock <= 0)) return 'out';
+    if(tracked.some(o => o.stock <= LOW_STOCK_THRESHOLD)) return 'low';
+    return 'ok';
+  }
+  if(typeof p.stock !== 'number') return 'untracked';
+  if(p.stock <= 0) return 'out';
+  return p.stock <= LOW_STOCK_THRESHOLD ? 'low' : 'ok';
+}
 // Flat delivery fee, admin-configurable (Admin > Settings).
 let DELIVERY_FEE = 60;
 
@@ -586,15 +629,15 @@ async function loadProductsFromFirestore(){
   try{
     const live = await window.CCProducts.fetchAllProducts();
     if(live.length){
-      PRODUCTS = live;
+      setCatalogProducts(live);
     } else {
       // Firestore is empty (not seeded yet) — fall back to the
       // built-in seed list so the site still renders for a demo.
-      PRODUCTS = SEED_PRODUCTS;
+      setCatalogProducts(SEED_PRODUCTS);
       console.warn('Firestore "products" collection is empty. Go to the Admin page and click "Seed Starter Catalog" to populate it.');
     }
   } catch(err){
     console.error('Could not load products from Firestore, using local seed data instead.', err);
-    PRODUCTS = SEED_PRODUCTS;
+    setCatalogProducts(SEED_PRODUCTS);
   }
 }
