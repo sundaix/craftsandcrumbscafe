@@ -124,3 +124,55 @@
 .rid-status-ready{ background: var(--adm-accent-tint); color: var(--adm-accent-dark); }
 .rid-status-out_for_delivery{ background: #e6d9c3; color: #8a5a1f; }
 .rid-status-completed{ background: rgba(124,152,133,0.2); color: var(--adm-accent-dark); }
+
+/* ================= Route map, earnings, alerts, proof photo ================= */
+.rid-topbar-actions{ display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
+.rid-alert-btn{ display:inline-flex; align-items:center; gap:6px; }
+.rid-alert-btn.on{ background:var(--adm-accent-tint); color:var(--adm-accent-dark); border-color:var(--adm-accent); }
+
+.rid-optional{ font-weight:400; color:var(--adm-text-faint); }
+
+/* cards */
+.rid-card{ animation:ridCardIn .45s var(--adm-ease, cubic-bezier(.22,1,.36,1)) both; }
+@keyframes ridCardIn{ from{ opacity:0; transform:translateY(8px); } to{ opacity:1; transform:none; } }
+.rid-chips{ display:flex; flex-wrap:wrap; gap:8px; margin:2px 0 10px; }
+.rid-chip{ font-size:12px; font-weight:600; padding:4px 11px; border-radius:100px; white-space:nowrap; }
+.rid-chip-route{ background:rgba(124,147,166,0.16); color:#4f6b82; }
+.rid-chip-earn{ background:var(--adm-accent-tint); color:var(--adm-accent-dark); }
+.rid-arrived-note{ font-size:12.5px; color:var(--adm-accent-dark); font-weight:600; margin:0 0 8px; }
+.rid-card-actions-secondary{ margin-top:8px; }
+.rid-btn-soft-danger{ color:var(--adm-danger); border-color:rgba(182,92,92,0.4); }
+.rid-btn-soft-danger:hover:not(:disabled){ background:var(--adm-danger-tint); border-color:var(--adm-danger); color:var(--adm-danger-dark); }
+.rid-earned{ font-weight:700; color:var(--adm-accent-dark); }
+.rid-card-note-bad{ color:var(--adm-danger-dark); font-style:normal; font-weight:600; }
+.rid-status-delivery_failed{ background:var(--adm-danger-tint); color:var(--adm-danger-dark); }
+.rid-proof-link{ display:inline-block; margin-top:10px; }
+.rid-proof-thumb{ display:block; width:110px; height:110px; object-fit:cover; border-radius:var(--adm-radius); border:1px solid var(--adm-border); }
+
+/* earnings */
+.rid-mine-today{ font-size:13px; color:var(--adm-text-soft); margin:0 0 14px; }
+.rid-earn{ display:grid; grid-template-columns:repeat(auto-fit, minmax(140px, 1fr)); gap:12px; margin-bottom:18px; }
+.rid-earn-card{ background:var(--adm-card); border:1px solid var(--adm-border); border-radius:var(--adm-radius-lg); padding:14px 16px; box-shadow:var(--adm-shadow-sm); display:flex; flex-direction:column; gap:2px; }
+.rid-earn-label{ font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:.08em; color:var(--adm-text-faint); }
+.rid-earn-amount{ font-size:22px; color:var(--adm-ink); }
+.rid-earn-count{ font-size:12px; color:var(--adm-text-soft); }
+
+/* route map (replaces the old iframe preview for orders that have a pin) */
+.rid-map-wrap.open{ max-height:380px; }
+.rid-map-tools{ display:flex; align-items:center; justify-content:space-between; gap:10px; margin-bottom:8px; }
+.rid-map-info{ font-size:12.5px; color:var(--adm-text-soft); }
+.rid-map-info b{ color:var(--adm-ink); }
+.rid-map{ width:100%; height:260px; border:1px solid var(--adm-border); border-radius:var(--adm-radius); overflow:hidden; z-index:0; }
+.rid-pin span{ display:flex; align-items:center; justify-content:center; width:34px; height:34px; border-radius:50%; font-size:11px; font-weight:800; color:#fff; box-shadow:0 3px 10px rgba(0,0,0,0.3); border:2px solid #fff; }
+.rid-pin-shop span{ background:#211c16; }
+.rid-pin-dest span{ background:#a86f41; font-size:16px; }
+.rid-pin-me span{ background:#3b7bd9; font-size:14px; }
+
+/* proof-photo picker */
+.rid-photo-drop{ display:flex; align-items:center; justify-content:center; min-height:120px; border:2px dashed var(--adm-border-strong); border-radius:var(--adm-radius); background:var(--adm-bg); cursor:pointer; overflow:hidden; transition:border-color .2s ease, background .2s ease; }
+.rid-photo-drop:hover{ border-color:var(--adm-accent); background:var(--adm-accent-tint); }
+.rid-photo-drop > span{ display:flex; flex-direction:column; align-items:center; gap:6px; color:var(--adm-text-soft); font-size:13px; }
+.rid-photo-drop img{ display:block; width:100%; max-height:240px; object-fit:cover; }
+.rid-photo-drop.has-photo{ border-style:solid; border-color:var(--adm-accent); }
+
+@media (prefers-reduced-motion: reduce){ .rid-card{ animation:none; } }
