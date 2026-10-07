@@ -8,6 +8,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Lora:ital,wght@0,500;0,600;0,700;1,500;1,600&family=Poppins:wght@300;400;500;600;700&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="../admin.css">
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
 </head>
 <body>
 
@@ -741,13 +742,46 @@
       <div class="admin-panel" data-admin-panel="settings">
         <div class="form-card">
           <h3>Delivery Fee</h3>
-          <p>Flat fee added to every order at checkout when the customer chooses Delivery. Pickup orders are never charged this fee.</p>
+          <p>Delivery is priced by the <strong>driving distance</strong> from your shop to the customer's map pin: a base fee covers the first few km, then every extra km adds a per-km charge, rounded up to the next peso step. Orders beyond the maximum distance can't be placed for delivery. Pickup is never charged.</p>
           <form id="adminSettingsForm">
-            <div class="form-group">
-              <label for="asDeliveryFee">Delivery fee (₱)</label>
-              <input type="number" id="asDeliveryFee" min="0" step="1" required>
+            <div class="as-grid">
+              <div class="form-group">
+                <label for="asBaseFee">Base fee (₱)</label>
+                <input type="number" id="asBaseFee" min="0" step="1" required>
+              </div>
+              <div class="form-group">
+                <label for="asBaseKm">Base distance (km)</label>
+                <input type="number" id="asBaseKm" min="0" step="0.5" required>
+              </div>
+              <div class="form-group">
+                <label for="asPerKm">Charge per extra km (₱)</label>
+                <input type="number" id="asPerKm" min="0" step="1" required>
+              </div>
+              <div class="form-group">
+                <label for="asRoundTo">Round fee up to next (₱)</label>
+                <input type="number" id="asRoundTo" min="1" step="1" required>
+              </div>
+              <div class="form-group">
+                <label for="asMaxKm">Maximum delivery distance (km)</label>
+                <input type="number" id="asMaxKm" min="0.5" step="0.5" required>
+              </div>
             </div>
-            <button type="submit" class="btn btn-primary" id="adminSettingsSubmitBtn">Save Delivery Fee</button>
+
+            <div class="as-preview" id="asFeePreview" aria-live="polite"></div>
+
+            <h4 class="as-subhead">Shop location</h4>
+            <p class="form-hint" style="margin:0 0 10px;">Distances are measured from this pin. Search for your address, use your current location, or drag the pin.</p>
+            <div class="as-map-tools">
+              <input type="text" id="asShopSearch" placeholder="Search your shop's address…">
+              <button type="button" class="btn btn-outline btn-sm" id="asShopSearchBtn">Search</button>
+              <button type="button" class="btn btn-outline btn-sm" id="asShopLocateBtn">Use my location</button>
+            </div>
+            <div id="asShopMap"></div>
+            <p class="form-hint" id="asShopCoords" style="margin:8px 0 0;"></p>
+            <input type="hidden" id="asShopLat">
+            <input type="hidden" id="asShopLng">
+
+            <button type="submit" class="btn btn-primary" id="adminSettingsSubmitBtn" style="margin-top:18px;">Save Delivery Pricing</button>
             <p id="adminSettingsStatus" style="margin-top:10px;"></p>
           </form>
         </div>
@@ -1042,9 +1076,12 @@
 <script type="module" src="../contact-service.js"></script>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script src="../image-upload-service.js"></script>
 <script src="../shared-catalog.js"></script>
 <script src="../ui-dropdown.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@emailjs/browser@4/dist/email.min.js"></script>
+<script src="../email-notifications.js"></script>
 <script src="../admin-ui.js"></script>
 <script src="../admin.js"></script>
 <script src="../admin-boot.js"></script>
