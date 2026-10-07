@@ -427,6 +427,22 @@
   </div>
 </div>
 
+<!-- my messages page (customer inbox) -->
+<div class="page" data-page="messages">
+  <div class="container order-history-wrap">
+    <div class="section-head">
+      <div>
+        <div class="eyebrow">Your Account</div>
+        <h1>My Messages</h1>
+        <p class="wishlist-count">Your conversations with the store, and our replies.</p>
+      </div>
+      <button type="button" class="btn btn-primary btn-sm" data-nav="contact">+ New Message</button>
+    </div>
+    <div id="myMessagesList" class="cm-list"></div>
+    <div id="myMessageThread" class="cm-thread" style="display:none;"></div>
+  </div>
+</div>
+
 <!-- faqs page -->
 <div class="page" data-page="faqs">
   <div class="container page-header">
@@ -554,13 +570,32 @@
   <div class="container contact-layout">
     <div class="form-card contact-form-card">
       <h3>Send a message</h3>
+      <p class="contact-note" id="contactNote"></p>
       <form id="contactForm">
         <div class="form-row">
           <div class="form-group"><label for="cName">Full name</label><input id="cName" type="text" placeholder="Juan Dela Cruz" required></div>
           <div class="form-group"><label for="cEmail">Email address</label><input id="cEmail" type="email" placeholder="you@email.com" required></div>
         </div>
-        <div class="form-group"><label for="cSubject">Subject</label><input id="cSubject" type="text" placeholder="What's this about?" required></div>
+        <div class="form-group">
+          <label for="cSubject">Subject</label>
+          <select id="cSubject" required>
+            <option value="" disabled selected>Choose a subject</option>
+            <option value="Order issue">Order issue</option>
+            <option value="Delivery question">Delivery question</option>
+            <option value="Payment issue">Payment issue</option>
+            <option value="Product question">Product question</option>
+            <option value="Catering / bulk order">Catering / bulk order</option>
+            <option value="Feedback or suggestion">Feedback or suggestion</option>
+            <option value="Account help">Account help</option>
+            <option value="Others">Others</option>
+          </select>
+        </div>
+        <div class="form-group" id="cSubjectOtherWrap" style="display:none;">
+          <label for="cSubjectOther">Tell us the subject</label>
+          <input id="cSubjectOther" type="text" maxlength="100" placeholder="What's this about?">
+        </div>
         <div class="form-group"><label for="cMessage">Message</label><textarea id="cMessage" rows="5" placeholder="Tell us a bit more..." required></textarea></div>
+        <div class="cf-hp" aria-hidden="true"><label for="cWebsite">Leave this field empty</label><input id="cWebsite" type="text" tabindex="-1" autocomplete="off"></div>
         <button type="submit" class="btn btn-primary btn-full">Send Message</button>
       </form>
     </div>
@@ -1077,10 +1112,12 @@
 <script type="module" src="wishlist-service.js"></script>
 <script type="module" src="addresses-service.js"></script>
 <script type="module" src="review-service.js"></script>
+<script type="module" src="contact-service.js"></script>
 
 <script src="email-notifications.js"></script>
 <script src="image-upload-service.js"></script>
 <script src="shared-catalog.js"></script>
+<script src="ui-dropdown.js"></script>
 <script src="script.js"></script>
 </body>
 </html>

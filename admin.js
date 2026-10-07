@@ -208,6 +208,7 @@ document.addEventListener('authRoleReady', function(e){
 });
 
 function renderAdminDashboard(){
+  loadAndRenderInbox();
   renderAdminCategorySelects();
   renderAdminOverviewStats();
   renderAdminProductsTable();
@@ -231,7 +232,7 @@ let adminActivitySearch = '';
 
 const ACTIVITY_TYPE_LABELS = {
   product: 'Product', category: 'Category', combo: 'Combo',
-  order: 'Order', settings: 'Settings', account: 'Account'
+  order: 'Order', settings: 'Settings', account: 'Account', message: 'Message'
 };
 
 /* Fire-and-forget on purpose: a logging failure is console-only,
@@ -546,7 +547,7 @@ function popValue(sel){
 
 /* Ripple on press for buttons, pills, tabs and quick actions. Skipped when
    the OS asks for reduced motion; the CSS also disables the animation. */
-$(document).on('pointerdown', '.btn, .admin-quick-action, .range-filter-pill, .admin-tab, .admin-subtab, .um-subtab, .inv-toggle', function(e){
+$(document).on('pointerdown', '.btn, .admin-quick-action, .range-filter-pill, .admin-tab, .admin-subtab, .um-subtab, .inv-toggle, .admin-icon-btn', function(e){
   if(this.disabled || (window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches)) return;
   const oe = e.originalEvent || e, rect = this.getBoundingClientRect(), size = Math.max(rect.width, rect.height) * 2;
   const $r = $('<span class="adm-ripple" aria-hidden="true"></span>').css({
@@ -3949,5 +3950,228 @@ $(document).on('submit', '#adminAddComboForm', async function(e){
     showToast('Could not add combo. Please try again.', 'error');
   } finally {
     $btn.prop('disabled', false).text('Add Combo');
+  }
+});
+
+/* ================= MESSAGES INBOX (Contact form) =================
+   Conversations started on the storefront Contact page live in
+   `contactMessages`; each later message is a doc in its `replies`
+   subcollection (see contact-service.js + the rules block of the same
+   name). A reply written here shows up in that customer's "My Messages"
+   page. Guest messages (no account) can't receive in-app replies, so
+   those get a "Reply by email" mailto: instead. */
+let ADMIN_INBOX = [];
+let inboxFilter = 'new';      // 'new' | 'handled' | 'all'
+let inboxOpenId = null;
+let inboxReplies = [];
+let inboxLoadFailed = false;
+
+/* Messages from before replies existed have no adminUnread flag, so
+   fall back to "not handled yet" for those. */
+function inboxIsUnread(m){
+  return typeof m.adminUnread === 'boolean' ? m.adminUnread : m.status !== 'handled';
+}
+
+async function loadAndRenderInbox(){
+  if(!window.CCContact) return;
+  $('#inboxBody').html(`<tr><td colspan="5" class="admin-empty-row">Loading messages...</td></tr>`);
+  try{
+    ADMIN_INBOX = await window.CCContact.fetchAllMessages();
+    inboxLoadFailed = false;
+  } catch(err){
+    // A messages problem (e.g. rules not deployed yet) must never break the rest of the dashboard.
+    console.error('Could not load messages.', err);
+    ADMIN_INBOX = [];
+    inboxLoadFailed = true;
+  }
+  renderInbox(true);
+}
+
+function renderInbox(animate){
+  const unread = ADMIN_INBOX.filter(inboxIsUnread).length;
+  const $badge = $('#inboxTabBadge');
+  const badgeChanged = $badge.text() !== String(unread);
+  $badge.text(unread).prop('hidden', unread === 0);
+  if(badgeChanged && unread > 0){
+    if($badge[0]){ $badge.removeClass('pop'); void $badge[0].offsetWidth; $badge.addClass('pop'); }
+  }
+  $('#inboxBody').toggleClass('inbox-anim', animate === true);
+
+  const open = ADMIN_INBOX.filter(m => m.status !== 'handled').length;
+  const filters = [
+    { key:'new', label:'New', count:open },
+    { key:'handled', label:'Handled', count:ADMIN_INBOX.length - open },
+    { key:'all', label:'All', count:ADMIN_INBOX.length }
+  ];
+  $('#inboxFilters').html(filters.map(f =>
+    `<button type="button" class="range-filter-pill${f.key === inboxFilter ? ' active' : ''}" data-inbox-filter="${f.key}">${f.label} (${f.count})</button>`
+  ).join(''));
+
+  if(inboxLoadFailed){
+    $('#inboxBody').html(`<tr><td colspan="5" class="admin-empty-row">Could not load messages. Check that the latest firestore.rules are deployed, then refresh.</td></tr>`);
+    return;
+  }
+  let rows = ADMIN_INBOX;
+  if(inboxFilter === 'new') rows = rows.filter(m => m.status !== 'handled');
+  if(inboxFilter === 'handled') rows = rows.filter(m => m.status === 'handled');
+  if(!rows.length){
+    $('#inboxBody').html(`<tr><td colspan="5" class="admin-empty-row">${inboxFilter === 'new' ? 'No new messages.' : 'Nothing here yet.'}</td></tr>`);
+    return;
+  }
+  $('#inboxBody').html(rows.map(m => {
+    const handled = m.status === 'handled';
+    const isUnread = inboxIsUnread(m);
+    return `<tr class="inbox-row${isUnread ? ' inbox-unread' : ''}" data-inbox-open="${umEsc(m.id)}" tabindex="0">
+      <td><strong>${umEsc(m.name || 'No name')}</strong>${m.userId ? '' : ' <span class="inbox-guest">Guest</span>'}<div class="inbox-sub">${umEsc(m.email || '')}</div></td>
+      <td>${umEsc(m.subject || '(no subject)')}</td>
+      <td>${umEsc(formatOrderTimestamp(m.lastActivityAt || m.createdAt))}</td>
+      <td><span class="order-status-badge inbox-status-${handled ? 'handled' : 'new'}">${handled ? 'Handled' : 'New'}</span></td>
+      <td><button type="button" class="btn btn-outline btn-sm" data-inbox-open="${umEsc(m.id)}">Open</button></td>
+    </tr>`;
+  }).join(''));
+}
+
+$(document).on('click', '#inboxRefresh', loadAndRenderInbox);
+$(document).on('click', '[data-inbox-filter]', function(){
+  inboxFilter = $(this).attr('data-inbox-filter');
+  renderInbox(true);
+});
+
+/* ---------- Conversation modal (built once, on first open) ---------- */
+function inboxEnsureModal(){
+  if($('#inboxOverlay').length) return;
+  $('body').append(`
+    <div class="inbox-overlay" id="inboxOverlay">
+      <div class="inbox-modal" role="dialog" aria-modal="true" aria-labelledby="inboxModalSubject">
+        <div class="inbox-modal-head">
+          <h3 id="inboxModalSubject"></h3>
+          <button type="button" class="admin-icon-btn" id="inboxClose" aria-label="Close">&times;</button>
+        </div>
+        <div class="inbox-meta" id="inboxMeta"></div>
+        <div class="inbox-thread" id="inboxThread"></div>
+        <div class="inbox-composer" id="inboxComposer">
+          <textarea id="inboxReplyText" rows="3" maxlength="2000" placeholder="Write a reply. The customer will see it in My Messages."></textarea>
+          <button type="button" class="btn btn-primary" id="inboxSendReply">Send reply</button>
+        </div>
+        <p class="inbox-guest-note" id="inboxGuestNote" hidden>This customer wasn't logged in, so they can't read replies in the app. Use "Reply by email" instead.</p>
+        <div class="inbox-actions">
+          <a class="btn btn-outline" id="inboxReply" href="#">Reply by email</a>
+          <button type="button" class="btn btn-outline" id="inboxToggleStatus"></button>
+        </div>
+      </div>
+    </div>`);
+}
+
+function inboxCloseModal(){
+  $('#inboxOverlay').removeClass('open');
+  inboxOpenId = null;
+  renderInbox();
+}
+
+function inboxBubble(role, who, text, time){
+  return `<div class="inbox-bubble-row inbox-bubble-row-${role}">
+    <div class="inbox-bubble inbox-bubble-${role}">
+      <div class="inbox-bubble-who">${umEsc(who)}</div>
+      <div class="inbox-bubble-text">${umEsc(text)}</div>
+      <div class="inbox-bubble-time">${umEsc(formatOrderTimestamp(time))}</div>
+    </div>
+  </div>`;
+}
+
+function inboxFillModal(m, mode){
+  const handled = m.status === 'handled';
+  const isMember = !!m.userId;
+  $('#inboxModalSubject').text(m.subject || '(no subject)');
+  $('#inboxMeta').html(
+    `<span><strong>${umEsc(m.name || 'No name')}</strong> &lt;${umEsc(m.email || '')}&gt;</span>` +
+    `<span>${isMember ? 'Registered customer' : 'Guest'}</span>`
+  );
+  const bubbles = [inboxBubble('customer', m.name || 'Customer', m.message, m.createdAt)]
+    .concat(inboxReplies.map(r => r.authorRole === 'admin'
+      ? inboxBubble('admin', 'You (store)', r.text, r.createdAt)
+      : inboxBubble('customer', m.name || 'Customer', r.text, r.createdAt)));
+  if(mode === 'send') bubbles[bubbles.length - 1] = bubbles[bubbles.length - 1].replace('inbox-bubble-row ', 'inbox-bubble-row is-new ');
+  $('#inboxThread').toggleClass('inbox-anim-all', mode === 'open').html(bubbles.join(''));
+  const th = $('#inboxThread')[0]; if(th) th.scrollTop = th.scrollHeight;
+  $('#inboxComposer').toggle(isMember);
+  $('#inboxGuestNote').prop('hidden', isMember);
+  $('#inboxReply').attr('href', `mailto:${encodeURIComponent(m.email || '')}?subject=${encodeURIComponent('Re: ' + (m.subject || 'Your message to Crafts & Crumbs'))}`);
+  $('#inboxToggleStatus').text(handled ? 'Mark as new' : 'Mark as handled');
+}
+
+$(document).on('click keydown', '[data-inbox-open]', async function(e){
+  if(e.type === 'keydown' && e.key !== 'Enter') return;
+  if(e.type === 'click' && $(e.target).closest('button').length && !$(this).is('button')) return; // the row's own Open button handles it
+  const m = ADMIN_INBOX.find(x => x.id === $(this).attr('data-inbox-open'));
+  if(!m) return;
+  inboxEnsureModal();
+  inboxOpenId = m.id;
+  inboxReplies = [];
+  $('#inboxReplyText').val('');
+  inboxFillModal(m);
+  $('#inboxOverlay').addClass('open');
+  try{
+    inboxReplies = await window.CCContact.fetchReplies(m.id);
+    if(inboxOpenId === m.id) inboxFillModal(m, 'open');
+  } catch(err){
+    console.error('Could not load replies.', err);
+    showToast('Could not load the replies for this message.', 'error');
+  }
+  // Opening a conversation counts as reading it.
+  if(inboxIsUnread(m)){
+    m.adminUnread = false;
+    renderInbox();
+    window.CCContact.markReadByAdmin(m.id).catch(err => console.warn('Could not mark as read.', err));
+  }
+});
+$(document).on('click', '#inboxClose', inboxCloseModal);
+$(document).on('click', '#inboxOverlay', function(e){ if(e.target === this) inboxCloseModal(); });
+$(document).on('keydown', function(e){
+  if(e.key === 'Escape' && $('#inboxOverlay').hasClass('open')) inboxCloseModal();
+});
+
+$(document).on('click', '#inboxSendReply', async function(){
+  const m = ADMIN_INBOX.find(x => x.id === inboxOpenId);
+  if(!m || !m.userId) return;
+  const text = $('#inboxReplyText').val().trim();
+  if(!text){ showToast('Write a reply first.', 'warning'); return; }
+  if(text.length > 2000){ showToast('Replies are limited to 2,000 characters.', 'error'); return; }
+  const $btn = $(this).prop('disabled', true).addClass('is-loading').text('Sending...');
+  try{
+    await window.CCContact.sendReply(m.id, 'admin', text);
+    m.status = 'handled';
+    m.adminUnread = false;
+    m.customerUnread = true;
+    inboxReplies = await window.CCContact.fetchReplies(m.id);
+    $('#inboxReplyText').val('');
+    logActivity('update', 'message', m.id, `Replied to ${m.name || m.email || m.id}: "${m.subject || 'message'}"`);
+    showToast('Reply sent.', 'success');
+    inboxFillModal(m, 'send');
+    renderInbox();
+  } catch(err){
+    console.error(err);
+    showToast('Could not send the reply. Please try again.', 'error');
+  } finally {
+    $btn.prop('disabled', false).removeClass('is-loading').text('Send reply');
+  }
+});
+
+$(document).on('click', '#inboxToggleStatus', async function(){
+  const m = ADMIN_INBOX.find(x => x.id === inboxOpenId);
+  if(!m) return;
+  const next = m.status === 'handled' ? 'new' : 'handled';
+  const $btn = $(this).prop('disabled', true);
+  try{
+    await window.CCContact.setMessageStatus(m.id, next);
+    m.status = next;
+    logActivity('update', 'message', m.id, `Marked message from ${m.name || m.email || m.id} as ${next === 'handled' ? 'handled' : 'new'}`);
+    showToast(next === 'handled' ? 'Marked as handled.' : 'Marked as new.', 'success');
+    renderInbox();
+    inboxFillModal(m);
+  } catch(err){
+    console.error(err);
+    showToast('Could not update the message. Please try again.', 'error');
+  } finally {
+    $btn.prop('disabled', false);
   }
 });

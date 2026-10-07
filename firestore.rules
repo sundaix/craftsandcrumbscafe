@@ -62,6 +62,79 @@ service cloud.firestore {
       allow update, delete: if false;
     }
 
+    // Contact inbox with two-way replies.
+    //  - Anyone signed in (guests are anonymous sessions) can CREATE a
+    //    conversation, only with exactly these fields, a 'new' status,
+    //    length caps, their own uid (or null), and server timestamps.
+    //  - Read: admins, or the customer whose uid is on the conversation.
+    //  - Update is limited to the unread flags, lastActivityAt and status:
+    //      * admin: any of those
+    //      * customer: (A) clear their own unread flag, or (B) flag the
+    //        admin and re-open the conversation after posting a reply.
+    //  - Never deletable from the app (kept as a record, like returns).
+    match /contactMessages/{messageId} {
+      allow create: if request.auth != null &&
+        request.resource.data.keys().hasOnly(['name', 'email', 'subject', 'message', 'status', 'userId', 'adminUnread', 'customerUnread', 'lastActivityAt', 'createdAt']) &&
+        request.resource.data.name is string &&
+        request.resource.data.name.size() > 0 && request.resource.data.name.size() <= 80 &&
+        request.resource.data.email is string &&
+        request.resource.data.email.size() >= 3 && request.resource.data.email.size() <= 120 &&
+        request.resource.data.subject is string &&
+        request.resource.data.subject.size() > 0 && request.resource.data.subject.size() <= 120 &&
+        request.resource.data.message is string &&
+        request.resource.data.message.size() > 0 && request.resource.data.message.size() <= 2000 &&
+        request.resource.data.status == 'new' &&
+        request.resource.data.adminUnread == true &&
+        request.resource.data.customerUnread == false &&
+        (request.resource.data.userId == null || request.resource.data.userId == request.auth.uid) &&
+        request.resource.data.lastActivityAt == request.time &&
+        request.resource.data.createdAt == request.time;
+
+      allow read: if request.auth != null && (
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin' ||
+        resource.data.userId == request.auth.uid
+      );
+
+      allow update: if request.auth != null && (
+        // Admin: status + flags + activity time only.
+        (get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin' &&
+          request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'adminUnread', 'customerUnread', 'lastActivityAt']) &&
+          request.resource.data.status in ['new', 'handled']) ||
+        // Customer (A): mark the conversation read.
+        (resource.data.userId == request.auth.uid &&
+          request.resource.data.diff(resource.data).affectedKeys().hasOnly(['customerUnread']) &&
+          request.resource.data.customerUnread == false) ||
+        // Customer (B): after replying, flag the admin and re-open it.
+        (resource.data.userId == request.auth.uid &&
+          request.resource.data.diff(resource.data).affectedKeys().hasOnly(['adminUnread', 'lastActivityAt', 'status']) &&
+          request.resource.data.adminUnread == true &&
+          request.resource.data.status == 'new' &&
+          request.resource.data.lastActivityAt == request.time)
+      );
+
+      allow delete: if false;
+
+      // Each later message in the thread. Append-only: no edits, no deletes.
+      match /replies/{replyId} {
+        allow read: if request.auth != null && (
+          get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin' ||
+          get(/databases/$(database)/documents/contactMessages/$(messageId)).data.userId == request.auth.uid
+        );
+        allow create: if request.auth != null &&
+          request.resource.data.keys().hasOnly(['authorRole', 'authorUid', 'text', 'createdAt']) &&
+          request.resource.data.authorUid == request.auth.uid &&
+          request.resource.data.text is string &&
+          request.resource.data.text.size() > 0 && request.resource.data.text.size() <= 2000 &&
+          request.resource.data.createdAt == request.time && (
+            (request.resource.data.authorRole == 'admin' &&
+              get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin') ||
+            (request.resource.data.authorRole == 'customer' &&
+              get(/databases/$(database)/documents/contactMessages/$(messageId)).data.userId == request.auth.uid)
+          );
+        allow update, delete: if false;
+      }
+    }
+
     // Any signed-in customer can create their own order; the order's
     // owner, an admin, or (for delivery orders) a rider can read it back.
     // Rider read access: an unclaimed delivery order that's ready for

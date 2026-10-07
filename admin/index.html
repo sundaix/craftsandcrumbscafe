@@ -70,6 +70,11 @@
       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .34 1.87l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.7 1.7 0 0 0-1.87-.34 1.7 1.7 0 0 0-1.04 1.56V21a2 2 0 0 1-4 0v-.09A1.7 1.7 0 0 0 9 19.4a1.7 1.7 0 0 0-1.87.34l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.7 1.7 0 0 0 4.6 15a1.7 1.7 0 0 0-1.56-1.04H3a2 2 0 0 1 0-4h.09A1.7 1.7 0 0 0 4.6 9a1.7 1.7 0 0 0-.34-1.87l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.7 1.7 0 0 0 9 4.6a1.7 1.7 0 0 0 1.04-1.56V3a2 2 0 0 1 4 0v.09A1.7 1.7 0 0 0 15 4.6a1.7 1.7 0 0 0 1.87-.34l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.7 1.7 0 0 0 19.4 9a1.7 1.7 0 0 0 1.56 1.04H21a2 2 0 0 1 0 4h-.09A1.7 1.7 0 0 0 19.4 15z"/></svg>
       Settings
     </button>
+    <button class="admin-tab" data-admin-tab="messages">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="m3 7 9 6 9-6"/></svg>
+      Messages
+      <span class="admin-tab-badge" id="inboxTabBadge" hidden>0</span>
+    </button>
     <button class="admin-tab" data-admin-tab="activity">
       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 8v4l3 3"/><circle cx="12" cy="12" r="9"/></svg>
       Activity Log
@@ -713,6 +718,25 @@
         </div>
       </div>
 
+      <!-- messages (contact-form inbox) -->
+      <div class="admin-panel" data-admin-panel="messages">
+        <div class="admin-panel-head">
+          <h3>Messages</h3>
+          <div class="admin-panel-head-controls">
+            <div id="inboxFilters" style="display:flex;gap:8px;flex-wrap:wrap;"></div>
+            <button type="button" class="btn btn-outline btn-sm" id="inboxRefresh">Refresh</button>
+          </div>
+        </div>
+        <div class="admin-table-wrap">
+          <table class="admin-table">
+            <thead>
+              <tr><th>From</th><th>Subject</th><th>Received</th><th>Status</th><th></th></tr>
+            </thead>
+            <tbody id="inboxBody"></tbody>
+          </table>
+        </div>
+      </div>
+
       <!-- settings -->
       <div class="admin-panel" data-admin-panel="settings">
         <div class="form-card">
@@ -840,6 +864,7 @@
               <option value="order">Orders</option>
               <option value="settings">Settings</option>
               <option value="account">Accounts</option>
+              <option value="message">Messages</option>
             </select>
             <div class="admin-search-wrap">
               <svg class="admin-search-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><circle cx="11" cy="11" r="7"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
@@ -1014,10 +1039,12 @@
 <script type="module" src="../orders-service.js"></script>
 <script type="module" src="../accounts-service.js"></script>
 <script type="module" src="../audit-log-service.js"></script>
+<script type="module" src="../contact-service.js"></script>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
 <script src="../image-upload-service.js"></script>
 <script src="../shared-catalog.js"></script>
+<script src="../ui-dropdown.js"></script>
 <script src="../admin-ui.js"></script>
 <script src="../admin.js"></script>
 <script src="../admin-boot.js"></script>

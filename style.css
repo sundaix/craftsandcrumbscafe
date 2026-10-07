@@ -3073,3 +3073,272 @@
 @media (prefers-reduced-motion: reduce){
   .rp-dialog .rp-step.rp-in, .rp-digit.rp-digit-error{ animation:none; }
 }
+
+/* ---------- Contact form: spam honeypot (hidden from people, visible to bots) ---------- */
+.cf-hp{ position:absolute; left:-9999px; width:1px; height:1px; overflow:hidden; }
+
+
+/* ---------- Contact: note under the form heading ---------- */
+.contact-note{ font-size:12.5px; color:var(--text-soft); margin:-6px 0 16px; line-height:1.5; }
+.contact-note a{ color:var(--cta-dark); font-weight:600; text-decoration:underline; text-underline-offset:2px; }
+
+/* ---------- Account menu: unread messages badge ---------- */
+.account-dd-badge{
+  display:inline-block; margin-left:6px; min-width:18px; padding:0 6px; border-radius:100px;
+  background:var(--cta); color:#fff; font-size:10.5px; font-weight:700; line-height:18px; text-align:center;
+}
+
+/* ---------- My Messages (customer inbox) ---------- */
+.cm-list{ display:flex; flex-direction:column; gap:12px; margin-top:24px; }
+.cm-card{
+  display:flex; align-items:flex-start; justify-content:space-between; gap:16px; flex-wrap:wrap;
+  width:100%; text-align:left; cursor:pointer; font:inherit; color:inherit;
+  background:#fff; border:1px solid var(--line); border-radius:var(--radius);
+  padding:16px 20px; box-shadow:var(--shadow-sm); transition:border-color 0.2s ease, box-shadow 0.2s ease;
+}
+.cm-card:hover{ border-color:var(--sage); box-shadow:var(--shadow); }
+.cm-card.is-unread{ border-color:var(--cta); }
+.cm-card-main{ flex:1; min-width:200px; }
+.cm-card-head{ display:flex; align-items:center; gap:10px; margin-bottom:4px; flex-wrap:wrap; }
+.cm-card-subject{ font-family:'Lora',serif; font-weight:600; font-size:15px; color:var(--ink); }
+.cm-new-badge{
+  font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:0.05em;
+  color:var(--cta-dark); background:rgba(192,133,82,0.16); padding:3px 9px; border-radius:100px;
+}
+.cm-card-preview{
+  font-size:13px; color:var(--text-soft); line-height:1.5; margin:0;
+  display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden; overflow-wrap:anywhere;
+}
+.cm-card-side{ display:flex; flex-direction:column; align-items:flex-end; gap:6px; flex-shrink:0; }
+.cm-card-time{ font-size:11.5px; color:var(--text-faint); }
+.cm-status{ padding:4px 11px; border-radius:20px; font-size:11px; font-weight:600; }
+.cm-status-waiting{ background:rgba(124,147,166,0.18); color:#4d6b82; }
+.cm-status-answered{ background:rgba(124,152,133,0.18); color:#4f6c57; }
+
+.cm-thread{ margin-top:24px; }
+.cm-back{ margin-bottom:12px; }
+.cm-thread-subject{ font-family:'Lora',serif; font-size:20px; margin:0 0 16px; color:var(--ink); overflow-wrap:anywhere; }
+.cm-bubbles{
+  display:flex; flex-direction:column; gap:12px; max-height:52vh; overflow-y:auto;
+  padding:16px; background:var(--card); border-radius:var(--radius);
+}
+.cm-bubble-row{ display:flex; }
+.cm-bubble-row-me{ justify-content:flex-end; }
+.cm-bubble-row-store{ justify-content:flex-start; }
+.cm-bubble{ max-width:82%; padding:10px 14px; border-radius:14px; box-shadow:var(--shadow-sm); }
+.cm-bubble-me{ background:var(--ink); color:#fff; border-bottom-right-radius:4px; }
+.cm-bubble-store{ background:#fff; color:var(--text); border:1px solid var(--line); border-bottom-left-radius:4px; }
+.cm-bubble-who{ font-size:10.5px; font-weight:700; letter-spacing:0.04em; text-transform:uppercase; opacity:0.65; margin-bottom:3px; }
+.cm-bubble-text{ font-size:13.5px; line-height:1.55; white-space:pre-wrap; overflow-wrap:anywhere; }
+.cm-bubble-time{ font-size:10.5px; opacity:0.55; margin-top:5px; }
+.cm-composer{ display:flex; flex-direction:column; gap:10px; margin-top:16px; }
+.cm-composer textarea{
+  width:100%; padding:12px 14px; border:1px solid var(--line-strong); border-radius:var(--radius);
+  font-family:'Poppins',sans-serif; font-size:13.5px; resize:vertical; background:#fff; color:var(--text);
+}
+.cm-composer textarea:focus{ outline:none; border-color:var(--sage); }
+.cm-composer .btn{ align-self:flex-end; }
+@media (max-width:600px){
+  .cm-card-side{ flex-direction:row; align-items:center; justify-content:space-between; width:100%; }
+  .cm-bubble{ max-width:92%; }
+  .cm-composer .btn{ align-self:stretch; }
+}
+
+
+/* =====================================================================
+   Motion polish: click feedback, contact form, My Messages
+   ===================================================================== */
+@keyframes sfRipple{ to{ transform:scale(1); opacity:0; } }
+@keyframes sfSpin{ to{ transform:rotate(360deg); } }
+@keyframes sfPop{ 0%{ transform:scale(.9); } 55%{ transform:scale(1.05); } 100%{ transform:scale(1); } }
+@keyframes cfRise{ from{ opacity:0; transform:translateY(14px); } to{ opacity:1; transform:translateY(0); } }
+@keyframes cfShake{
+  10%, 90%{ transform:translateX(-2px); }
+  20%, 80%{ transform:translateX(4px); }
+  30%, 50%, 70%{ transform:translateX(-6px); }
+  40%, 60%{ transform:translateX(6px); }
+}
+@keyframes cmSlideIn{ from{ opacity:0; transform:translateX(18px); } to{ opacity:1; transform:translateX(0); } }
+@keyframes cmBubbleIn{ from{ opacity:0; transform:translateY(10px) scale(.96); } to{ opacity:1; transform:translateY(0) scale(1); } }
+@keyframes cmBadgePulse{ 0%, 100%{ box-shadow:0 0 0 0 rgba(192,133,82,.45); } 50%{ box-shadow:0 0 0 6px rgba(192,133,82,0); } }
+
+/* ---------- Click feedback ---------- */
+.sf-ripple{
+  position:absolute; border-radius:50%; background:currentColor; opacity:.2;
+  transform:scale(0); pointer-events:none; animation:sfRipple .6s ease-out forwards;
+}
+.btn:active:not(:disabled):not([disabled]), .add-btn:active, .cm-card:active, .account-dd-link:active{ transform:scale(.97); }
+.icon-btn{ transition:background .2s ease, transform .2s var(--ease-premium); }
+.icon-btn:active{ transform:scale(.9); }
+.account-dd-link{ transition:color .2s ease, transform .2s var(--ease-premium); }
+.account-dd-link:hover{ transform:translateX(3px); }
+
+/* ---------- Buttons: sending / sent states (used by the contact + reply buttons) ---------- */
+.btn.is-loading{ pointer-events:none; }
+.btn.is-loading::before{
+  content:''; width:14px; height:14px; border-radius:50%; flex-shrink:0;
+  border:2px solid currentColor; border-right-color:transparent; animation:sfSpin .7s linear infinite;
+}
+.btn.is-loading[disabled], .btn.is-success[disabled]{ opacity:1; }
+.btn.is-success{
+  background:var(--sage) !important; border-color:var(--sage) !important; color:#fff !important;
+  animation:sfPop .45s var(--ease-premium);
+}
+
+.page.active .contact-form-card #contactForm > .btn.is-success{ animation:cfRise .55s var(--ease-premium) .33s backwards, sfPop .45s var(--ease-premium); }
+/* ---------- Contact form ---------- */
+/* Fields glide in one after another when the page opens. */
+.page.active .contact-form-card form > *:not(#cSubjectOtherWrap){ animation:cfRise .55s var(--ease-premium) backwards; }
+.page.active .contact-form-card form > *:nth-child(1){ animation-delay:.05s; }
+.page.active .contact-form-card form > *:nth-child(2){ animation-delay:.12s; }
+.page.active .contact-form-card form > *:nth-child(4){ animation-delay:.19s; }
+.page.active .contact-form-card form > *:nth-child(5){ animation-delay:.26s; }
+.page.active .contact-form-card form > *:nth-child(6){ animation-delay:.33s; }
+.page.active .contact-info-card .contact-info-row{ animation:cfRise .55s var(--ease-premium) backwards; }
+.page.active .contact-info-card .contact-info-row:nth-of-type(1){ animation-delay:.15s; }
+.page.active .contact-info-card .contact-info-row:nth-of-type(2){ animation-delay:.22s; }
+.page.active .contact-info-card .contact-info-row:nth-of-type(3){ animation-delay:.29s; }
+.page.active .contact-info-card .contact-info-row:nth-of-type(4){ animation-delay:.36s; }
+
+/* The label warms up and the field lifts slightly while you type in it. */
+.form-group label{ transition:color .2s ease, transform .25s var(--ease-premium); }
+.form-group:focus-within label{ color:var(--cta-dark); transform:translateX(2px); }
+.contact-form-card .form-group input,
+.contact-form-card .form-group select,
+.contact-form-card .form-group textarea{
+  transition:border-color .2s ease, box-shadow .25s ease, transform .25s var(--ease-premium), background .2s ease;
+}
+.contact-form-card .form-group input:focus,
+.contact-form-card .form-group select:focus,
+.contact-form-card .form-group textarea:focus{ transform:translateY(-1px); background:#fff; }
+
+/* Needs-attention state: red ring + a quick shake on the field itself. */
+.form-group.cf-error input, .form-group.cf-error select, .form-group.cf-error textarea{
+  border-color:var(--danger, #B5533E); box-shadow:0 0 0 3px rgba(181,83,62,.15);
+}
+.form-group.cf-error label{ color:var(--danger, #B5533E); }
+.cf-shake{ animation:cfShake .45s cubic-bezier(.36,.07,.19,.97) both; }
+
+/* ---------- My Messages ---------- */
+.cm-card{ animation:cfRise .5s var(--ease-premium) backwards; }
+.cm-card:nth-child(2){ animation-delay:.05s; }
+.cm-card:nth-child(3){ animation-delay:.1s; }
+.cm-card:nth-child(4){ animation-delay:.15s; }
+.cm-card:nth-child(5){ animation-delay:.2s; }
+.cm-card:nth-child(n+6){ animation-delay:.25s; }
+.cm-thread{ animation:cmSlideIn .4s var(--ease-premium) backwards; }
+.cm-new-badge{ animation:cmBadgePulse 2s ease-out infinite; }
+.account-dd-badge{ animation:sfPop .4s var(--ease-premium); }
+
+.cm-bubble-row.is-new{ animation:cmBubbleIn .4s var(--ease-premium) backwards; }
+.cm-bubble-row-me.is-new .cm-bubble{ transform-origin:bottom right; }
+.cm-bubble-row-store.is-new .cm-bubble{ transform-origin:bottom left; }
+.cm-bubbles.cm-anim-all .cm-bubble-row{ animation:cmBubbleIn .45s var(--ease-premium) backwards; }
+.cm-bubbles.cm-anim-all .cm-bubble-row:nth-child(2){ animation-delay:.08s; }
+.cm-bubbles.cm-anim-all .cm-bubble-row:nth-child(3){ animation-delay:.16s; }
+.cm-bubbles.cm-anim-all .cm-bubble-row:nth-child(4){ animation-delay:.24s; }
+.cm-bubbles.cm-anim-all .cm-bubble-row:nth-child(5){ animation-delay:.32s; }
+.cm-bubbles.cm-anim-all .cm-bubble-row:nth-child(n+6){ animation-delay:.4s; }
+.cm-composer textarea{ transition:border-color .2s ease, box-shadow .25s ease; }
+.cm-composer textarea:focus{ box-shadow:var(--ring); }
+
+@media (prefers-reduced-motion: reduce){
+  .sf-ripple{ display:none; }
+  .page.active .contact-form-card form > *, .page.active .contact-info-card .contact-info-row,
+  .cm-card, .cm-thread, .cm-new-badge, .account-dd-badge, .cm-bubble-row, .cm-bubbles.cm-anim-all .cm-bubble-row,
+  .cf-shake, .btn.is-success, .btn.is-loading::before{ animation:none !important; }
+  .btn:active:not(:disabled):not([disabled]), .add-btn:active, .cm-card:active, .account-dd-link:active, .icon-btn:active,
+  .account-dd-link:hover, .contact-form-card .form-group input:focus, .contact-form-card .form-group select:focus,
+  .contact-form-card .form-group textarea:focus, .form-group:focus-within label{ transform:none; }
+}
+
+/* =====================================================================
+   Animated dropdown lists (see ui-dropdown.js)
+   ===================================================================== */
+@keyframes ccDdOptIn{ from{ opacity:0; transform:translateY(-6px); } to{ opacity:1; transform:translateY(0); } }
+@keyframes ccDdRing{ 0%{ box-shadow:0 0 0 0 rgba(124,152,133,.45); } 100%{ box-shadow:0 0 0 9px rgba(124,152,133,0); } }
+@keyframes ccDdPick{ 0%{ transform:scale(1); } 40%{ transform:scale(1.025); background-color:rgba(124,152,133,.14); } 100%{ transform:scale(1); } }
+
+.cc-dd-menu{
+  position:fixed; z-index:5000; box-sizing:border-box; overflow-y:auto; overscroll-behavior:contain;
+  padding:6px; background:#fff; border:1px solid var(--line); border-radius:var(--radius); box-shadow:var(--shadow-hover);
+  font-size:13px; opacity:0; pointer-events:none;
+  transform:translateY(-10px) scale(.96); transform-origin:top center;
+  transition:opacity .16s ease, transform .34s cubic-bezier(.34,1.4,.64,1);
+}
+.cc-dd-menu.is-up{ transform:translateY(10px) scale(.96); transform-origin:bottom center; }
+.cc-dd-menu.is-open{ opacity:1; transform:none; pointer-events:auto; }
+.cc-dd-menu.is-closing{ opacity:0; transform:translateY(-6px) scale(.98); pointer-events:none; transition-duration:.12s; }
+.cc-dd-menu.is-up.is-closing{ transform:translateY(6px) scale(.98); }
+
+.cc-dd-opt{
+  position:relative; display:flex; align-items:center; justify-content:space-between; gap:12px;
+  padding:9px 12px; border-radius:var(--radius-sm); cursor:pointer; line-height:1.35;
+  color:var(--text); transition:background .14s ease, color .14s ease, transform .14s ease;
+}
+.cc-dd-menu.is-open .cc-dd-opt{ animation:ccDdOptIn .32s cubic-bezier(.22,1,.36,1) backwards; animation-delay:calc(var(--i, 0) * 20ms + 40ms); }
+.cc-dd-opt.is-active{ background:rgba(124,152,133,.14); color:var(--ink); }
+.cc-dd-opt:active{ transform:scale(.98); }
+.cc-dd-opt.is-selected{ font-weight:600; color:var(--ink); }
+.cc-dd-opt.is-selected::after{
+  content:''; flex-shrink:0; width:14px; height:14px;
+  background:url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="%237C9885" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12l5 5L20 6"/></svg>') center/contain no-repeat;
+}
+.cc-dd-opt.is-disabled{ opacity:.4; cursor:not-allowed; }
+.cc-dd-opt.is-disabled:active{ transform:none; }
+.cc-dd-group{ padding:8px 12px 4px; font-size:10.5px; font-weight:700; text-transform:uppercase; letter-spacing:.08em; color:var(--text-faint); }
+
+/* The field itself: a soft ring pulses when the list opens, and it "pops" when you pick. */
+select.cc-dd-open{ animation:ccDdRing .5s ease-out; }
+select.cc-dd-picked{ animation:ccDdPick .4s cubic-bezier(.22,1,.36,1); }
+
+@media (prefers-reduced-motion: reduce){
+  .cc-dd-menu, .cc-dd-menu.is-closing{ transition:none; transform:none; }
+  .cc-dd-menu.is-open .cc-dd-opt, select.cc-dd-open, select.cc-dd-picked{ animation:none; }
+}
+
+/* ---------- Storefront dropdowns that already exist: cart + account menus ---------- */
+.cart-dropdown{
+  transform:translateY(-12px) scale(.96); transform-origin:top right;
+  transition:opacity .22s ease, transform .36s cubic-bezier(.34,1.35,.64,1), visibility .22s;
+}
+.cart-dropdown-wrap.open .cart-dropdown,
+.account-dropdown-wrap.open .cart-dropdown{ transform:translateY(0) scale(1); }
+.cart-dropdown-wrap.open .cart-dd-item,
+.cart-dropdown-wrap.open .cart-dropdown-empty,
+.cart-dropdown-wrap.open .cart-dropdown-footer,
+.account-dropdown-wrap.open #accountDropdownContent > *{ animation:cfRise .45s var(--ease-premium) backwards; }
+.cart-dropdown-wrap.open .cart-dd-item:nth-child(1), .account-dropdown-wrap.open #accountDropdownContent > :nth-child(1){ animation-delay:.06s; }
+.cart-dropdown-wrap.open .cart-dd-item:nth-child(2), .account-dropdown-wrap.open #accountDropdownContent > :nth-child(2){ animation-delay:.1s; }
+.cart-dropdown-wrap.open .cart-dd-item:nth-child(3), .account-dropdown-wrap.open #accountDropdownContent > :nth-child(3){ animation-delay:.14s; }
+.cart-dropdown-wrap.open .cart-dd-item:nth-child(4), .account-dropdown-wrap.open #accountDropdownContent > :nth-child(4){ animation-delay:.18s; }
+.cart-dropdown-wrap.open .cart-dd-item:nth-child(n+5), .account-dropdown-wrap.open #accountDropdownContent > :nth-child(5){ animation-delay:.22s; }
+.account-dropdown-wrap.open #accountDropdownContent > :nth-child(6){ animation-delay:.26s; }
+.account-dropdown-wrap.open #accountDropdownContent > :nth-child(n+7){ animation-delay:.3s; }
+.cart-dropdown-wrap.open .cart-dropdown-footer, .cart-dropdown-wrap.open .cart-dropdown-empty{ animation-delay:.12s; }
+
+/* ---------- Footer: rises into place as it scrolls into view ---------- */
+.ftr-col a{ transition:color .25s var(--ease-premium), transform .25s var(--ease-premium); }
+.ftr-col a:not(.ftr-social){ display:inline-block; }
+.ftr-col a:hover{ transform:translateX(4px); }
+.footer-new.ftr-anim::before{ transform:scaleX(0); transform-origin:left center; transition:transform .4s ease; }
+.footer-new.ftr-anim.ftr-in::before{ transform:scaleX(1); transition:transform 1.3s var(--ease-premium); }
+.footer-new.ftr-anim .ftr-brand, .footer-new.ftr-anim .ftr-col, .footer-new.ftr-anim .ftr-bottom{
+  opacity:0; transform:translateY(30px); transition:opacity .35s ease, transform .35s ease;
+}
+.footer-new.ftr-anim.ftr-in .ftr-brand, .footer-new.ftr-anim.ftr-in .ftr-col, .footer-new.ftr-anim.ftr-in .ftr-bottom{
+  opacity:1; transform:none; transition:opacity .8s ease, transform .9s var(--ease-premium);
+}
+.footer-new.ftr-anim.ftr-in .ftr-brand{ transition-delay:.05s; }
+.footer-new.ftr-anim.ftr-in .ftr-col:nth-of-type(2){ transition-delay:.15s; }
+.footer-new.ftr-anim.ftr-in .ftr-col:nth-of-type(3){ transition-delay:.25s; }
+.footer-new.ftr-anim.ftr-in .ftr-col:nth-of-type(4){ transition-delay:.35s; }
+.footer-new.ftr-anim.ftr-in .ftr-bottom{ transition-delay:.5s; }
+.footer-new.ftr-anim .ftr-logo{ transform:scale(.9); transform-origin:left center; transition:transform .35s ease; }
+.footer-new.ftr-anim.ftr-in .ftr-logo{ transform:scale(1); transition:transform 1s var(--ease-premium) .1s; }
+@media (prefers-reduced-motion: reduce){
+  .cart-dropdown{ transform:none; }
+  .cart-dropdown-wrap.open .cart-dd-item, .cart-dropdown-wrap.open .cart-dropdown-empty, .cart-dropdown-wrap.open .cart-dropdown-footer,
+  .account-dropdown-wrap.open #accountDropdownContent > *{ animation:none; }
+  .ftr-col a:hover{ transform:none; }
+}

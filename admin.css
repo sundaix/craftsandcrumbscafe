@@ -957,7 +957,7 @@ a{ color:inherit; }
 .btn-activate:hover:not(:disabled){ background:var(--adm-accent); color:#fff; }
 
 /* Click feedback */
-.btn, .admin-quick-action, .range-filter-pill, .admin-tab, .admin-subtab, .inv-toggle{ position:relative; overflow:hidden; }
+.btn, .admin-quick-action, .range-filter-pill, .admin-tab, .admin-subtab, .inv-toggle, .admin-icon-btn{ position:relative; overflow:hidden; }
 .adm-ripple{ position:absolute; border-radius:50%; background:currentColor; opacity:.22; transform:scale(0); pointer-events:none; animation:admRipple .55s ease-out forwards; }
 .btn:active:not(:disabled), .admin-quick-action:active, .range-filter-pill:active, .admin-subtab:active, .inv-toggle:active{ transform:scale(.97); }
 .admin-tab:active{ transform:scale(.98); }
@@ -1210,4 +1210,152 @@ tr.pd-row-selected td{ background:var(--adm-accent-tint); }
 @media (prefers-reduced-motion: reduce){
   .pd-sheet, .pd-row, .pd-stamp, .rt-row, .rt-chip-requested.attn{ animation:none !important; }
   .rt-dropdown, .rt-chevron, .pd-selbar{ transition:none !important; }
+}
+
+/* ===== Messages inbox (contact form) ===== */
+.inbox-row{ cursor:pointer; }
+.inbox-row:hover{ background:var(--adm-accent-tint); }
+.inbox-unread td:first-child strong{ color:var(--adm-ink); }
+.inbox-unread td:first-child{ box-shadow:inset 3px 0 0 var(--adm-cta); }
+.inbox-sub{ font-size:12px; color:var(--adm-text-faint); }
+.inbox-status-new{ background:var(--adm-cta-tint); color:var(--adm-cta-dark); }
+.inbox-status-handled{ background:var(--adm-accent-tint); color:var(--adm-accent-dark); }
+.inbox-overlay{
+  position:fixed; inset:0; background:rgba(20,17,13,0.55); display:flex; align-items:center; justify-content:center;
+  z-index:940; opacity:0; pointer-events:none; transition:opacity 0.25s ease; padding:16px;
+}
+.inbox-overlay.open{ opacity:1; pointer-events:auto; }
+.inbox-modal{
+  background:var(--adm-card); border-radius:var(--adm-radius-lg); box-shadow:var(--adm-shadow);
+  width:100%; max-width:560px; max-height:90vh; overflow:auto; padding:22px;
+  transform:translateY(18px) scale(.96); transition:transform 0.35s cubic-bezier(.34,1.4,.64,1);
+}
+.inbox-overlay.open .inbox-modal{ transform:none; }
+.inbox-modal-head{ display:flex; align-items:flex-start; justify-content:space-between; gap:12px; margin-bottom:10px; }
+.inbox-modal-head h3{ font-size:18px; margin:0; overflow-wrap:anywhere; }
+.inbox-meta{ display:flex; flex-direction:column; gap:2px; font-size:12.5px; color:var(--adm-text-soft); margin-bottom:14px; }
+.inbox-text{ white-space:pre-wrap; overflow-wrap:anywhere; font-size:14px; line-height:1.6; color:var(--adm-text); background:var(--adm-bg); border-radius:var(--adm-radius); padding:14px; margin-bottom:16px; }
+.inbox-actions{ display:flex; gap:10px; flex-wrap:wrap; }
+.inbox-actions .btn{ text-decoration:none; }
+@media (max-width:600px){ .inbox-actions .btn{ flex:1 1 100%; justify-content:center; text-align:center; } }
+@media (prefers-reduced-motion: reduce){ .inbox-overlay, .inbox-modal{ transition:none; } }
+
+/* ----- Messages inbox: conversation thread + composer ----- */
+.inbox-guest{ display:inline-block; margin-left:6px; padding:1px 7px; border-radius:100px; background:var(--adm-bg); color:var(--adm-text-soft); font-size:10px; font-weight:700; letter-spacing:.03em; text-transform:uppercase; }
+.inbox-thread{ display:flex; flex-direction:column; gap:10px; max-height:40vh; overflow-y:auto; padding:14px; background:var(--adm-bg); border-radius:var(--adm-radius); margin-bottom:14px; }
+.inbox-bubble-row{ display:flex; }
+.inbox-bubble-row-customer{ justify-content:flex-start; }
+.inbox-bubble-row-admin{ justify-content:flex-end; }
+.inbox-bubble{ max-width:85%; padding:9px 13px; border-radius:12px; font-size:13.5px; line-height:1.55; }
+.inbox-bubble-customer{ background:#fff; border:1px solid var(--adm-border); border-bottom-left-radius:3px; }
+.inbox-bubble-admin{ background:var(--adm-ink); color:#fff; border-bottom-right-radius:3px; }
+.inbox-bubble-who{ font-size:10.5px; font-weight:700; letter-spacing:.04em; text-transform:uppercase; opacity:.6; margin-bottom:2px; }
+.inbox-bubble-text{ white-space:pre-wrap; overflow-wrap:anywhere; }
+.inbox-bubble-time{ font-size:10.5px; opacity:.55; margin-top:4px; }
+.inbox-composer{ display:flex; flex-direction:column; gap:10px; margin-bottom:14px; }
+.inbox-composer textarea{ width:100%; padding:10px 12px; border:1px solid var(--adm-border-strong); border-radius:var(--adm-radius-sm); font:inherit; font-size:13.5px; resize:vertical; background:#fff; color:var(--adm-text); }
+.inbox-composer textarea:focus{ outline:none; border-color:var(--adm-accent); }
+.inbox-composer .btn{ align-self:flex-end; }
+.inbox-guest-note{ font-size:12.5px; color:var(--adm-text-soft); background:var(--adm-warning-tint); border-radius:var(--adm-radius-sm); padding:10px 12px; margin:0 0 14px; }
+.inbox-guest-note[hidden]{ display:none; }
+
+/* ===== Motion polish: click feedback, inbox ===== */
+@keyframes admBubbleIn{ from{ opacity:0; transform:translateY(10px) scale(.96); } to{ opacity:1; transform:translateY(0) scale(1); } }
+@keyframes admBadgePop{ 0%{ transform:scale(.6); } 55%{ transform:scale(1.25); } 100%{ transform:scale(1); } }
+
+.admin-icon-btn:active{ transform:scale(.9); }
+.admin-tab-badge.pop{ animation:admBadgePop .45s var(--adm-ease); }
+
+/* Form fields: label warms up and the ring fades in on focus. */
+.form-group label{ transition:color .2s ease; }
+.form-group:focus-within label{ color:var(--adm-accent-dark); }
+
+/* Buttons: sending spinner (same as the refresh icon spin). */
+.btn.is-loading{ pointer-events:none; }
+.btn.is-loading::before{
+  content:''; width:14px; height:14px; border-radius:50%; flex-shrink:0;
+  border:2px solid currentColor; border-right-color:transparent; animation:admSpin .7s linear infinite;
+}
+.btn.is-loading:disabled{ opacity:1; }
+
+/* Inbox rows glide in on load / filter change (not on silent re-renders). */
+.inbox-row{ transition:background .18s ease; }
+.inbox-row:active{ background:var(--adm-accent-tint); }
+.inbox-anim .inbox-row{ animation:admRise .4s var(--adm-ease) backwards; }
+.inbox-anim .inbox-row:nth-child(2){ animation-delay:.04s; }
+.inbox-anim .inbox-row:nth-child(3){ animation-delay:.08s; }
+.inbox-anim .inbox-row:nth-child(4){ animation-delay:.12s; }
+.inbox-anim .inbox-row:nth-child(5){ animation-delay:.16s; }
+.inbox-anim .inbox-row:nth-child(6){ animation-delay:.2s; }
+.inbox-anim .inbox-row:nth-child(n+7){ animation-delay:.24s; }
+
+/* Conversation: bubbles pop in once, the newest one pops in after a send. */
+.inbox-bubble-row.is-new{ animation:admBubbleIn .4s var(--adm-ease) backwards; }
+.inbox-bubble-row-customer.is-new .inbox-bubble{ transform-origin:bottom left; }
+.inbox-bubble-row-admin.is-new .inbox-bubble{ transform-origin:bottom right; }
+.inbox-thread.inbox-anim-all .inbox-bubble-row{ animation:admBubbleIn .45s var(--adm-ease) backwards; }
+.inbox-thread.inbox-anim-all .inbox-bubble-row:nth-child(2){ animation-delay:.08s; }
+.inbox-thread.inbox-anim-all .inbox-bubble-row:nth-child(3){ animation-delay:.16s; }
+.inbox-thread.inbox-anim-all .inbox-bubble-row:nth-child(4){ animation-delay:.24s; }
+.inbox-thread.inbox-anim-all .inbox-bubble-row:nth-child(n+5){ animation-delay:.32s; }
+.inbox-composer textarea{ transition:border-color .2s ease, box-shadow .25s ease; }
+.inbox-composer textarea:focus{ box-shadow:0 0 0 3px var(--adm-accent-tint); }
+
+@media (prefers-reduced-motion: reduce){
+  .admin-tab-badge.pop, .inbox-anim .inbox-row, .inbox-bubble-row.is-new,
+  .inbox-thread.inbox-anim-all .inbox-bubble-row, .btn.is-loading::before{ animation:none !important; }
+  .admin-icon-btn:active{ transform:none; }
+  .inbox-modal{ transition:none; }
+}
+
+/* =====================================================================
+   Animated dropdown lists (see ui-dropdown.js)
+   ===================================================================== */
+@keyframes ccDdOptIn{ from{ opacity:0; transform:translateY(-6px); } to{ opacity:1; transform:translateY(0); } }
+@keyframes ccDdRing{ 0%{ box-shadow:0 0 0 0 rgba(124,152,133,.45); } 100%{ box-shadow:0 0 0 9px rgba(124,152,133,0); } }
+@keyframes ccDdPick{ 0%{ transform:scale(1); } 40%{ transform:scale(1.025); background-color:var(--adm-accent-tint); } 100%{ transform:scale(1); } }
+
+.cc-dd-menu{
+  position:fixed; z-index:5000; box-sizing:border-box; overflow-y:auto; overscroll-behavior:contain;
+  padding:6px; background:#fff; border:1px solid var(--adm-border); border-radius:var(--adm-radius); box-shadow:var(--adm-shadow);
+  font-size:13px; opacity:0; pointer-events:none;
+  transform:translateY(-10px) scale(.96); transform-origin:top center;
+  transition:opacity .16s ease, transform .34s cubic-bezier(.34,1.4,.64,1);
+}
+.cc-dd-menu.is-up{ transform:translateY(10px) scale(.96); transform-origin:bottom center; }
+.cc-dd-menu.is-open{ opacity:1; transform:none; pointer-events:auto; }
+.cc-dd-menu.is-closing{ opacity:0; transform:translateY(-6px) scale(.98); pointer-events:none; transition-duration:.12s; }
+.cc-dd-menu.is-up.is-closing{ transform:translateY(6px) scale(.98); }
+
+.cc-dd-opt{
+  position:relative; display:flex; align-items:center; justify-content:space-between; gap:12px;
+  padding:9px 12px; border-radius:var(--adm-radius-sm); cursor:pointer; line-height:1.35;
+  color:var(--adm-text); transition:background .14s ease, color .14s ease, transform .14s ease;
+}
+.cc-dd-menu.is-open .cc-dd-opt{ animation:ccDdOptIn .32s cubic-bezier(.22,1,.36,1) backwards; animation-delay:calc(var(--i, 0) * 20ms + 40ms); }
+.cc-dd-opt.is-active{ background:var(--adm-accent-tint); color:var(--adm-ink); }
+.cc-dd-opt:active{ transform:scale(.98); }
+.cc-dd-opt.is-selected{ font-weight:600; color:var(--adm-ink); }
+.cc-dd-opt.is-selected::after{
+  content:''; flex-shrink:0; width:14px; height:14px;
+  background:url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="%235F7A68" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12l5 5L20 6"/></svg>') center/contain no-repeat;
+}
+.cc-dd-opt.is-disabled{ opacity:.4; cursor:not-allowed; }
+.cc-dd-opt.is-disabled:active{ transform:none; }
+.cc-dd-group{ padding:8px 12px 4px; font-size:10.5px; font-weight:700; text-transform:uppercase; letter-spacing:.08em; color:var(--adm-text-faint); }
+
+/* The field itself: a soft ring pulses when the list opens, and it "pops" when you pick. */
+select.cc-dd-open{ animation:ccDdRing .5s ease-out; }
+select.cc-dd-picked{ animation:ccDdPick .4s cubic-bezier(.22,1,.36,1); }
+
+@media (prefers-reduced-motion: reduce){
+  .cc-dd-menu, .cc-dd-menu.is-closing{ transition:none; transform:none; }
+  .cc-dd-menu.is-open .cc-dd-opt, select.cc-dd-open, select.cc-dd-picked{ animation:none; }
+}
+
+/* ---------- Admin dropdown panels that already exist: inventory alerts + returns ---------- */
+.inv-dropdown-inner, .rt-dropdown-inner{ opacity:0; transform:translateY(-8px); transition:opacity .3s ease .05s, transform .4s var(--adm-ease) .05s; }
+.is-open .inv-dropdown-inner, .rt-card.is-open .rt-dropdown-inner{ opacity:1; transform:none; }
+@media (prefers-reduced-motion: reduce){
+  .inv-dropdown-inner, .rt-dropdown-inner{ opacity:1; transform:none; transition:none; }
 }
