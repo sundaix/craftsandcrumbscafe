@@ -1,12 +1,7 @@
 const admin = require('../_lib/firebaseAdmin');
+const delivery = require('../_lib/deliveryFee');
 
 module.exports = async (req, res) => {
-  // Allow browser/Capacitor app to call this endpoint
-  res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'GET,POST,OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
-  if(req.method === 'OPTIONS') return res.status(200).end();
-  
   if(req.method !== 'POST'){
     return res.status(405).json({ error: 'method-not-allowed' });
   }
@@ -30,6 +25,30 @@ module.exports = async (req, res) => {
     return res.status(404).json({ error: 'order-not-found' });
   }
   const order = orderSnap.data();
+
+  // Delivery fee is decided HERE, never by the browser: recompute it from
+  // the order's saved map pin + the shop's pricing settings, and overwrite
+  // whatever totals the client wrote. (Pickup orders carry no fee.)
+  if(order.fulfillment === 'delivery'){
+    const lat = Number(order.customer && order.customer.lat);
+    const lng = Number(order.customer && order.customer.lng);
+    if(!order.customer || order.customer.lat == null || order.customer.lng == null || !Number.isFinite(lat) || !Number.isFinite(lng)){
+      return res.status(400).json({ error: 'missing-delivery-pin' });
+    }
+    const pricing = await delivery.loadPricing(db);
+    const route = await delivery.routeDistance(pricing, lat, lng);
+    if(route.distanceKm > pricing.maxKm){
+      return res.status(400).json({ error: 'out-of-range', maxKm: pricing.maxKm });
+    }
+    const fee = delivery.computeFee(route.distanceKm, pricing);
+    const subtotal = (order.items || []).reduce((sum, it) => sum + (Number(it.price) || 0) * (Number(it.qty) || 0), 0);
+    order.totals = {
+      ...(order.totals || {}),
+      subtotal, deliveryFee: fee, total: subtotal + fee,
+      distanceKm: route.distanceKm, durationMin: route.durationMin, distanceSource: route.source
+    };
+    await orderRef.update({ totals: order.totals });
+  }
 
   // The amount PayMongo charges comes entirely from what's already in
   // Firestore for this order, never from anything the browser sends
