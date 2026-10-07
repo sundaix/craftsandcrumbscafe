@@ -336,6 +336,13 @@
           <label for="coAddress">Delivery address</label>
           <div id="coSavedAddressPicker" class="saved-address-picker" style="display:none;"></div>
           <input id="coAddress" type="text" placeholder="Street, Barangay, City">
+          <div class="co-pin-row" id="coPinRow">
+            <button type="button" class="btn btn-outline btn-sm" id="coPinOnMapBtn">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" style="margin-right:6px; vertical-align:-2px;"><path d="M12 21s-6-5.6-6-10.5A6 6 0 0 1 12 4.5a6 6 0 0 1 6 6C18 15.4 12 21 12 21z" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/><circle cx="12" cy="10.5" r="2.2" stroke="currentColor" stroke-width="1.7"/></svg>Pin on map
+            </button>
+            <span class="co-pin-status" id="coPinStatus"></span>
+          </div>
+          <p class="form-hint" style="margin-top:8px;">We calculate your delivery fee from the pin: ₱40 for the first 2 km, then ₱10 per extra km (up to 10 km).</p>
         </div>
       </div>
 
@@ -424,22 +431,6 @@
       <button type="button" class="btn btn-primary btn-sm" id="addAddressBtn">+ Add New Address</button>
     </div>
     <div id="addressesList" class="addresses-list"></div>
-  </div>
-</div>
-
-<!-- my messages page (customer inbox) -->
-<div class="page" data-page="messages">
-  <div class="container order-history-wrap">
-    <div class="section-head">
-      <div>
-        <div class="eyebrow">Your Account</div>
-        <h1>My Messages</h1>
-        <p class="wishlist-count">Your conversations with the store, and our replies.</p>
-      </div>
-      <button type="button" class="btn btn-primary btn-sm" data-nav="contact">+ New Message</button>
-    </div>
-    <div id="myMessagesList" class="cm-list"></div>
-    <div id="myMessageThread" class="cm-thread" style="display:none;"></div>
   </div>
 </div>
 
@@ -570,32 +561,13 @@
   <div class="container contact-layout">
     <div class="form-card contact-form-card">
       <h3>Send a message</h3>
-      <p class="contact-note" id="contactNote"></p>
       <form id="contactForm">
         <div class="form-row">
           <div class="form-group"><label for="cName">Full name</label><input id="cName" type="text" placeholder="Juan Dela Cruz" required></div>
           <div class="form-group"><label for="cEmail">Email address</label><input id="cEmail" type="email" placeholder="you@email.com" required></div>
         </div>
-        <div class="form-group">
-          <label for="cSubject">Subject</label>
-          <select id="cSubject" required>
-            <option value="" disabled selected>Choose a subject</option>
-            <option value="Order issue">Order issue</option>
-            <option value="Delivery question">Delivery question</option>
-            <option value="Payment issue">Payment issue</option>
-            <option value="Product question">Product question</option>
-            <option value="Catering / bulk order">Catering / bulk order</option>
-            <option value="Feedback or suggestion">Feedback or suggestion</option>
-            <option value="Account help">Account help</option>
-            <option value="Others">Others</option>
-          </select>
-        </div>
-        <div class="form-group" id="cSubjectOtherWrap" style="display:none;">
-          <label for="cSubjectOther">Tell us the subject</label>
-          <input id="cSubjectOther" type="text" maxlength="100" placeholder="What's this about?">
-        </div>
+        <div class="form-group"><label for="cSubject">Subject</label><input id="cSubject" type="text" placeholder="What's this about?" required></div>
         <div class="form-group"><label for="cMessage">Message</label><textarea id="cMessage" rows="5" placeholder="Tell us a bit more..." required></textarea></div>
-        <div class="cf-hp" aria-hidden="true"><label for="cWebsite">Leave this field empty</label><input id="cWebsite" type="text" tabindex="-1" autocomplete="off"></div>
         <button type="submit" class="btn btn-primary btn-full">Send Message</button>
       </form>
     </div>
@@ -1112,12 +1084,10 @@
 <script type="module" src="wishlist-service.js"></script>
 <script type="module" src="addresses-service.js"></script>
 <script type="module" src="review-service.js"></script>
-<script type="module" src="contact-service.js"></script>
 
 <script src="email-notifications.js"></script>
 <script src="image-upload-service.js"></script>
 <script src="shared-catalog.js"></script>
-<script src="ui-dropdown.js"></script>
 <script src="script.js"></script>
 </body>
 </html>
