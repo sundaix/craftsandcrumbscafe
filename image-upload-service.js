@@ -1,38 +1,3 @@
-/* =========================================================
-   Crafts & Crumbs — image-upload-service.js
-   Handles the admin dashboard's "upload an image" fields for
-   products and combos.
-
-   Uses Cloudinary's free plan instead of Firebase Storage —
-   Firebase now requires a linked billing card (the pay-as-you-go
-   "Blaze" plan) just to turn Storage on at all, even to stay
-   completely within its free quota. Cloudinary's free plan needs
-   no card, ever, and comfortably covers a catalog of product
-   photos for a project like this.
-
-   SETUP (one-time, no credit card required):
-   1. Create a free account at https://cloudinary.com
-   2. Copy your "Cloud name" from the dashboard — paste it below.
-   3. Go to Settings > Upload > Upload presets > Add upload preset.
-      Set "Signing Mode" to UNSIGNED (this is what lets the browser
-      upload directly, with no server/API secret involved). Name it
-      anything, then paste that name below too.
-   Until both constants below are filled in, uploads will fail with
-   a clear "not-configured" error rather than a confusing one.
-
-   Every product/combo image in this app is displayed through
-   several differently-shaped containers off the SAME single `img`
-   field — a landscape-ish grid card, a 1:1 product detail hero, and
-   a small admin table thumbnail — all using CSS object-fit:cover.
-   Rather than asking the admin to prepare a different crop for each
-   one, every upload here is center-cropped to a single 1000×1000
-   square before it's sent: that exactly matches the most demanding
-   container (the 1:1 detail hero shows the whole image, no
-   cropping), while object-fit:cover still crops it in gracefully
-   everywhere narrower. It also keeps the uploaded file small, which
-   matters more here than with Firebase Storage since Cloudinary's
-   free plan is a shared monthly credit pool across every image. */
-
 const CLOUDINARY_CLOUD_NAME = 'tzowktf6';
 const CLOUDINARY_UPLOAD_PRESET = 'jprqkzcf';
 
@@ -73,6 +38,26 @@ async function resizeImageToSquare(file){
   });
 }
 
+/* Resizes WITHOUT cropping — keeps the whole photo, just scales it so its
+   longest side is at most `maxSide`. Used for delivery-proof photos (the
+   rider app), where cropping to a square could cut off the very thing
+   being photographed (the parcel at the door, the house number...). */
+async function resizeImageToMax(file, maxSide = 1280){
+  const img = await loadImageFromFile(file);
+  const scale = Math.min(1, maxSide / Math.max(img.width, img.height));
+  const canvas = document.createElement('canvas');
+  canvas.width = Math.max(1, Math.round(img.width * scale));
+  canvas.height = Math.max(1, Math.round(img.height * scale));
+  canvas.getContext('2d').drawImage(img, 0, 0, canvas.width, canvas.height);
+  return new Promise((resolve, reject) => {
+    canvas.toBlob(
+      blob => blob ? resolve(blob) : reject(new Error('canvas-export-failed')),
+      'image/jpeg',
+      JPEG_QUALITY
+    );
+  });
+}
+
 async function uploadImage(blob, folder, id){
   if(CLOUDINARY_CLOUD_NAME === 'YOUR_CLOUD_NAME' || CLOUDINARY_UPLOAD_PRESET === 'YOUR_UNSIGNED_UPLOAD_PRESET'){
     throw new Error('cloudinary-not-configured');
@@ -91,4 +76,4 @@ async function uploadImage(blob, folder, id){
   return data.secure_url;
 }
 
-window.CCImages = { resizeImageToSquare, uploadImage };
+window.CCImages = { resizeImageToSquare, resizeImageToMax, uploadImage };
