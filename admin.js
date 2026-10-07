@@ -701,7 +701,7 @@ function renderOrderStatusChart(orders){
   if(!total) return;
 
   // Same palette family as the status pills/badges elsewhere in the dashboard.
-  const statusColors = { pending: '#C99A3A', preparing: '#7C93A6', ready: '#B08659', completed: '#7C9885', cancelled: '#B65C5C' };
+  const statusColors = { pending: '#C99A3A', preparing: '#7C93A6', ready: '#B08659', out_for_delivery: '#A8824F', delivery_failed: '#C0734A', completed: '#7C9885', cancelled: '#B65C5C' };
   const labels = ORDER_STATUSES.map(formatStatusLabel);
   const values = ORDER_STATUSES.map(s => counts[s]);
 
@@ -1627,7 +1627,7 @@ async function loadAndRenderAdminOrders(){
   renderAdminOverviewStats();
 }
 
-const ORDER_STATUSES = ['pending', 'preparing', 'ready', 'out_for_delivery', 'completed', 'cancelled'];
+const ORDER_STATUSES = ['pending', 'preparing', 'ready', 'out_for_delivery', 'delivery_failed', 'completed', 'cancelled'];
 
 /* Human-friendly label for a status value — needed now that
    'out_for_delivery' shouldn't render as "Out_for_delivery". */
@@ -1863,9 +1863,13 @@ $(document).on('change', '[data-order-rider]', async function(){
   const $select = $(this);
   $select.prop('disabled', true);
   try{
-    await window.CCOrders.assignRider(orderId, riderId);
+    await window.CCOrders.assignRider(orderId, riderId, rider ? { name: rider.name || rider.email || null, phone: rider.phone || null } : null);
     const order = ADMIN_ORDERS.find(o => o.id === orderId);
-    if(order) order.riderId = riderId;
+    if(order){
+      order.riderId = riderId;
+      order.riderName = rider ? (rider.name || rider.email || null) : null;
+      order.riderPhone = rider ? (rider.phone || null) : null;
+    }
     const orderTag = `#${orderId.slice(0,6).toUpperCase()}`;
     logActivity('update', 'order', orderId, riderId
       ? `Assigned order ${orderTag} to rider ${rider?.name || rider?.email || riderId}`
@@ -1898,6 +1902,35 @@ function formatOrderTimestamp(val){
   }
   if(ms === null) return 'Unknown date';
   return new Date(ms).toLocaleString('en-PH', { dateStyle:'medium', timeStyle:'short' });
+}
+
+/* Delivery details for the Order Detail modal: how far it is, who has
+   it, the rider's timeline, and the proof they left (note + photo) or why
+   the delivery failed. Everything here is optional — an order only shows
+   the lines it actually has. */
+function odDeliverySectionHtml(order){
+  if(order.fulfillment !== 'delivery') return '';
+  const t = order.totals || {};
+  const field = (label, value, full) => `<div class="order-detail-field${full ? ' order-detail-field-full' : ''}"><label>${label}</label><span>${value}</span></div>`;
+  const rows = [];
+  if(t.distanceKm != null) rows.push(field('Distance', `${Number(t.distanceKm).toFixed(1)} km${t.durationMin ? ` · about ${umEsc(t.durationMin)} min` : ''}${t.distanceSource === 'estimate' ? ' (estimated)' : ''}`));
+  rows.push(field('Rider', order.riderId ? umEsc(order.riderName || 'Assigned') : 'Not assigned yet'));
+  if(order.riderPhone) rows.push(field('Rider phone', umEsc(order.riderPhone)));
+  if(order.pickedUpAt) rows.push(field('Picked up', umEsc(formatOrderTimestamp(order.pickedUpAt))));
+  if(order.arrivedAt) rows.push(field('Arrived', umEsc(formatOrderTimestamp(order.arrivedAt))));
+  if(order.completedAt) rows.push(field('Delivered', umEsc(formatOrderTimestamp(order.completedAt))));
+  if(order.failedAt) rows.push(field('Delivery failed', umEsc(formatOrderTimestamp(order.failedAt))));
+  if(order.failureReason) rows.push(field('Reason', `<strong style="color:var(--adm-danger-dark);">${umEsc(order.failureReason)}</strong>`, true));
+  if(order.deliveryProof) rows.push(field('Rider note', umEsc(order.deliveryProof), true));
+  const photo = order.deliveryPhoto
+    ? `<a class="od-proof-link" href="${umEsc(order.deliveryPhoto)}" target="_blank" rel="noopener"><img class="od-proof-img" src="${umEsc(order.deliveryPhoto)}" alt="Delivery photo" loading="lazy"></a>`
+    : '';
+  return `
+    <div class="order-detail-section">
+      <h4>Delivery</h4>
+      <div class="order-detail-grid">${rows.join('')}</div>
+      ${photo}
+    </div>`;
 }
 
 function openOrderDetailModal(orderId){
@@ -1944,6 +1977,8 @@ function openOrderDetailModal(orderId){
         <div class="order-detail-field"><label>Payment Method</label><span>${order.paymentMethod || '—'}</span></div>
       </div>
     </div>
+
+    ${odDeliverySectionHtml(order)}
 
     <div class="order-detail-section">
       <h4>Items (${itemCount})</h4>
@@ -2945,13 +2980,121 @@ $(document).on('click', '#adminFillDrinkDetailsBtn', async function(){
 });
 
 /* ================= SETTINGS ================= */
-/* Populates the delivery fee input from Firestore each time the
+/* Delivery pricing (route-based): base fee for the first few km, then a
+   per-km charge, rounded up to the next few pesos, nothing past a max
+   distance — measured from the shop's pin. The same formula runs in the
+   storefront (script.js) and, authoritatively, on the server
+   (api/_lib/deliveryFee.js). */
+const AS_DEFAULT_SHOP = { lat: 14.6760, lng: 121.0437 };
+let asShopMap = null;
+let asShopMarker = null;
+
+function asReadPricing(){
+  return {
+    baseFee: parseFloat($('#asBaseFee').val()),
+    baseKm: parseFloat($('#asBaseKm').val()),
+    perKm: parseFloat($('#asPerKm').val()),
+    roundTo: parseFloat($('#asRoundTo').val()),
+    maxKm: parseFloat($('#asMaxKm').val()),
+    shopLat: parseFloat($('#asShopLat').val()),
+    shopLng: parseFloat($('#asShopLng').val())
+  };
+}
+
+function asFeeFor(km, p){
+  const raw = p.baseFee + Math.max(0, km - p.baseKm) * p.perKm;
+  return Math.ceil((raw - 1e-9) / p.roundTo) * p.roundTo;
+}
+
+function asRenderFeePreview(){
+  const p = asReadPricing();
+  const ok = [p.baseFee, p.baseKm, p.perKm, p.roundTo, p.maxKm].every(Number.isFinite) && p.roundTo >= 1 && p.maxKm > 0;
+  if(!ok){ $('#asFeePreview').html(''); return; }
+  const samples = [1, 2, 3, 4, 5, 7, 10].filter(km => km <= p.maxKm);
+  if(!samples.includes(p.maxKm)) samples.push(p.maxKm);
+  $('#asFeePreview').html(samples.map(km => `<span class="as-preview-chip"><b>${km} km</b> ${peso(asFeeFor(km, p))}</span>`).join('')
+    + `<span class="as-preview-chip as-preview-none">over ${p.maxKm} km: not delivered</span>`);
+}
+
+function asSetShopPin(lat, lng, moveMap){
+  $('#asShopLat').val(Number(lat).toFixed(6));
+  $('#asShopLng').val(Number(lng).toFixed(6));
+  if(asShopMarker) asShopMarker.setLatLng([lat, lng]);
+  if(asShopMap && moveMap) asShopMap.setView([lat, lng], 16);
+  const placeholder = Math.abs(lat - AS_DEFAULT_SHOP.lat) < 1e-6 && Math.abs(lng - AS_DEFAULT_SHOP.lng) < 1e-6;
+  $('#asShopCoords').html(placeholder
+    ? '⚠️ This is still the <strong>placeholder pin</strong> — move it to your shop, then save.'
+    : `Shop pin: ${Number(lat).toFixed(5)}, ${Number(lng).toFixed(5)}`);
+}
+
+function asInitShopMap(lat, lng){
+  if(typeof L === 'undefined' || !document.getElementById('asShopMap')) return;
+  if(!asShopMap){
+    asShopMap = L.map('asShopMap').setView([lat, lng], 15);
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      maxZoom: 19,
+      attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+    }).addTo(asShopMap);
+    asShopMarker = L.marker([lat, lng], { draggable: true }).addTo(asShopMap);
+    asShopMarker.on('dragend', () => { const p = asShopMarker.getLatLng(); asSetShopPin(p.lat, p.lng, false); });
+    asShopMap.on('click', (e) => asSetShopPin(e.latlng.lat, e.latlng.lng, false));
+    // The Settings tab is hidden (0x0) until opened — re-measure whenever it
+    // becomes visible so tiles don't render into a collapsed box.
+    if(typeof ResizeObserver !== 'undefined'){
+      new ResizeObserver(() => asShopMap.invalidateSize()).observe(document.getElementById('asShopMap'));
+    }
+  }
+  asSetShopPin(lat, lng, true);
+  setTimeout(() => asShopMap.invalidateSize(), 200);
+}
+
+$(document).on('input', '#asBaseFee, #asBaseKm, #asPerKm, #asRoundTo, #asMaxKm', asRenderFeePreview);
+$(document).on('change', '#asShopLat, #asShopLng', function(){
+  const lat = parseFloat($('#asShopLat').val()), lng = parseFloat($('#asShopLng').val());
+  if(Number.isFinite(lat) && Number.isFinite(lng) && Math.abs(lat) <= 90 && Math.abs(lng) <= 180) asSetShopPin(lat, lng, true);
+});
+
+async function asSearchShop(){
+  const q = $('#asShopSearch').val().trim();
+  if(!q) return;
+  const $btn = $('#asShopSearchBtn').prop('disabled', true).text('Searching...');
+  try{
+    const res = await fetch(`https://nominatim.openstreetmap.org/search?format=jsonv2&limit=1&q=${encodeURIComponent(q)}`);
+    const results = await res.json();
+    if(!results.length){ showToast('Could not find that address. Drag the pin instead.', 'warning'); return; }
+    asSetShopPin(parseFloat(results[0].lat), parseFloat(results[0].lon), true);
+  } catch(err){
+    console.error(err);
+    showToast('Address search failed. Please try again.', 'error');
+  } finally {
+    $btn.prop('disabled', false).text('Search');
+  }
+}
+$(document).on('click', '#asShopSearchBtn', asSearchShop);
+$(document).on('keydown', '#asShopSearch', function(e){ if(e.key === 'Enter'){ e.preventDefault(); asSearchShop(); } });
+$(document).on('click', '#asShopLocateBtn', function(){
+  if(!navigator.geolocation){ showToast('Your browser does not support location access.', 'warning'); return; }
+  const $btn = $(this).prop('disabled', true).text('Locating...');
+  navigator.geolocation.getCurrentPosition(
+    (pos) => { asSetShopPin(pos.coords.latitude, pos.coords.longitude, true); $btn.prop('disabled', false).text('Use my location'); },
+    () => { showToast('Could not access your location. Drag the pin instead.', 'warning'); $btn.prop('disabled', false).text('Use my location'); }
+  );
+});
+
+/* Populates the delivery pricing form from Firestore each time the
    dashboard is (re)rendered, e.g. on navigating to the Admin page. */
 async function loadAndRenderAdminSettings(){
   try{
     const settings = await window.CCSettings.fetchSettings();
-    DELIVERY_FEE = settings.deliveryFee;
-    $('#asDeliveryFee').val(settings.deliveryFee);
+    const dp = settings.deliveryPricing;
+    DELIVERY_FEE = dp.baseFee;
+    $('#asBaseFee').val(dp.baseFee);
+    $('#asBaseKm').val(dp.baseKm);
+    $('#asPerKm').val(dp.perKm);
+    $('#asRoundTo').val(dp.roundTo);
+    $('#asMaxKm').val(dp.maxKm);
+    asInitShopMap(Number(dp.shopLat), Number(dp.shopLng));
+    asRenderFeePreview();
     LOW_STOCK_THRESHOLD = Number.isInteger(settings.lowStockThreshold) ? settings.lowStockThreshold : window.CCSettings.DEFAULT_LOW_STOCK_THRESHOLD;
     $('#asLowStock').val(LOW_STOCK_THRESHOLD);
     // Products render before settings finish loading, so redo the parts
@@ -2960,35 +3103,51 @@ async function loadAndRenderAdminSettings(){
     renderInventoryAlerts();
   } catch(err){
     console.error('Could not load settings from Firestore.', err);
-    // Fall back to whatever's cached (or the built-in default) so the
-    // field isn't left blank if the fetch above failed.
-    $('#asDeliveryFee').val(DELIVERY_FEE);
+    // Fall back to the built-in defaults so the form isn't left blank.
+    const d = window.CCSettings.DEFAULT_DELIVERY_PRICING;
+    $('#asBaseFee').val(d.baseFee); $('#asBaseKm').val(d.baseKm); $('#asPerKm').val(d.perKm);
+    $('#asRoundTo').val(d.roundTo); $('#asMaxKm').val(d.maxKm);
+    asInitShopMap(d.shopLat, d.shopLng);
+    asRenderFeePreview();
   }
 }
 
 $(document).on('submit', '#adminSettingsForm', async function(e){
   e.preventDefault();
-  const fee = parseFloat($('#asDeliveryFee').val());
-  if(isNaN(fee) || fee < 0){
-    $('#adminSettingsStatus').text('Enter a valid, non-negative delivery fee.');
+  const p = asReadPricing();
+  const $status = $('#adminSettingsStatus');
+  if(![p.baseFee, p.baseKm, p.perKm].every(n => Number.isFinite(n) && n >= 0)){
+    $status.text('Base fee, base distance and per-km charge must be zero or more.');
+    return;
+  }
+  if(!Number.isFinite(p.roundTo) || p.roundTo < 1){
+    $status.text('Round up to must be at least ₱1.');
+    return;
+  }
+  if(!Number.isFinite(p.maxKm) || p.maxKm <= 0 || p.maxKm < p.baseKm){
+    $status.text('Maximum distance must be greater than zero and at least the base distance.');
+    return;
+  }
+  if(!Number.isFinite(p.shopLat) || !Number.isFinite(p.shopLng) || Math.abs(p.shopLat) > 90 || Math.abs(p.shopLng) > 180){
+    $status.text('Set the shop location on the map first.');
     return;
   }
   const $btn = $('#adminSettingsSubmitBtn');
-  const $status = $('#adminSettingsStatus');
   $btn.prop('disabled', true).text('Saving...');
   $status.text('');
   try{
-    await window.CCSettings.updateDeliveryFee(fee);
-    logActivity('update', 'settings', 'deliveryFee', `Updated delivery fee to ${peso(fee)}`);
-    // Update the in-memory value script.js reads at checkout, so the
-    // new fee takes effect immediately without a page reload.
-    DELIVERY_FEE = fee;
-    $status.text('Saved — new orders will use this delivery fee.');
+    const current = (await window.CCSettings.fetchSettings()).deliveryPricing;
+    const pricing = { ...current, ...p };
+    await window.CCSettings.updateDeliveryPricing(pricing);
+    logActivity('update', 'settings', 'deliveryPricing',
+      `Updated delivery pricing: ${peso(p.baseFee)} for the first ${p.baseKm} km, +${peso(p.perKm)}/km after, rounded up to ${peso(p.roundTo)}, max ${p.maxKm} km`);
+    DELIVERY_FEE = p.baseFee;
+    $status.text('Saved — new orders will be priced by distance.');
   } catch(err){
     console.error(err);
     $status.text('Something went wrong while saving. Check the console for details.');
   } finally {
-    $btn.prop('disabled', false).text('Save Delivery Fee');
+    $btn.prop('disabled', false).text('Save Delivery Pricing');
   }
 });
 
