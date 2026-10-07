@@ -1359,3 +1359,17 @@ select.cc-dd-picked{ animation:ccDdPick .4s cubic-bezier(.22,1,.36,1); }
 @media (prefers-reduced-motion: reduce){
   .inv-dropdown-inner, .rt-dropdown-inner{ opacity:1; transform:none; transition:none; }
 }
+
+/* ---------- Delivery pricing (Settings) + delivery details (Order Detail) ---------- */
+.admin-status-delivery_failed{ background:rgba(192,115,74,0.18); color:#8a4a24; }
+.as-grid{ display:grid; grid-template-columns:repeat(auto-fit, minmax(190px, 1fr)); gap:0 16px; }
+.as-subhead{ margin:22px 0 4px; font-size:14px; font-weight:700; color:var(--adm-ink); }
+.as-preview{ display:flex; flex-wrap:wrap; gap:8px; margin:4px 0 6px; }
+.as-preview-chip{ font-size:12px; padding:5px 11px; border-radius:100px; background:var(--adm-accent-tint); color:var(--adm-accent-dark); white-space:nowrap; }
+.as-preview-chip b{ margin-right:4px; color:var(--adm-ink); }
+.as-preview-none{ background:var(--adm-danger-tint); color:var(--adm-danger-dark); }
+.as-map-tools{ display:flex; gap:8px; flex-wrap:wrap; margin-bottom:10px; }
+.as-map-tools input{ flex:1; min-width:200px; }
+#asShopMap{ width:100%; height:320px; border:1px solid var(--adm-border); border-radius:var(--adm-radius); overflow:hidden; z-index:0; }
+.od-proof-link{ display:inline-block; margin-top:12px; }
+.od-proof-img{ display:block; max-width:100%; max-height:260px; border-radius:var(--adm-radius); border:1px solid var(--adm-border); }
