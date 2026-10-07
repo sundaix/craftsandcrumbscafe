@@ -777,10 +777,16 @@ $(document).on('click', '[data-address-delete]', async function(){
 
 /* ---------- Address form modal (map + fields, shared by My Addresses & Checkout) ---------- */
 
-function openAddressForm({ editing, context }){
+function openAddressForm({ editing, context, prefill }){
   editingAddressId = editing ? editing.id : null;
   addressFormContext = context;
-  $('#addressFormTitle').text(editing ? 'Edit Address' : 'Add Address');
+  // A logged-out customer can still pin a one-off delivery location from
+  // checkout — it's used for this order only and never saved anywhere.
+  const guestPin = context === 'checkout' && (!window.currentUser || window.currentUser.isAnonymous);
+  $('#afLabel').closest('.form-group').toggle(!guestPin);
+  $('#afIsDefault').closest('label').toggle(!guestPin);
+  $('#addressFormSubmit').text(guestPin ? 'Use This Location' : 'Save Address');
+  $('#addressFormTitle').text(guestPin ? 'Pin Your Delivery Location' : (editing ? 'Edit Address' : 'Add Address'));
   $('#afLabel').val(editing ? (editing.label || '') : '');
   $('#afAddress').val(editing ? (editing.address || '') : '');
   $('#afIsDefault').prop('checked', editing ? !!editing.isDefault : myAddresses.length === 0);
@@ -793,7 +799,15 @@ function openAddressForm({ editing, context }){
   // size) before Leaflet can measure its container, or the map tiles
   // render into a collapsed 0x0 box — a short delay covers the CSS
   // transition that fades/scales the modal in.
-  setTimeout(() => initOrResetAddressMap(startLat, startLng), 60);
+  setTimeout(() => {
+    initOrResetAddressMap(startLat, startLng);
+    // Came from the "Pin on map" button with an address already typed —
+    // look it up so the pin starts near it instead of at the default spot.
+    if(prefill){
+      $('#afAddress').val(prefill);
+      forwardGeocodeFromField();
+    }
+  }, 60);
 }
 
 function closeAddressForm(){
@@ -906,7 +920,8 @@ $(document).on('click', '#addressFormOverlay', function(e){
 
 $(document).on('submit', '#addressForm', async function(e){
   e.preventDefault();
-  if(!window.currentUser || window.currentUser.isAnonymous){
+  const isGuest = !window.currentUser || window.currentUser.isAnonymous;
+  if(isGuest && addressFormContext !== 'checkout'){
     showToast('Please log in to save an address.', 'warning');
     return;
   }
@@ -916,6 +931,14 @@ $(document).on('submit', '#addressForm', async function(e){
     return;
   }
   const pos = addressFormMarker.getLatLng();
+  if(isGuest){
+    checkoutGuestPin = { address, lat: pos.lat, lng: pos.lng };
+    $('#coAddress').val(address);
+    closeAddressForm();
+    showToast('Delivery location set.', 'success');
+    refreshDeliveryQuote();
+    return;
+  }
   const fields = {
     label: $('#afLabel').val().trim(),
     address,
@@ -985,6 +1008,7 @@ function selectCheckoutAddress(id){
   $('#coAddress').val(a.address);
   $('#coSavedAddressPicker .address-chip').removeClass('active');
   $(`#coSavedAddressPicker [data-checkout-address="${id}"]`).addClass('active');
+  if($('.page[data-page="checkout"]').hasClass('active')) refreshDeliveryQuote();
 }
 
 $(document).on('click', '[data-checkout-address]', function(){
@@ -1374,6 +1398,7 @@ function navigate(pageName){
   if(pageName === 'cart') renderCart();
   if(pageName === 'checkout') renderCheckoutSummary();
   if(pageName === 'checkout') renderCheckoutAddressPicker();
+  if(pageName === 'checkout') refreshDeliveryQuote();
   if(pageName === 'order-history') renderOrderHistory();
   if(pageName === 'wishlist') renderWishlistPage();
   if(pageName === 'addresses') renderAddressesPage();
@@ -1449,10 +1474,10 @@ async function renderOrderHistory(){
       <div class="order-card">
         <div class="order-card-head">
           <span class="order-card-num">#${o.id.slice(0,6).toUpperCase()}</span>
-          <span class="order-status-badge order-status-${status}">${status.charAt(0).toUpperCase() + status.slice(1)}</span>
+          <span class="order-status-badge order-status-${status}">${orderStatusLabel(status)}</span>
         </div>
         <p class="order-card-items">${itemsText}</p>
-        ${orderStatusTracker(status)}
+        ${orderStatusTracker(status, o)}
         ${orderReturnBlock(o, status, returnsByOrder)}
         <div class="order-card-foot">
           <span>${toDate(o.createdAt)} · ${o.fulfillment === 'delivery' ? 'Delivery' : 'Pickup'}</span>
@@ -1573,21 +1598,56 @@ const ORDER_STAGES = [
   { key:'ready', label:'Ready' },
   { key:'completed', label:'Completed' }
 ];
+/* Delivery orders have one more step — the rider is on the way. */
+const ORDER_STAGES_DELIVERY = [
+  { key:'pending', label:'Pending' },
+  { key:'preparing', label:'Preparing' },
+  { key:'ready', label:'Ready' },
+  { key:'out_for_delivery', label:'On the way' },
+  { key:'completed', label:'Delivered' }
+];
 
-function orderStatusTracker(status){
+function orderStatusLabel(status){
+  if(status === 'out_for_delivery') return 'Out for delivery';
+  if(status === 'delivery_failed') return 'Delivery issue';
+  return status.charAt(0).toUpperCase() + status.slice(1);
+}
+
+/* Who is bringing the order — only shown while it's actually out for
+   delivery. The rider's name/phone are copied onto the order when they
+   claim it (customers can't read other people's profiles). */
+function orderRiderBlock(order){
+  if(!order || order.status !== 'out_for_delivery' || !order.riderName) return '';
+  const tel = (order.riderPhone || '').replace(/[^\d+]/g, '');
+  return `
+    <div class="order-rider">
+      <div class="order-rider-main">
+        <span class="order-rider-title">${order.arrivedAt ? 'Your rider has arrived!' : 'Your rider is on the way'}</span>
+        <span class="order-rider-name">${escapeHtml(order.riderName)}</span>
+      </div>
+      ${tel ? `<a class="btn btn-outline btn-sm" href="tel:${tel}">Call rider</a>` : ''}
+    </div>`;
+}
+
+function orderStatusTracker(status, order){
   if(status === 'cancelled'){
     return `<div class="order-tracker-cancelled">This order was cancelled.</div>`;
   }
-  const idx = Math.max(0, ORDER_STAGES.findIndex(s => s.key === status));
+  if(status === 'delivery_failed'){
+    return `<div class="order-tracker-issue">We couldn't complete this delivery. We'll contact you shortly to sort it out.</div>`;
+  }
+  const stages = order && order.fulfillment === 'delivery' ? ORDER_STAGES_DELIVERY : ORDER_STAGES;
+  const idx = Math.max(0, stages.findIndex(s => s.key === status));
   return `
     <div class="order-tracker">
-      ${ORDER_STAGES.map((s,i) => `
+      ${stages.map((s,i) => `
         <div class="order-tracker-step ${i <= idx ? 'done' : ''} ${i === idx ? 'current' : ''}">
           <span class="order-tracker-dot"></span>
           <span class="order-tracker-label">${s.label}</span>
         </div>
       `).join('')}
     </div>
+    ${orderRiderBlock(order)}
   `;
 }
 
@@ -2725,8 +2785,9 @@ function renderCart(){
 
   const totalQty = cart.reduce((s,c)=>s+c.qty,0);
   const subtotal = cartTotal();
-  const delivery = subtotal > 0 ? DELIVERY_FEE : 0;
-  const total = subtotal + delivery;
+  // The delivery fee depends on the route to the customer's pin, so it's
+  // worked out at checkout — the cart only shows what it starts from.
+  const total = subtotal;
 
   $wrap.html(`
     <div class="cart-layout">
@@ -2740,8 +2801,9 @@ function renderCart(){
       <div class="order-summary">
         <h3>Order Summary</h3>
         <div class="sum-row"><span>Subtotal</span><span>${peso(subtotal)}</span></div>
-        <div class="sum-row"><span>Delivery fee</span><span>${peso(delivery)}</span></div>
-        <div class="sum-row total"><span>Total</span><span>${peso(total)}</span></div>
+        <div class="sum-row"><span>Delivery fee</span><span class="sum-row-note">from ${peso(DELIVERY_PRICING.baseFee)}, by distance</span></div>
+        <div class="sum-row total"><span>Total before delivery</span><span>${peso(total)}</span></div>
+        <p class="delivery-note delivery-note-soft">Your exact delivery fee is shown at checkout once you pin your address. Pickup has no delivery fee.</p>
         <button class="btn btn-primary btn-full" style="margin-top:18px;" data-nav="checkout">Proceed to Checkout</button>
         <div class="order-summary-trust">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M6 10V8a6 6 0 0 1 12 0v2M5 10h14a1 1 0 0 1 1 1v9a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1v-9a1 1 0 0 1 1-1Z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/></svg>
@@ -2789,13 +2851,137 @@ $(document).on('click', '#cartClearBtn', function(){
   renderCart();
 });
 
+/* ================= DELIVERY FEE (by route distance) =================
+   Fee = base fee for the first few km, then a per-km charge, rounded UP
+   to the next few pesos, and no delivery past a maximum distance — all
+   editable in Admin -> Settings (settings/general.deliveryPricing).
+   Distance is the DRIVING distance from the shop to the customer's map
+   pin (free public OSRM routing, no API key). If OSRM is slow or down it
+   falls back to straight-line distance x a road factor and says it's an
+   estimate. The server (api/_lib/deliveryFee.js, used by
+   create-checkout-session) recomputes the fee at payment with the same
+   formula and is the one that actually counts. */
+let DELIVERY_PRICING = { baseFee: 40, baseKm: 2, perKm: 10, roundTo: 5, maxKm: 10, roadFactor: 1.3, shopLat: 14.6760, shopLng: 121.0437 };
+let deliveryQuote = { status: 'idle' };   // idle | nopin | loading | ok | far
+let deliveryQuoteToken = 0;
+let checkoutGuestPin = null;              // { address, lat, lng } — a pin a logged-out customer dropped (never saved anywhere)
+const routeCache = {};
+
+function applyDeliveryPricing(settings){
+  const p = settings && settings.deliveryPricing;
+  if(p){
+    Object.keys(DELIVERY_PRICING).forEach(k => {
+      if(p[k] === null || p[k] === undefined || p[k] === '') return;
+      const n = Number(p[k]);
+      if(Number.isFinite(n)) DELIVERY_PRICING[k] = n;
+    });
+  }
+  if($('.page[data-page="checkout"]').hasClass('active')) refreshDeliveryQuote();
+  else if($('.page[data-page="cart"]').hasClass('active')) renderCart();
+}
+
+function computeDeliveryFee(distanceKm){
+  const p = DELIVERY_PRICING;
+  const raw = p.baseFee + Math.max(0, distanceKm - p.baseKm) * p.perKm;
+  return Math.ceil((raw - 1e-9) / p.roundTo) * p.roundTo;
+}
+
+function haversineKm(lat1, lng1, lat2, lng2){
+  const toRad = (d) => d * Math.PI / 180;
+  const dLat = toRad(lat2 - lat1), dLng = toRad(lng2 - lng1);
+  const a = Math.sin(dLat / 2) ** 2 + Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLng / 2) ** 2;
+  return 2 * 6371 * Math.asin(Math.sqrt(a));
+}
+
+async function fetchRouteDistance(lat, lng){
+  const p = DELIVERY_PRICING;
+  const key = [lat.toFixed(5), lng.toFixed(5), p.shopLat, p.shopLng].join('|');
+  if(routeCache[key]) return routeCache[key];
+  let result = null;
+  try{
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), 5000);
+    const res = await fetch(`https://router.project-osrm.org/route/v1/driving/${p.shopLng},${p.shopLat};${lng},${lat}?overview=false`, { signal: ctrl.signal });
+    clearTimeout(timer);
+    const data = await res.json();
+    if(res.ok && data.code === 'Ok' && data.routes && data.routes[0]){
+      result = {
+        distanceKm: Math.round(data.routes[0].distance / 10) / 100,
+        durationMin: Math.max(1, Math.round(data.routes[0].duration / 60)),
+        source: 'osrm'
+      };
+    }
+  } catch(err){
+    console.warn('Routing service unavailable — using a straight-line estimate.', err);
+  }
+  if(!result){
+    const km = haversineKm(p.shopLat, p.shopLng, lat, lng) * p.roadFactor;
+    result = { distanceKm: Math.round(km * 100) / 100, durationMin: Math.max(1, Math.round(km / 25 * 60)), source: 'estimate' };
+  } else {
+    routeCache[key] = result; // only cache real routes, so an estimate gets retried next time
+  }
+  return result;
+}
+
+/* The pin that goes with what's currently in the address box — either a
+   saved address (only if the text still matches it, same rule placeOrder
+   always used) or a one-off pin a guest dropped on the map. */
+function currentCheckoutPin(){
+  if(fulfillment !== 'delivery') return null;
+  const text = ($('#coAddress').val() || '').trim();
+  if(!text) return null;
+  const saved = myAddresses.find(x => x.id === checkoutSelectedAddressId);
+  if(saved && saved.address === text && saved.lat != null && saved.lng != null && Number.isFinite(Number(saved.lat)) && Number.isFinite(Number(saved.lng))){
+    return { lat: Number(saved.lat), lng: Number(saved.lng) };
+  }
+  if(checkoutGuestPin && checkoutGuestPin.address === text){
+    return { lat: checkoutGuestPin.lat, lng: checkoutGuestPin.lng };
+  }
+  return null;
+}
+
+async function refreshDeliveryQuote(){
+  if(fulfillment !== 'delivery'){
+    deliveryQuoteToken++;
+    deliveryQuote = { status: 'idle' };
+    renderCheckoutSummary();
+    return;
+  }
+  const pin = currentCheckoutPin();
+  if(!pin){
+    deliveryQuoteToken++;
+    deliveryQuote = { status: 'nopin' };
+    renderCheckoutSummary();
+    return;
+  }
+  const token = ++deliveryQuoteToken;
+  deliveryQuote = { status: 'loading' };
+  renderCheckoutSummary();
+  const route = await fetchRouteDistance(pin.lat, pin.lng);
+  if(token !== deliveryQuoteToken) return; // a newer address was picked meanwhile
+  deliveryQuote = route.distanceKm > DELIVERY_PRICING.maxKm
+    ? { status: 'far', ...route }
+    : { status: 'ok', ...route, fee: computeDeliveryFee(route.distanceKm) };
+  renderCheckoutSummary();
+}
+
+let coAddressTimer = null;
+$(document).on('input', '#coAddress', function(){
+  clearTimeout(coAddressTimer);
+  coAddressTimer = setTimeout(refreshDeliveryQuote, 350);
+});
+
+$(document).on('click', '#coPinOnMapBtn', function(){
+  openAddressForm({ editing: null, context: 'checkout', prefill: ($('#coAddress').val() || '').trim() });
+});
+
 /* ================= CHECKOUT ================= */
 $(document).on('click', '[data-fulfillment]', function(){
   $('[data-fulfillment]').removeClass('active');
   $(this).addClass('active');
   fulfillment = $(this).data('fulfillment');
   $('#addressGroup').css('display', fulfillment === 'delivery' ? 'block' : 'none');
-  renderCheckoutSummary();
+  refreshDeliveryQuote();
 });
 
 // clean label text for a pay-opt
@@ -2812,7 +2998,10 @@ $(document).on('click', '.pay-opt', function(){
 
 function renderCheckoutSummary(){
   const subtotal = cartTotal();
-  const delivery = fulfillment === 'delivery' && subtotal > 0 ? DELIVERY_FEE : 0;
+  const isDelivery = fulfillment === 'delivery';
+  const q = deliveryQuote;
+  const quoteOk = isDelivery && q.status === 'ok';
+  const delivery = quoteOk ? q.fee : 0;
   const total = subtotal + delivery;
   const lines = cart.filter(c => findProduct(c.id)).map(c=>{
     const p = findProduct(c.id);
@@ -2821,12 +3010,34 @@ function renderCheckoutSummary(){
     return `<div class="sum-row"><span>${label}${c.optionsSummary ? `<br><small class="sum-row-opts">${c.optionsSummary}</small>` : ''}</span><span>${peso(unit*c.qty)}</span></div>`;
   }).join('') || '<div class="sum-row"><span>Your cart is empty</span><span></span></div>';
 
+  let feeRow, note = '', pinText = '', pinClass = '';
+  if(!isDelivery){
+    feeRow = `<div class="sum-row"><span>Pickup fee</span><span>${peso(0)}</span></div>`;
+  } else if(q.status === 'ok'){
+    feeRow = `<div class="sum-row"><span>Delivery fee<br><small class="sum-row-opts">${q.distanceKm.toFixed(1)} km · about ${q.durationMin} min${q.source === 'estimate' ? ' (estimated)' : ''}</small></span><span>${peso(q.fee)}</span></div>`;
+    pinText = `Pinned · ${q.distanceKm.toFixed(1)} km away`; pinClass = 'ok';
+  } else if(q.status === 'loading'){
+    feeRow = `<div class="sum-row"><span>Delivery fee</span><span class="sum-row-note">Calculating…</span></div>`;
+    pinText = 'Checking distance…';
+  } else if(q.status === 'far'){
+    feeRow = `<div class="sum-row"><span>Delivery fee</span><span>—</span></div>`;
+    note = `<p class="delivery-note delivery-note-bad">Sorry, that address is ${q.distanceKm.toFixed(1)} km away and we deliver up to ${DELIVERY_PRICING.maxKm} km. Please choose a closer address or switch to pickup.</p>`;
+    pinText = 'Out of delivery range'; pinClass = 'bad';
+  } else {
+    feeRow = `<div class="sum-row"><span>Delivery fee</span><span>—</span></div>`;
+    note = `<p class="delivery-note">Pin your address on the map so we can work out your delivery fee.</p>`;
+    pinText = 'No map pin yet'; pinClass = 'warn';
+  }
+  $('#coPinStatus').text(pinText).attr('class', 'co-pin-status ' + pinClass);
+
+  const canPlace = cart.length > 0 && (!isDelivery || quoteOk);
   $('#checkoutSummary').html(`
     <h3>Order Summary</h3>
     ${lines}
-    <div class="sum-row"><span>${fulfillment==='delivery' ? 'Delivery fee' : 'Pickup fee'}</span><span>${peso(delivery)}</span></div>
+    ${feeRow}
     <div class="sum-row total"><span>Total</span><span>${peso(total)}</span></div>
-    <button class="btn btn-primary btn-full" style="margin-top:18px;" id="placeOrderBtn" ${cart.length===0?'disabled':''}>Place Order</button>
+    ${note}
+    <button class="btn btn-primary btn-full" style="margin-top:18px;" id="placeOrderBtn" ${canPlace ? '' : 'disabled'}>Place Order</button>
   `);
 }
 
@@ -2920,21 +3131,31 @@ async function placeOrder(){
     address: fulfillment === 'delivery' ? $('#addressGroup input').val().trim() : ''
   };
   // Only attach lat/lng when the address on the form still matches the
-  // saved address it came from — if the customer hand-edited the text
-  // after picking a saved address, the old pin no longer describes
-  // where they typed, so it's better to send no coordinates than a
-  // wrong one.
-  if(fulfillment === 'delivery' && selectedAddress && selectedAddress.address === customer.address){
-    customer.lat = selectedAddress.lat;
-    customer.lng = selectedAddress.lng;
+  // pin it came from (a saved address, or a one-off pin dropped at
+  // checkout) — if the customer hand-edited the text afterwards, the old
+  // pin no longer describes where they typed, so it's better to send no
+  // coordinates than a wrong one. Delivery needs a pin: the fee and the
+  // rider's route both come from it.
+  if(fulfillment === 'delivery'){
+    const pin = currentCheckoutPin();
+    if(pin){
+      customer.lat = pin.lat;
+      customer.lng = pin.lng;
+    }
   }
   if(!customer.name || !customer.phone){
     showToast('Please fill in your name and phone number.', 'warning');
     return;
   }
 
+  if(fulfillment === 'delivery' && (deliveryQuote.status !== 'ok' || customer.lat == null)){
+    showToast(deliveryQuote.status === 'far'
+      ? 'That address is outside our delivery range.'
+      : 'Please pin your delivery address on the map first.', 'warning');
+    return;
+  }
   const subtotal = cartTotal();
-  const deliveryFee = fulfillment === 'delivery' ? DELIVERY_FEE : 0;
+  const deliveryFee = fulfillment === 'delivery' ? deliveryQuote.fee : 0;
   const total = subtotal + deliveryFee;
   const items = cart.map(c => {
     const p = findProduct(c.id);
@@ -2961,7 +3182,11 @@ async function placeOrder(){
   try{
     await window.CCAuth.ensureSignedIn();
     const orderPayload = {
-      items, totals: { subtotal, deliveryFee, total },
+      items,
+      totals: {
+        subtotal, deliveryFee, total,
+        ...(fulfillment === 'delivery' ? { distanceKm: deliveryQuote.distanceKm, durationMin: deliveryQuote.durationMin } : {})
+      },
       fulfillment, customer, paymentMethod: `${paymentMethod} (PayMongo)`,
       paymentStatus: 'pending', paymentProvider: `paymongo_${paymentGateway}`, paymentTestMode: null
     };
@@ -2985,6 +3210,10 @@ async function placeOrder(){
     console.error(err);
     if(String(err.code).includes('admin-restricted-operation') || String(err.code).includes('operation-not-allowed')){
       showToast('Guest checkout isn\'t enabled yet — turn on "Anonymous" sign-in in the Firebase Console.', 'error');
+    } else if(err.message === 'out-of-range'){
+      showToast('That address is outside our delivery range.', 'warning');
+    } else if(err.message === 'missing-delivery-pin'){
+      showToast('Please pin your delivery address on the map first.', 'warning');
     } else {
       showToast('Could not start checkout. Please try again.', 'error');
     }
@@ -3900,6 +4129,7 @@ async function loadSettingsFromFirestore(){
   try{
     const settings = await window.CCSettings.fetchSettings();
     DELIVERY_FEE = settings.deliveryFee;
+    applyDeliveryPricing(settings);
     PROMO_POPUP_CONFIG = settings.promoPopup;
     POPULAR_SECTION_CONFIG = settings.popularSection;
   } catch(err){
@@ -3933,6 +4163,7 @@ $(async function(){
   const cachedSettings = window.CCSettings.getCachedSettings();
   if(cachedSettings){
     DELIVERY_FEE = cachedSettings.deliveryFee;
+    applyDeliveryPricing(cachedSettings);
     if(cachedSettings.promoPopup) PROMO_POPUP_CONFIG = cachedSettings.promoPopup;
     if(cachedSettings.popularSection) POPULAR_SECTION_CONFIG = cachedSettings.popularSection;
   }
