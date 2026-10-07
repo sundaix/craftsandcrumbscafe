@@ -7,7 +7,23 @@ const SETTINGS_COL = "settings";
 const GENERAL_DOC_ID = "general";
 const CACHE_KEY = "cc_settings_cache_v1";
 
-export const DEFAULT_DELIVERY_FEE = 60;
+export const DEFAULT_DELIVERY_FEE = 40;
+
+/* Route-based delivery fee (see api/_lib/deliveryFee.js for the server
+   copy of the same formula): baseFee covers the first baseKm, then perKm
+   for every extra km, rounded UP to the next roundTo pesos; nothing is
+   delivered beyond maxKm. shopLat/shopLng is where distance is measured
+   from — a placeholder pin until it's set in Admin -> Settings. */
+export const DEFAULT_DELIVERY_PRICING = {
+  baseFee: 40,
+  baseKm: 2,
+  perKm: 10,
+  roundTo: 5,
+  maxKm: 10,
+  roadFactor: 1.3,
+  shopLat: 14.6760,
+  shopLng: 121.0437
+};
 export const DEFAULT_LOW_STOCK_THRESHOLD = 5;
 
 export const DEFAULT_PROMO_POPUP = {
@@ -57,6 +73,7 @@ export async function fetchSettings(){
     deliveryFee: DEFAULT_DELIVERY_FEE,
     lowStockThreshold: DEFAULT_LOW_STOCK_THRESHOLD,
     ...data,
+    deliveryPricing: { ...DEFAULT_DELIVERY_PRICING, ...(data.deliveryPricing || {}) },
     promoPopup: { ...DEFAULT_PROMO_POPUP, ...(data.promoPopup || {}) },
     popularSection: { ...DEFAULT_POPULAR_SECTION, ...(data.popularSection || {}) }
   };
@@ -68,6 +85,15 @@ export async function updateDeliveryFee(fee){
   await setDoc(doc(db, SETTINGS_COL, GENERAL_DOC_ID), { deliveryFee: fee }, { merge: true });
   const cached = getCachedSettings() || { deliveryFee: DEFAULT_DELIVERY_FEE };
   setCachedSettings({ ...cached, deliveryFee: fee });
+}
+
+/* Saves the whole route-pricing object. Also mirrors baseFee into the
+   legacy `deliveryFee` field so anything still reading the old flat-fee
+   setting sees the new base price. */
+export async function updateDeliveryPricing(deliveryPricing){
+  await setDoc(doc(db, SETTINGS_COL, GENERAL_DOC_ID), { deliveryPricing, deliveryFee: deliveryPricing.baseFee }, { merge: true });
+  const cached = getCachedSettings() || { deliveryFee: DEFAULT_DELIVERY_FEE };
+  setCachedSettings({ ...cached, deliveryPricing, deliveryFee: deliveryPricing.baseFee });
 }
 
 /* Same single-field merge pattern as updateDeliveryFee. */
@@ -94,6 +120,6 @@ export async function updatePopularSection(popularSection){
 }
 
 window.CCSettings = {
-  fetchSettings, updateDeliveryFee, updateLowStockThreshold, updatePromoPopup, updatePopularSection, getCachedSettings,
-  DEFAULT_DELIVERY_FEE, DEFAULT_LOW_STOCK_THRESHOLD, DEFAULT_PROMO_POPUP, DEFAULT_POPULAR_SECTION
+  fetchSettings, updateDeliveryFee, updateDeliveryPricing, updateLowStockThreshold, updatePromoPopup, updatePopularSection, getCachedSettings,
+  DEFAULT_DELIVERY_FEE, DEFAULT_DELIVERY_PRICING, DEFAULT_LOW_STOCK_THRESHOLD, DEFAULT_PROMO_POPUP, DEFAULT_POPULAR_SECTION
 };
