@@ -104,18 +104,59 @@ export async function fetchRiderDeliveries(riderId){
   return orders;
 }
 
-export async function claimDelivery(orderId, riderId){
-  await updateDoc(doc(db, ORDERS_COL, orderId), { riderId });
+/* The rider's own name + phone are copied onto the order at claim time so
+   the CUSTOMER can see who is bringing their order — customers can't read
+   other people's profile docs, so it has to live on the order itself. */
+async function readMyContact(uid){
+  try{
+    const snap = await getDoc(doc(db, "users", uid));
+    const d = snap.exists() ? snap.data() : {};
+    return { riderName: d.fullName || null, riderPhone: d.phone || null };
+  } catch(err){
+    console.warn('Could not read the rider profile for the order (name/phone will be blank).', err);
+    return { riderName: null, riderPhone: null };
+  }
 }
 
-export async function updateDeliveryStatus(orderId, status, deliveryProof){
+export async function claimDelivery(orderId, riderId){
+  const contact = await readMyContact(riderId);
+  await updateDoc(doc(db, ORDERS_COL, orderId), { riderId, ...contact });
+}
+
+/* A rider gives back a claimed delivery that hasn't been picked up yet
+   (firestore.rules only allows this while status is still 'ready'). */
+export async function releaseDelivery(orderId){
+  await updateDoc(doc(db, ORDERS_COL, orderId), { riderId: null, riderName: null, riderPhone: null });
+}
+
+/* `extra` carries the optional rider-side extras for each step:
+   completed        -> { deliveryProof (note), deliveryPhoto (url) }
+   delivery_failed  -> { failureReason }
+   Timestamps (pickedUpAt / completedAt / failedAt) are stamped here. */
+export async function updateDeliveryStatus(orderId, status, deliveryProof, extra){
   const payload = { status };
   if(deliveryProof !== undefined) payload.deliveryProof = deliveryProof;
+  const now = new Date().toISOString();
+  if(status === 'out_for_delivery') payload.pickedUpAt = now;
+  if(status === 'completed') payload.completedAt = now;
+  if(status === 'delivery_failed') payload.failedAt = now;
+  if(extra) Object.assign(payload, extra);
   await updateDoc(doc(db, ORDERS_COL, orderId), payload);
 }
 
-export async function assignRider(orderId, riderId){
-  await updateDoc(doc(db, ORDERS_COL, orderId), { riderId: riderId || null });
+/* "I've arrived" — a heads-up the customer can see; no status change. */
+export async function markArrived(orderId){
+  await updateDoc(doc(db, ORDERS_COL, orderId), { arrivedAt: new Date().toISOString() });
+}
+
+/* Admin assigning a rider also copies that rider's name/phone onto the
+   order (the admin passes them in — it already has the rider list). */
+export async function assignRider(orderId, riderId, contact){
+  await updateDoc(doc(db, ORDERS_COL, orderId), {
+    riderId: riderId || null,
+    riderName: riderId && contact ? (contact.name || null) : null,
+    riderPhone: riderId && contact ? (contact.phone || null) : null
+  });
 }
 
 /* One-time fix for delivery orders created before createOrder() started
@@ -200,7 +241,7 @@ export async function updateReturn(returnId, fields){
 
 window.CCOrders = {
   createOrder, fetchAllOrders, fetchMyOrders, fetchOrder, updateOrderStatus,
-  fetchAvailableDeliveries, fetchRiderDeliveries, claimDelivery, updateDeliveryStatus, assignRider,
+  fetchAvailableDeliveries, fetchRiderDeliveries, claimDelivery, releaseDelivery, updateDeliveryStatus, markArrived, assignRider,
   backfillMissingRiderId,
   createReturnRequest, fetchMyReturns, fetchAllReturns, updateReturn
 };
