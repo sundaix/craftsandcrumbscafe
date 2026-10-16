@@ -328,6 +328,17 @@ function getPriceForSize(p, sizeLabel){
    Only drinks (Coffee/Non-Coffee/Tea) get these today, but nothing
    here assumes that — any product with optionGroups gets the UI. */
 function getOptionGroups(p){
+  if(Array.isArray(p.optionGroups) && p.optionGroups.length) return p.optionGroups;
+  // A combo's drink is customizable exactly like the same drink bought a la
+  // carte, so the combo borrows the linked drink's option groups (bean, milk,
+  // syrup, ice...). Read live from PRODUCTS so admin edits to the drink's
+  // options show up on the combo too, with no copy to keep in sync. Everything
+  // downstream (live price, cart line, summary, order) already keys off this
+  // function, so nothing else needs to know the difference.
+  if(p.comboMeta && p.comboMeta.drinkId){
+    const drink = PRODUCTS.find(x => x.id === p.comboMeta.drinkId);
+    if(drink && Array.isArray(drink.optionGroups)) return drink.optionGroups;
+  }
   return Array.isArray(p.optionGroups) ? p.optionGroups : [];
 }
 
@@ -1169,7 +1180,7 @@ function _advanceToastQueue(){
       $t.removeClass('show').addClass('hide');
       $veil.removeClass('show');
       // give the exit animation room to finish before the next toast
-      setTimeout(_advanceToastQueue, 260);
+      setTimeout(_advanceToastQueue, 360);
     }, next.ms);
   };
 
@@ -1259,6 +1270,7 @@ function renderCartDropdown(){
 
 $(document).on('click', '#cartBtn', function(e){
   e.stopPropagation();
+  $('#accountDropdownWrap').removeClass('open'); // only one dropdown open at a time
   $('#cartDropdownWrap').toggleClass('open');
 });
 
@@ -1295,6 +1307,7 @@ function cartTotal(){
 /* ================= NAVIGATION ================= */
 function navigate(pageName){
   const previousPage = $('.page.active').data('page');
+  ccPageGhost(pageName); // cross-fade out of the page being left (see PAGE TRANSITION)
   $('.page').removeClass('active');
   $(`.page[data-page="${pageName}"]`).addClass('active');
 
@@ -1651,6 +1664,104 @@ $(document).on('click', '[data-menu-filter]', function(){
   renderMenuPage();
 });
 
+/* ================= HOME: MERCH PROMO CARDS =================
+   Click: the three cards under "Wear the craft" open Merchandise on that
+   category. Same pattern as the Menu category cards above: set the
+   filter, clear any leftover search, navigate, then re-render. Valid
+   values are the `cat` keys in MERCH_SIDEBAR (Shirts, ToteBags, Keychains). */
+$(document).on('click', '[data-merch-link]', function(e){
+  e.preventDefault();
+  merchFilter = $(this).data('merch-link');
+  merchSearch = '';
+  merchFilterBeforeSearch = null;
+  navigate('merchandise');
+  renderMerchPage();
+});
+
+/* Hover: a smooth 3D tilt toward the cursor + a light that follows it +
+   the photo drifting the opposite way. Every value is eased toward its
+   target once per frame (time-based, so it feels the same at 60 and
+   120 Hz) and written as CSS variables on the card; style.css does the
+   rest (see "Merchandise promo"). Desktop mouse only: skipped on touch
+   and for reduced motion, where the CSS-only hover still applies. */
+(function(){
+  const cards = document.querySelectorAll('.merch-promo-card');
+  if(!cards.length || !window.matchMedia) return;
+  if(!window.matchMedia('(hover:hover) and (pointer:fine)').matches) return;
+  if(window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+
+  const TILT = 6;     // max degrees of tilt
+  const DRIFT = 6;    // max px the photo slides against the tilt
+  const FOLLOW = 0.14; // easing per 1/60s frame (lower = floatier)
+
+  cards.forEach(card => {
+    const cur = { rx:0, ry:0, ix:0, iy:0, gx:50, gy:50 };
+    const tgt = { rx:0, ry:0, ix:0, iy:0, gx:50, gy:50 };
+    let raf = 0, last = 0;
+
+    function paint(now){
+      const k = 1 - Math.pow(1 - FOLLOW, Math.min(64, now - last) / 16.667);
+      last = now;
+      let moving = false;
+      for(const key in cur){
+        const d = tgt[key] - cur[key];
+        if(Math.abs(d) > 0.01){ cur[key] += d * k; moving = true; } else { cur[key] = tgt[key]; }
+      }
+      card.style.setProperty('--rx', cur.rx.toFixed(3) + 'deg');
+      card.style.setProperty('--ry', cur.ry.toFixed(3) + 'deg');
+      card.style.setProperty('--ix', cur.ix.toFixed(2) + 'px');
+      card.style.setProperty('--iy', cur.iy.toFixed(2) + 'px');
+      card.style.setProperty('--gx', cur.gx.toFixed(1) + '%');
+      card.style.setProperty('--gy', cur.gy.toFixed(1) + '%');
+      if(moving){ raf = requestAnimationFrame(paint); return; }
+      raf = 0;
+      if(!card.classList.contains('is-hot')) clear();
+    }
+    function kick(){
+      if(raf) return;
+      last = performance.now();
+      raf = requestAnimationFrame(paint);
+    }
+    function clear(){
+      ['--rx','--ry','--ix','--iy','--gx','--gy'].forEach(v => card.style.removeProperty(v));
+      card.style.willChange = '';
+    }
+    function aim(e){
+      const r = card.getBoundingClientRect();
+      if(!r.width || !r.height) return;
+      const px = Math.min(1, Math.max(0, (e.clientX - r.left) / r.width));
+      const py = Math.min(1, Math.max(0, (e.clientY - r.top) / r.height));
+      tgt.ry = (px - 0.5) * 2 * TILT;
+      tgt.rx = (0.5 - py) * 2 * TILT;
+      tgt.ix = (0.5 - px) * 2 * DRIFT;
+      tgt.iy = (0.5 - py) * 2 * DRIFT;
+      tgt.gx = px * 100;
+      tgt.gy = py * 100;
+      kick();
+    }
+    function rest(){
+      card.classList.remove('is-hot');
+      tgt.rx = tgt.ry = tgt.ix = tgt.iy = 0;
+      tgt.gx = tgt.gy = 50;
+      kick();
+    }
+    card.addEventListener('pointerenter', e => {
+      if(e.pointerType !== 'mouse') return;
+      card.classList.add('is-hot');
+      card.style.willChange = 'transform';
+      aim(e);
+    });
+    card.addEventListener('pointermove', e => { if(e.pointerType === 'mouse') aim(e); });
+    card.addEventListener('pointerleave', rest);
+    card.addEventListener('pointercancel', rest);
+    /* A click leaves this page. navigate() has already made its frozen
+       copy for the cross-fade (it keeps the lifted look), so reset the
+       real card now, otherwise it would still be tilted when the
+       customer comes back Home. */
+    card.addEventListener('click', () => setTimeout(rest, 0));
+  });
+})();
+
 function productCard(p, i=0){
   const saved = isWishlisted(p.id);
   const oos = isProductOutOfStock(p);
@@ -1694,21 +1805,20 @@ function placeholderImg(p){
 function bestSellerCard(p, i){
   const oos = isProductOutOfStock(p);
   return `
-    <div class="product-card best-card${oos ? ' oos' : ''}" style="--i:${i}">
-      <div class="product-img" data-open-product="${p.id}">
-        <span class="bestseller-tag">${String(i+1).padStart(2,'0')}</span>
+    <div class="bs-card${oos ? ' is-oos' : ''}" style="--i:${i}">
+      <div class="bs-photo" data-open-product="${p.id}">
         <img src="${resolveImageSrc(p.img)}" alt="${p.name}">
-        ${oos ? '<span class="oos-badge">Out of Stock</span>' : ''}
-        <div class="best-card-shade"></div>
+        <span class="bs-rank">${String(i+1).padStart(2,'0')}</span>
+        ${oos ? '<span class="bs-soldout">Sold out</span>' : '<span class="bs-view">View</span>'}
       </div>
-      <div class="product-info">
-        <span class="eyebrow best-eyebrow">${p.cat}</span>
-        <div class="product-name" data-open-product="${p.id}">${p.name}</div>
-        <div class="product-desc">${p.desc}</div>
-        <div class="product-footer">
-          <span class="price">${priceLabel(p)}</span>
-          <button class="add-btn" data-quick-add="${p.id}" aria-label="${oos ? 'Out of stock' : 'Add to cart'}" ${oos ? 'disabled' : ''}>
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M12 5v14M5 12h14" stroke="#fff" stroke-width="2.2" stroke-linecap="round"/></svg>
+      <div class="bs-body">
+        <span class="bs-cat">${p.cat}</span>
+        <div class="bs-name" data-open-product="${p.id}">${p.name}</div>
+        <div class="bs-desc">${p.desc}</div>
+        <div class="bs-foot">
+          <span class="bs-price">${priceLabel(p)}</span>
+          <button class="add-btn bs-add" data-quick-add="${p.id}" aria-label="${oos ? 'Out of stock' : 'Add to cart'}" ${oos ? 'disabled' : ''}>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M12 5v14M5 12h14" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
           </button>
         </div>
       </div>
@@ -1739,7 +1849,7 @@ function debounce(fn, wait){
 }
 
 function initBestSellerCarousel(items){
-  const wrapEl = document.querySelector('#bestSellerCarousel .carousel-track-wrap');
+  const wrapEl = document.querySelector('#bestSellerCarousel .bs-viewport');
   const trackEl = document.getElementById('bestSellerGrid');
   const prevBtn = document.getElementById('bsPrev');
   const nextBtn = document.getElementById('bsNext');
@@ -1751,7 +1861,7 @@ function initBestSellerCarousel(items){
   trackEl.innerHTML = items.map(bestSellerCard).join('') + items.map(bestSellerCard).join('');
 
   // On-brand fallback for any image that fails to load
-  $(trackEl).find('.product-img img').each(function(i){
+  $(trackEl).find('.bs-photo img').each(function(i){
     const p = items[i % items.length];
     $(this).one('error', function(){ this.src = placeholderImg(p); });
   });
@@ -1765,7 +1875,7 @@ function initBestSellerCarousel(items){
 
   let setWidth = 0;
   function measure(){
-    const cards = trackEl.querySelectorAll('.product-card');
+    const cards = trackEl.querySelectorAll('.bs-card');
     if(cards.length < items.length) return;
     const cs = getComputedStyle(trackEl);
     const gap = parseFloat(cs.columnGap || cs.gap) || 22;
@@ -1778,8 +1888,10 @@ function initBestSellerCarousel(items){
   }
   measure();
   window.addEventListener('resize', debounce(measure, 200));
+  if('ResizeObserver' in window) new ResizeObserver(debounce(measure, 120)).observe(trackEl);
 
-  const SPEED = 26; // px/sec, moving left — an unhurried, boutique-window drift
+  const SPEED = 34; // px/sec, moving left — an unhurried, boutique-window drift
+  const HOVER_SPEED = 0.25; // fraction of SPEED while hovering (0 = stop, 1 = keep full speed)
   // Respect the OS-level "reduce motion" setting: the passive drift is
   // pure decoration, so people who've asked for less motion get a
   // perfectly still carousel they can still browse with the arrows,
@@ -1787,26 +1899,38 @@ function initBestSellerCarousel(items){
   const reduceMotion = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
   let paused = reduceMotion;
   let interacting = false;
+  let hovering = false; // mouse is over the row — drift eases down to HOVER_SPEED instead of stopping dead
   let resumeTimer = null;
   let lastTime = null;
   let correcting = false; // guards against our own loop-reset scroll events
   let ramp = 1; // eases the drift back in after a pause instead of snapping to full speed
+  let slideTarget = null; // where an arrow click is gliding to (null = no glide in progress)
+  let exactPos = wrapEl.scrollLeft; // fractional position — scrollLeft alone rounds to whole px and stalls slow drifts
 
   function pauseTemporarily(ms){
     paused = true;
     clearTimeout(resumeTimer);
     if(reduceMotion) return; // stays paused — no auto-resume when motion is reduced
-    resumeTimer = setTimeout(()=>{ paused = false; ramp = 0; }, ms);
+    resumeTimer = setTimeout(()=>{ paused = false; }, ms);
   }
 
   // Thin progress bar under the track — reads position through one
   // full set (0 to setWidth) as a 0–1 fraction. Purely decorative
   // feedback; the carousel works fine if this element isn't present.
   const progressFillEl = document.getElementById('bsProgressFill');
+  const countCurEl = document.getElementById('bsCurrent');
+  const countTotEl = document.getElementById('bsTotal');
+  if(countTotEl) countTotEl.textContent = String(items.length).padStart(2,'0');
+  let lastCount = 0;
   function updateProgress(){
     if(!progressFillEl || setWidth <= 0) return;
     const pct = Math.max(0, Math.min(1, wrapEl.scrollLeft / setWidth));
     progressFillEl.style.transform = `scaleX(${pct})`;
+    // "01 / 08" counter: which card is leading the row right now
+    if(countCurEl){
+      const n = Math.min(items.length, Math.floor(pct * items.length) + 1);
+      if(n !== lastCount){ lastCount = n; countCurEl.textContent = String(n).padStart(2,'0'); }
+    }
   }
 
   // Seamless infinite loop: once we scroll past one full set, silently
@@ -1814,7 +1938,7 @@ function initBestSellerCarousel(items){
   // are identical copies).
   wrapEl.addEventListener('scroll', function(){
     updateProgress();
-    if(correcting || setWidth <= 0) return;
+    if(correcting || setWidth <= 0 || slideTarget !== null) return;
     if(wrapEl.scrollLeft >= setWidth){
       correcting = true;
       wrapEl.scrollLeft -= setWidth;
@@ -1827,50 +1951,81 @@ function initBestSellerCarousel(items){
   });
   updateProgress();
 
+  // Keep the position inside one set (the two copies make the loop seamless),
+  // shifting any glide target by the same amount, then write it.
+  function writePos(){
+    if(exactPos >= setWidth){ exactPos -= setWidth; if(slideTarget !== null) slideTarget -= setWidth; }
+    else if(exactPos < 0){ exactPos += setWidth; if(slideTarget !== null) slideTarget += setWidth; }
+    correcting = true;
+    wrapEl.scrollLeft = exactPos;
+    correcting = false;
+  }
+
   // Drift the scroll position steadily to the right, which visually
   // carries the cards to the left — same direction reading flows.
   function frame(t){
     if(lastTime === null) lastTime = t;
-    const dt = (t - lastTime) / 1000;
+    // clamp dt so a hiccup (tab switch, long frame) never makes the row jump
+    const dt = Math.min(0.05, (t - lastTime) / 1000);
     lastTime = t;
-    if(!paused && !interacting && setWidth > 0){
-      if(ramp < 1) ramp = Math.min(1, ramp + dt * 0.5);
-      correcting = true;
-      wrapEl.scrollLeft += SPEED * dt * ramp;
-      correcting = false;
+    // Ease the speed toward its target every frame (hover, arrow click,
+    // touch...) so the row glides to a slower pace and back — never a hard stop/start.
+    const target = (paused || interacting) ? 0 : (hovering ? HOVER_SPEED : 1);
+    ramp += (target - ramp) * (1 - Math.exp(-dt * 5));
+    if(setWidth > 0){
+      if(slideTarget !== null){
+        // Arrow glide: we own the position for the whole move. (Writing scrollLeft
+        // from the drift loop used to cancel the browser's smooth scrollBy, which
+        // is why clicks sometimes moved only part-way or not at all.)
+        exactPos += (slideTarget - exactPos) * (1 - Math.exp(-dt * 8));
+        if(Math.abs(slideTarget - exactPos) < 0.4){ exactPos = slideTarget; slideTarget = null; }
+        writePos();
+      } else if(ramp > 0.002){
+        // If the user (or the loop reset) moved the row, pick up from there
+        if(Math.abs(wrapEl.scrollLeft - exactPos) > 1.5) exactPos = wrapEl.scrollLeft;
+        exactPos += SPEED * dt * ramp;
+        writePos();
+      }
     }
     requestAnimationFrame(frame);
   }
   requestAnimationFrame(frame);
 
   function step(){
-    const card = trackEl.querySelector('.product-card');
+    const card = trackEl.querySelector('.bs-card');
     const cs = getComputedStyle(trackEl);
     const gap = parseFloat(cs.columnGap || cs.gap) || 22;
     return (card ? card.getBoundingClientRect().width : 250) + gap;
   }
 
-  prevBtn && prevBtn.addEventListener('click', function(){
-    wrapEl.scrollBy({ left: -step(), behavior:'smooth' });
-    pauseTemporarily(3400);
-  });
-  nextBtn && nextBtn.addEventListener('click', function(){
-    wrapEl.scrollBy({ left: step(), behavior:'smooth' });
-    pauseTemporarily(3400);
-  });
+  // Arrows glide to the next/previous card edge. Clicking again mid-glide
+  // queues one more card from where the glide is heading, so N clicks = N cards,
+  // every time, wherever the drift happened to be.
+  function slide(dir){
+    if(setWidth <= 0) return;
+    const w = step();
+    const base = (slideTarget !== null) ? slideTarget : exactPos;
+    const f = base / w;
+    const k = dir > 0 ? Math.floor(f + 0.35) + 1 : Math.ceil(f - 0.35) - 1;
+    slideTarget = k * w;
+    pauseTemporarily(2200);
+  }
+  prevBtn && prevBtn.addEventListener('click', function(){ slide(-1); });
+  nextBtn && nextBtn.addEventListener('click', function(){ slide(1); });
 
   // Pause the drift while the user's mouse/finger is anywhere near the
   // carousel (this is also when the arrows fade in via CSS) — resumes
   // automatically a moment after they leave.
-  wrapEl.addEventListener('mouseenter', ()=>{ clearTimeout(resumeTimer); paused = true; });
-  wrapEl.addEventListener('mouseleave', ()=>{ if(!reduceMotion){ paused = false; ramp = 0; } });
-  wrapEl.addEventListener('touchstart', ()=>{ interacting = true; clearTimeout(resumeTimer); }, { passive:true });
+  wrapEl.addEventListener('mouseenter', ()=>{ hovering = true; });
+  wrapEl.addEventListener('mouseleave', ()=>{ hovering = false; });
+  wrapEl.addEventListener('touchstart', ()=>{ interacting = true; slideTarget = null; clearTimeout(resumeTimer); }, { passive:true });
   wrapEl.addEventListener('touchend', ()=>{ interacting = false; pauseTemporarily(1500); }, { passive:true });
 
   // Let a vertical mouse wheel also scroll the carousel horizontally —
   // a nice touch for desktop users without a trackpad.
   wrapEl.addEventListener('wheel', function(e){
     if(Math.abs(e.deltaY) > Math.abs(e.deltaX)){
+      slideTarget = null;
       wrapEl.scrollLeft += e.deltaY;
       e.preventDefault();
       pauseTemporarily(1800);
@@ -1897,14 +2052,15 @@ $(document).on('click', '[data-quick-add]', function(e){
     return;
   }
   const opts = getSizeOptions(p);
-  if(opts.length > 1){
+  const needsCustomize = !!p.comboMeta && getOptionGroups(p).length > 0;
+  if(opts.length > 1 || needsCustomize){
     currentProductId = id;
     navigate('product');
-    showToast('Please select a size', 'warning');
+    showToast(opts.length > 1 ? 'Please select a size' : 'Customize your drink', 'warning');
     return;
   }
   addToCart(id, 1, opts.length === 1 ? opts[0].size : null);
-  const $img = $(this).closest('.product-card').find('.product-img img').first();
+  const $img = $(this).closest('.product-card, .bs-card').find('.product-img img, .bs-photo img').first();
   if($img.length) flyToCart($img[0]);
   $(this).addClass('added');
   setTimeout(()=> $(this).removeClass('added'), 500);
@@ -3300,6 +3456,7 @@ $(document).on('click', '#accountDdWishlistBtn', function(){
 $(document).on('click', '#accountBtn', function(e){
   e.stopPropagation();
   if(window.currentUser && !window.currentUser.isAnonymous){
+    $('#cartDropdownWrap').removeClass('open'); // only one dropdown open at a time
     $('#accountDropdownWrap').toggleClass('open');
   } else {
     navigate('login');
@@ -3868,10 +4025,17 @@ $(document).on('submit', '#contactForm', async function(e){
 function initReveal(){
   const items = document.querySelectorAll('.page.active .reveal:not(.in)');
   const obs = new IntersectionObserver((entries)=>{
+    // Items that arrive in the same moment rise one after another (70ms
+    // apart, capped) instead of all at once.
+    let n = 0;
     entries.forEach(entry=>{
       if(entry.isIntersecting){
-        entry.target.classList.add('in');
-        obs.unobserve(entry.target);
+        const el = entry.target;
+        el.style.transitionDelay = Math.min(n++, 5) * 70 + 'ms';
+        el.classList.add('in');
+        obs.unobserve(el);
+        // Clear it afterwards so later hover transitions aren't delayed.
+        setTimeout(() => { el.style.transitionDelay = ''; }, 1500);
       }
     });
   }, {threshold:0.12});
@@ -4235,4 +4399,60 @@ $(document).on('click', '#accountDdMessagesBtn', function(){
   new IntersectionObserver(entries => {
     entries.forEach(en => footer.classList.toggle('ftr-in', en.isIntersecting));
   }, { threshold:0.15 }).observe(footer);
+})();
+
+/* ================= PAGE TRANSITION =================
+   navigate() swaps pages synchronously (a lot of code relies on that), so
+   the exit is faked: right before the swap the page being left is cloned
+   into a fixed, non-interactive "ghost" that fades out over the new page.
+   The clone loses its .page class, data-page and every id so no selector
+   in this file can match it. Skipped for reduced motion, for the same
+   page, and for very large pages. */
+function ccPageGhost(nextPage){
+  document.querySelectorAll('.cc-page-ghost').forEach(g => g.remove());
+  if(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+  const old = document.querySelector('.page.active');
+  if(!old || old.getAttribute('data-page') === nextPage) return;
+  if(old.getElementsByTagName('*').length > 2500) return;
+  const ghost = old.cloneNode(true);
+  ghost.className = 'cc-page-ghost';
+  ghost.removeAttribute('data-page');
+  ghost.removeAttribute('id');
+  ghost.setAttribute('aria-hidden', 'true');
+  ghost.setAttribute('inert', '');
+  ghost.querySelectorAll('[id]').forEach(n => n.removeAttribute('id'));
+  ghost.querySelectorAll('video, audio, iframe').forEach(n => n.remove());
+  // Keep what the customer typed visible while the clone fades (never passwords).
+  const src = old.querySelectorAll('input, textarea, select'), dst = ghost.querySelectorAll('input, textarea, select');
+  src.forEach((s, i) => {
+    const d = dst[i];
+    if(!d || s.type === 'password') return;
+    if(s.type === 'checkbox' || s.type === 'radio') d.checked = s.checked; else d.value = s.value;
+  });
+  ghost.style.top = (-window.scrollY) + 'px';
+  document.body.appendChild(ghost);
+  setTimeout(() => ghost.remove(), 340);
+}
+
+/* ================= CLICK ANIMATION (cursor ring) =================
+   A small ring + dot expands from the exact point of every click or tap.
+   Skipped where something already reacts: buttons/cards that run the
+   .sf-ripple above, form fields, dropdown lists and the map (dragging). */
+(function(){
+  const SKIP = '.btn, .add-btn, .cm-card, .account-dd-link, .faq-question, .carousel-arrow, input, textarea, select, .cc-dd-menu, .leaflet-container';
+  let live = 0;
+  document.addEventListener('pointerdown', function(e){
+    if(!e.isPrimary || (e.pointerType === 'mouse' && e.button !== 0)) return;
+    if(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+    if(e.target.closest && e.target.closest(SKIP)) return;
+    if(live >= 6) return;
+    const el = document.createElement('span');
+    el.className = 'cc-click';
+    el.setAttribute('aria-hidden', 'true');
+    el.style.left = e.clientX + 'px';
+    el.style.top = e.clientY + 'px';
+    document.body.appendChild(el);
+    live++;
+    setTimeout(() => { el.remove(); live--; }, 700);
+  }, { passive: true });
 })();
