@@ -45,12 +45,12 @@ module.exports = async (req, res) => {
 
   let session;
   try{
-    const sessRes = await fetch(`https://api.paymongo.com/v2/checkout_sessions/${order.paymongoCheckoutSessionId}`, {
+    const sessRes = await fetch(`https://api.paymongo.com/v1/checkout_sessions/${order.paymongoCheckoutSessionId}`, {
       headers: { 'Authorization': authHeader }
     });
     const sessData = await sessRes.json();
     if(!sessRes.ok){
-      console.error('PayMongo session fetch failed', JSON.stringify(sessData));
+      console.error('PayMongo session fetch failed', 'http=' + sessRes.status, 'sessionId=' + order.paymongoCheckoutSessionId, 'key=' + secretKey.slice(0, 8), 'testOrder=' + !!order.paymentTestMode, JSON.stringify(sessData));
       return res.status(502).json({ ok: false, error: 'paymongo-error' });
     }
     session = sessData.data;
