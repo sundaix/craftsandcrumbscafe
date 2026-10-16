@@ -154,6 +154,7 @@ module.exports = async (req, res) => {
   }
 
   const session = pmData.data;
+  console.log('Created checkout session', session.id, 'key=' + secretKey.slice(0, 8), 'test=' + wantsTest);
   await orderRef.update({
     paymongoCheckoutSessionId: session.id,
     paymentProvider: `paymongo_${paymentMethodType}`,
