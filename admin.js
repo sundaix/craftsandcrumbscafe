@@ -14,6 +14,49 @@ let apOptionGroups = [];
 
 const DRINK_SIZES = ['16oz', '20oz', '24oz'];
 
+/* ================= SHARED HELPERS ================= */
+/* HTML-escapes anything that came from a customer, a guest checkout form
+   or the database before it goes into innerHTML / an attribute. Guests
+   type their own name and address at checkout, so an order row is NOT
+   trusted text. (Named umEsc for historical reasons; used everywhere.) */
+function umEsc(s){
+  return String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' }[c]));
+}
+
+/* An order counts toward revenue unless it was cancelled or its return
+   was refunded. Used by the stat cards, the trend chart, AOV and Top
+   products so they all agree. */
+function admIsRevenueOrder(o){
+  if((o.status || 'pending') === 'cancelled') return false;
+  const r = rtFor(o.id);
+  return !(r && r.status === 'refunded');
+}
+
+/* Re-reads the REAL catalog from Firestore. Deliberately not
+   loadProductsFromFirestore(): that one falls back to the demo seed list
+   on a network error, which would put fake products (with Edit/Delete
+   buttons) in front of the admin. If this throws, PRODUCTS is untouched. */
+async function admReloadCatalog(){
+  setCatalogProducts(await window.CCProducts.fetchAllProducts());
+  admRefreshCatalogViews();
+}
+
+/* Re-renders everything that shows the catalog. The storefront renderers
+   only exist if script.js happens to be on the page (it isn't on /admin),
+   so each is guarded. */
+function admRefreshCatalogViews(){
+  if(typeof renderCategories === 'function') renderCategories();
+  if(typeof renderBestSellers === 'function') renderBestSellers();
+  if(typeof renderMenuSidebar === 'function') renderMenuSidebar();
+  if(typeof renderMerchSidebar === 'function') renderMerchSidebar();
+  if(typeof renderMenuPage === 'function') renderMenuPage();
+  if(typeof renderMerchPage === 'function') renderMerchPage();
+  buildComboProducts();
+  if(typeof renderFeaturedCombos === 'function') renderFeaturedCombos();
+  renderAdminProductsTable();
+  renderAdminOverviewStats();
+}
+
 const ADMIN_CATEGORY_BADGE_CLASS = {
   'Drinks': 'drinks',
   'Food': 'food',
@@ -25,10 +68,8 @@ function categoryBadge(cat){
   const meta = (typeof CAT_LABELS !== 'undefined') ? CAT_LABELS[cat] : null;
   const groupClass = ADMIN_CATEGORY_BADGE_CLASS[meta && meta.group] || 'other';
   const label = (meta && meta.sub) || cat;
-  return `<span class="admin-cat-badge admin-cat-badge-${groupClass}">${label}</span>`;
+  return `<span class="admin-cat-badge admin-cat-badge-${groupClass}">${umEsc(label)}</span>`;
 }
-
-const ADMIN_NAV_ICON = `<svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M12 15.2a3.2 3.2 0 1 0 0-6.4 3.2 3.2 0 0 0 0 6.4Z" stroke="currentColor" stroke-width="1.5"/><path d="M19.4 13.9c.05-.6.05-1.2 0-1.8l1.9-1.4a.8.8 0 0 0 .2-1L19.7 6.9a.8.8 0 0 0-.95-.35l-2.2.85a7.4 7.4 0 0 0-1.55-.9l-.35-2.3a.8.8 0 0 0-.8-.7h-3.7a.8.8 0 0 0-.8.7l-.35 2.3c-.56.23-1.08.53-1.55.9l-2.2-.85a.8.8 0 0 0-.95.35L2.5 9.7a.8.8 0 0 0 .2 1l1.9 1.4a8.3 8.3 0 0 0 0 1.8l-1.9 1.4a.8.8 0 0 0-.2 1l1.85 2.8c.2.32.6.44.95.35l2.2-.85c.47.37.99.67 1.55.9l.35 2.3c.06.4.42.7.8.7h3.7c.38 0 .74-.3.8-.7l.35-2.3c.56-.23 1.08-.53 1.55-.9l2.2.85c.35.09.75-.03.95-.35l1.85-2.8a.8.8 0 0 0-.2-1l-1.9-1.4Z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/></svg>`;
 
 /* ================= ADD CATEGORY ================= */
 function openCategoryModal(){
@@ -58,12 +99,12 @@ function renderExistingCategoriesList(){
   const rows = CUSTOM_CATEGORIES.map(c => {
     const count = PRODUCTS.filter(p => p.cat === c.id).length;
     return `
-      <div class="cc-existing-row" data-cc-row="${c.id}">
+      <div class="cc-existing-row" data-cc-row="${umEsc(c.id)}">
         <div class="cc-existing-row-info">
-          <span class="cc-existing-row-name">${c.label}</span>
+          <span class="cc-existing-row-name">${umEsc(c.label)}</span>
           <span class="cc-existing-row-count">${count ? `${count} product${count === 1 ? '' : 's'}` : 'empty'}</span>
         </div>
-        <button type="button" class="admin-icon-btn admin-icon-btn-danger" data-admin-category-delete="${c.id}" title="Delete category" aria-label="Delete ${c.label}">
+        <button type="button" class="admin-icon-btn admin-icon-btn-danger" data-admin-category-delete="${umEsc(c.id)}" title="Delete category" aria-label="Delete ${umEsc(c.label)}">
           <svg width="15" height="15" viewBox="0 0 24 24" fill="none"><path d="M5 7h14M9 7V5a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2m-8 0v12a1 1 0 0 0 1 1h6a1 1 0 0 0 1-1V7" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
         </button>
       </div>
@@ -80,7 +121,7 @@ function renderExistingCategoriesList(){
    removeCustomCategoryEffects in script.js), and refreshes every
    piece of UI that reads category data. */
 $(document).on('click', '[data-admin-category-delete]', async function(){
-  const id = $(this).data('admin-category-delete');
+  const id = $(this).attr('data-admin-category-delete'); // .attr, not .data: .data() turns "2024" into a number
   const c = CUSTOM_CATEGORIES.find(x => x.id === id);
   if(!c) return;
 
@@ -126,10 +167,6 @@ $(document).on('click', '#categoryModalClose', closeCategoryModal);
 $(document).on('click', '#categoryModalOverlay', function(e){
   if(e.target === this) closeCategoryModal();
 });
-$(document).on('keydown', function(e){
-  if(e.key === 'Escape' && $('#categoryModalOverlay').hasClass('open')) closeCategoryModal();
-});
-
 $(document).on('change', '#ccPricing', function(){
   $('#ccSizesField').toggle($(this).val() === 'sized-stock');
 });
@@ -196,14 +233,6 @@ $(document).on('submit', '#addCategoryForm', async function(e){
     showToast('Could not add that category. Please try again.', 'error');
   } finally {
     $btn.prop('disabled', false).text('Add Category');
-  }
-});
-
-document.addEventListener('authRoleReady', function(e){
-  const { role } = e.detail;
-  $('[data-nav="admin"]').remove();
-  if(role === 'admin'){
-    $('.nav-actions').prepend(`<a href="#" class="icon-btn admin-link" data-nav="admin" title="Admin" aria-label="Admin">${ADMIN_NAV_ICON}</a>`);
   }
 });
 
@@ -286,12 +315,12 @@ function renderAdminActivityTable(){
       <td>${formatOrderTimestamp(e.createdAt)}</td>
       <td>
         <div class="admin-customer-link" style="cursor:default;">
-          <span class="admin-avatar">${customerInitials(e.adminEmail || e.adminName || '?')}</span>
-          <span>${e.adminName || e.adminEmail || 'Unknown admin'}</span>
+          <span class="admin-avatar">${umEsc(customerInitials(e.adminEmail || e.adminName || '?'))}</span>
+          <span>${umEsc(e.adminName || e.adminEmail || 'Unknown admin')}</span>
         </div>
       </td>
-      <td>${ACTIVITY_TYPE_LABELS[e.entityType] || e.entityType || '—'}</td>
-      <td>${e.summary || '—'}</td>
+      <td>${umEsc(ACTIVITY_TYPE_LABELS[e.entityType] || e.entityType || '—')}</td>
+      <td>${umEsc(e.summary || '—')}</td>
     </tr>
   `).join('');
   $('#adminActivityBody').html(rows);
@@ -357,8 +386,8 @@ function buildCategoryOptgroupsHtml(){
     if(!byGroup[meta.group]){ byGroup[meta.group] = []; groups.push(meta.group); }
     byGroup[meta.group].push({ id: catId, label: meta.sub || catId });
   });
-  return groups.map(g => `<optgroup label="${g}">${
-    byGroup[g].map(it => `<option value="${it.id}">${it.label}</option>`).join('')
+  return groups.map(g => `<optgroup label="${umEsc(g)}">${
+    byGroup[g].map(it => `<option value="${umEsc(it.id)}">${umEsc(it.label)}</option>`).join('')
   }</optgroup>`).join('');
 }
 
@@ -382,7 +411,8 @@ function renderAdminOverviewStats(){
   $('#statTotalOrders').text(ADMIN_ORDERS.length || '—');
   const pending = ADMIN_ORDERS.filter(o => (o.status || 'pending') === 'pending').length;
   $('#statPendingOrders').text(ADMIN_ORDERS.length ? pending : '—');
-  const revenue = ADMIN_ORDERS.reduce((sum, o) => sum + (o.totals?.total || 0), 0);
+  // Cancelled and refunded orders are not revenue.
+  const revenue = ADMIN_ORDERS.filter(admIsRevenueOrder).reduce((sum, o) => sum + (o.totals?.total || 0), 0);
   $('#statTotalRevenue').text(ADMIN_ORDERS.length ? peso(revenue) : '—');
   renderInventoryAlerts();
   renderOverviewAnalytics();
@@ -463,16 +493,16 @@ function renderInventoryAlerts(){
 
   $('#invAlertList').html(items.slice(0, INV_LIST_LIMIT).map(({ p, kind }) => {
     const badge = kind === 'out' ? '<span class="admin-stock-badge admin-stock-out">Out of stock</span>'
-      : kind === 'low' ? `<span class="admin-stock-badge admin-stock-low">${inventoryDetailText(p) || 'Low'}</span>`
+      : kind === 'low' ? `<span class="admin-stock-badge admin-stock-low">${umEsc(inventoryDetailText(p) || 'Low')}</span>`
       : '<span class="admin-stock-badge admin-stock-unknown">Inactive</span>';
     const action = kind === 'inactive'
-      ? `<button type="button" class="btn btn-activate btn-sm" data-admin-product-toggle="${p.id}">Activate</button>`
-      : `<button type="button" class="btn btn-restock btn-sm" data-admin-edit="${p.id}"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>Restock</button>`;
+      ? `<button type="button" class="btn btn-activate btn-sm" data-admin-product-toggle="${umEsc(p.id)}">Activate</button>`
+      : `<button type="button" class="btn btn-restock btn-sm" data-admin-edit="${umEsc(p.id)}"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>Restock</button>`;
     return `
       <div class="inv-row">
-        <img src="${resolveImageSrc(p.img)}" alt="${p.name}">
+        <img src="${umEsc(resolveImageSrc(p.img))}" alt="${umEsc(p.name)}">
         <div class="inv-row-main">
-          <span class="inv-row-name">${p.name}</span>
+          <span class="inv-row-name">${umEsc(p.name)}</span>
           ${badge}
         </div>
         ${action}
@@ -589,11 +619,13 @@ $(document).on('click', '[data-overview-range]', function(){
 function getOrdersInRange(){
   if(adminOverviewRange === 'all') return ADMIN_ORDERS;
   const now = Date.now();
-  const cutoffs = { today: 24 * 60 * 60 * 1000, '7d': 7 * 24 * 60 * 60 * 1000, '30d': 30 * 24 * 60 * 60 * 1000 };
-  const windowMs = cutoffs[adminOverviewRange] || cutoffs['30d'];
+  const DAY = 24 * 60 * 60 * 1000;
+  const startOfToday = new Date().setHours(0, 0, 0, 0); // local midnight
+  const cutoff = adminOverviewRange === 'today' ? startOfToday
+    : now - (adminOverviewRange === '7d' ? 7 * DAY : 30 * DAY);
   return ADMIN_ORDERS.filter(o => {
     const ms = orderTimestampMs(o.createdAt);
-    return ms !== null && (now - ms) <= windowMs;
+    return ms !== null && ms >= cutoff;
   });
 }
 
@@ -605,13 +637,14 @@ function buildRevenueTrendData(orders){
   orders.forEach(o => {
     const ms = orderTimestampMs(o.createdAt);
     if(ms === null) return;
-    const dayKey = new Date(ms).toISOString().slice(0, 10);
+    const dt = new Date(ms);
+    const dayKey = `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, '0')}-${String(dt.getDate()).padStart(2, '0')}`;
     byDay[dayKey] = (byDay[dayKey] || 0) + (o.totals?.total || 0);
   });
   const days = Object.keys(byDay).sort();
   const trimmed = days.length > 30 ? days.slice(days.length - 30) : days;
   return {
-    labels: trimmed.map(d => new Date(d).toLocaleDateString('en-PH', { month: 'short', day: 'numeric' })),
+    labels: trimmed.map(d => { const [y, m, day] = d.split('-').map(Number); return new Date(y, m - 1, day).toLocaleDateString('en-PH', { month: 'short', day: 'numeric' }); }),
     values: trimmed.map(d => byDay[d])
   };
 }
@@ -649,17 +682,21 @@ const RANGE_LABELS = { today: 'today', '7d': 'last 7 days', '30d': 'last 30 days
 
 function renderOverviewAnalytics(){
   renderOverviewRangeFilters();
-  const orders = getOrdersInRange();
+  const orders = getOrdersInRange();              // every order placed in the range
+  const sales = orders.filter(admIsRevenueOrder); // minus cancelled / refunded
 
-  // Range stat cards
-  const revenue = orders.reduce((sum, o) => sum + (o.totals?.total || 0), 0);
-  $('#statRangeRevenue').text(orders.length ? peso(revenue) : '—');
+  // Range stat cards: "Orders" is every order; revenue and AOV only count real sales.
+  const revenue = sales.reduce((sum, o) => sum + (o.totals?.total || 0), 0);
+  $('#statRangeRevenue').text(sales.length ? peso(revenue) : '—');
   $('#statRangeOrders').text(orders.length || '—');
-  $('#statRangeAOV').text(orders.length ? peso(revenue / orders.length) : '—');
+  $('#statRangeAOV').text(sales.length ? peso(revenue / sales.length) : '—');
 
-  renderRevenueTrendChart(orders);
-  renderOrderStatusChart(orders);
-  renderTopProductsTable(orders);
+  // Chart.js comes from a CDN; if it's blocked, don't let that stop the tables below.
+  if(typeof Chart !== 'undefined'){
+    renderRevenueTrendChart(sales);
+    renderOrderStatusChart(orders); // the status chart is the one place cancelled orders belong
+  }
+  renderTopProductsTable(sales);
   renderRecentOrdersTable();
 }
 
@@ -701,7 +738,7 @@ function renderOrderStatusChart(orders){
   if(!total) return;
 
   // Same palette family as the status pills/badges elsewhere in the dashboard.
-  const statusColors = { pending: '#C99A3A', preparing: '#7C93A6', ready: '#B08659', out_for_delivery: '#A8824F', delivery_failed: '#C0734A', completed: '#7C9885', cancelled: '#B65C5C' };
+  const statusColors = { pending: '#C99A3A', preparing: '#7C93A6', ready: '#B08659', out_for_delivery: '#8A6FA8', completed: '#7C9885', cancelled: '#B65C5C' };
   const labels = ORDER_STATUSES.map(formatStatusLabel);
   const values = ORDER_STATUSES.map(s => counts[s]);
 
@@ -728,7 +765,7 @@ function renderTopProductsTable(orders){
   }
   $('#topProductsBody').html(top.map(p => `
     <tr>
-      <td>${p.name}</td>
+      <td>${umEsc(p.name)}</td>
       <td>${p.units}</td>
       <td>${peso(p.revenue)}</td>
     </tr>
@@ -752,9 +789,9 @@ function renderRecentOrdersTable(){
     return `
       <tr>
         <td><span class="admin-order-id">#${o.id.slice(0,6).toUpperCase()}</span></td>
-        <td>${o.customer?.name || 'Guest'}</td>
+        <td>${umEsc(o.customer?.name || 'Guest')}</td>
         <td>${peso(o.totals?.total || 0)}</td>
-        <td><span class="admin-status-select admin-status-${status}" style="display:inline-block; cursor:default;">${status}</span></td>
+        <td><span class="admin-status-select admin-status-${umEsc(status)}" style="display:inline-block; cursor:default;">${umEsc(status)}</span></td>
       </tr>
     `;
   }).join(''));
@@ -824,14 +861,14 @@ function renderAdminProductsTable(){
   const rows = visible.map(p => {
     const active = isProductActive(p);
     return `
-      <tr data-product-row="${p.id}" class="${active ? '' : 'admin-row-inactive'}">
+      <tr data-product-row="${umEsc(p.id)}" class="${active ? '' : 'admin-row-inactive'}">
         <td class="admin-td-check">
-          <input type="checkbox" data-admin-select="${p.id}" aria-label="Select ${p.name}"${adminSelectedIds.has(p.id) ? ' checked' : ''}>
+          <input type="checkbox" data-admin-select="${umEsc(p.id)}" aria-label="Select ${umEsc(p.name)}"${adminSelectedIds.has(p.id) ? ' checked' : ''}>
         </td>
         <td class="admin-td-product">
           <div class="admin-td-product-inner">
-            <img src="${resolveImageSrc(p.img)}" alt="${p.name}">
-            <span>${p.name}</span>
+            <img src="${umEsc(resolveImageSrc(p.img))}" alt="${umEsc(p.name)}">
+            <span>${umEsc(p.name)}</span>
           </div>
         </td>
         <td>${categoryBadge(p.cat)}</td>
@@ -839,16 +876,16 @@ function renderAdminProductsTable(){
         <td>${stockBadgeHtml(p)}</td>
         <td>${statusBadgeHtml(p)}</td>
         <td class="admin-td-actions">
-          <button class="admin-icon-btn" data-admin-product-toggle="${p.id}" title="${active ? 'Deactivate' : 'Activate'}" aria-label="${active ? 'Deactivate' : 'Activate'} ${p.name}">
+          <button class="admin-icon-btn" data-admin-product-toggle="${umEsc(p.id)}" title="${active ? 'Deactivate' : 'Activate'}" aria-label="${active ? 'Deactivate' : 'Activate'} ${umEsc(p.name)}">
             <svg width="15" height="15" viewBox="0 0 24 24" fill="none"><path d="M12 3v8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/><path d="M6.3 6.8a8 8 0 1 0 11.4 0" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
           </button>
-          <button class="admin-icon-btn" data-admin-edit="${p.id}" title="Edit" aria-label="Edit ${p.name}">
+          <button class="admin-icon-btn" data-admin-edit="${umEsc(p.id)}" title="Edit" aria-label="Edit ${umEsc(p.name)}">
             <svg width="15" height="15" viewBox="0 0 24 24" fill="none"><path d="M4 20l1-4L16.5 4.5a1.5 1.5 0 0 1 2 0l1 1a1.5 1.5 0 0 1 0 2L8 19l-4 1Z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/></svg>
           </button>
-          <button class="admin-icon-btn" data-admin-duplicate="${p.id}" title="Duplicate" aria-label="Duplicate ${p.name}">
+          <button class="admin-icon-btn" data-admin-duplicate="${umEsc(p.id)}" title="Duplicate" aria-label="Duplicate ${umEsc(p.name)}">
             <svg width="15" height="15" viewBox="0 0 24 24" fill="none"><rect x="8" y="8" width="12" height="12" rx="2" stroke="currentColor" stroke-width="1.5"/><path d="M16 8V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h2" stroke="currentColor" stroke-width="1.5"/></svg>
           </button>
-          <button class="admin-icon-btn admin-icon-btn-danger" data-admin-delete="${p.id}" title="Delete" aria-label="Delete ${p.name}">
+          <button class="admin-icon-btn admin-icon-btn-danger" data-admin-delete="${umEsc(p.id)}" title="Delete" aria-label="Delete ${umEsc(p.name)}">
             <svg width="15" height="15" viewBox="0 0 24 24" fill="none"><path d="M5 7h14M9 7V5a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2m-8 0v12a1 1 0 0 0 1 1h6a1 1 0 0 0 1-1V7" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
           </button>
         </td>
@@ -1204,7 +1241,7 @@ function renderOptionGroupsBuilder(){
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M6 6l12 12M18 6L6 18" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
         </button>
       </div>
-      <input type="text" class="opt-group-label-input" data-og="${gi}" placeholder="Group label, e.g. Choose your bean" value="${g.label || ''}">
+      <input type="text" class="opt-group-label-input" data-og="${gi}" placeholder="Group label, e.g. Choose your bean" value="${umEsc(g.label || '')}">
       <div class="opt-group-type-row">
         <div class="opt-type-toggle" data-og="${gi}">
           <button type="button" class="opt-type-btn${g.type !== 'multi' ? ' active' : ''}" data-og="${gi}" data-type="single">Single choice</button>
@@ -1220,7 +1257,7 @@ function renderOptionGroupsBuilder(){
       <div class="opt-choice-rows">
         ${g.choices.map((c, ci) => `
           <div class="opt-choice-row">
-            <input type="text" class="opt-choice-label-input" data-og="${gi}" data-oc="${ci}" placeholder="Choice label, e.g. Oat Milk" value="${c.label || ''}">
+            <input type="text" class="opt-choice-label-input" data-og="${gi}" data-oc="${ci}" placeholder="Choice label, e.g. Oat Milk" value="${umEsc(c.label || '')}">
             <div class="opt-choice-price-wrap">
               <span>+₱</span>
               <input type="number" step="1" class="opt-choice-price-input" data-og="${gi}" data-oc="${ci}" placeholder="0" value="${c.price || ''}">
@@ -1453,9 +1490,12 @@ $(document).on('submit', '#adminAddProductForm', async function(e){
   }
 
   const isFood = FOOD_CATEGORIES.includes(cat);
+  // The form only edits the MAIN image. Keep any extra gallery images the
+  // product already had instead of overwriting imgs with just [img].
+  const prevImgs = adminEditingId ? (PRODUCTS.find(x => x.id === adminEditingId) || {}).imgs : null;
   const fields = {
     name, cat, price, desc,
-    img, imgs: [img],
+    img, imgs: (Array.isArray(prevImgs) && prevImgs.length > 1) ? [img, ...prevImgs.slice(1)] : [img],
     stock,
     active: $('#apActive').prop('checked'),
   };
@@ -1607,6 +1647,14 @@ async function loadRidersCache(){
   }
 }
 
+/* Promoting / suspending a rider in User Management used to leave the
+   Orders "assign rider" dropdown stale until Orders was manually refreshed.
+   User Management calls this after every change that affects riders. */
+function admSyncRiders(){
+  ADMIN_RIDERS = ADMIN_ACCOUNTS.filter(u => u.role === 'rider' && !u.disabled);
+  if(ADMIN_ORDERS.length) renderAdminOrdersTable();
+}
+
 async function loadAndRenderAdminOrders(){
   $('#adminOrdersBody').html(`<tr><td colspan="8" class="admin-empty-row">Loading orders...</td></tr>`);
   try{
@@ -1627,7 +1675,7 @@ async function loadAndRenderAdminOrders(){
   renderAdminOverviewStats();
 }
 
-const ORDER_STATUSES = ['pending', 'preparing', 'ready', 'out_for_delivery', 'delivery_failed', 'completed', 'cancelled'];
+const ORDER_STATUSES = ['pending', 'preparing', 'ready', 'out_for_delivery', 'completed', 'cancelled'];
 
 /* Human-friendly label for a status value — needed now that
    'out_for_delivery' shouldn't render as "Out_for_delivery". */
@@ -1819,30 +1867,30 @@ function renderAdminOrdersTable(){
       ? '<span class="admin-order-rider-na">—</span>'
       : (() => {
           const riderOptions = ['<option value="">Unassigned</option>']
-            .concat(ADMIN_RIDERS.map(r => `<option value="${r.uid}" ${o.riderId === r.uid ? 'selected' : ''}>${r.name || r.email || r.uid.slice(0,6)}</option>`));
+            .concat(ADMIN_RIDERS.map(r => `<option value="${umEsc(r.uid)}" ${o.riderId === r.uid ? 'selected' : ''}>${umEsc(r.name || r.email || r.uid.slice(0,6))}</option>`));
           // If the order is assigned to a rider who's since gone missing
           // from ADMIN_RIDERS (disabled, or role changed back), still show
           // them selected so the table doesn't silently look unassigned.
           if(o.riderId && !ADMIN_RIDERS.some(r => r.uid === o.riderId)){
-            riderOptions.push(`<option value="${o.riderId}" selected>${o.riderId.slice(0,6)} (inactive)</option>`);
+            riderOptions.push(`<option value="${umEsc(o.riderId)}" selected>${umEsc(o.riderId.slice(0,6))} (inactive)</option>`);
           }
-          return `<select class="admin-status-select" data-order-rider="${o.id}">${riderOptions.join('')}</select>`;
+          return `<select class="admin-status-select" data-order-rider="${umEsc(o.id)}">${riderOptions.join('')}</select>`;
         })();
     return `
       <tr style="--i:${i}" class="${stale ? 'admin-order-row-stale' : ''}${pdSelectedOrderIds.has(o.id) ? ' pd-row-selected' : ''}">
-        <td class="pd-sel-td"><input type="checkbox" class="pd-sel" data-pd-sel="${o.id}" aria-label="Select order #${o.id.slice(0,6).toUpperCase()}" ${pdSelectedOrderIds.has(o.id) ? 'checked' : ''}></td>
+        <td class="pd-sel-td"><input type="checkbox" class="pd-sel" data-pd-sel="${umEsc(o.id)}" aria-label="Select order #${o.id.slice(0,6).toUpperCase()}" ${pdSelectedOrderIds.has(o.id) ? 'checked' : ''}></td>
         <td><span class="admin-order-id">#${o.id.slice(0,6).toUpperCase()}</span>${rtMiniBadge(o.id)}</td>
         <td class="admin-order-placed">${formatOrderTimestamp(o.createdAt)}${stale ? `<span class="admin-order-stale-flag" title="Pending for over ${ORDER_STALE_MINUTES} minutes">⚠ ${formatWaitDuration(waited)}</span>` : ''}</td>
         <td>
-          <button class="admin-customer-link" data-order-view="${o.id}">
-            <span class="admin-avatar">${customerInitials(name)}</span>
-            <span>${name}</span>
+          <button class="admin-customer-link" data-order-view="${umEsc(o.id)}">
+            <span class="admin-avatar">${umEsc(customerInitials(name))}</span>
+            <span>${umEsc(name)}</span>
           </button>
         </td>
         <td><span class="fulfillment-badge fulfillment-${isDelivery ? 'delivery' : 'pickup'}">${isDelivery ? 'Delivery' : 'Pickup'}</span></td>
         <td class="admin-order-total">${peso(o.totals?.total || 0)}</td>
         <td>
-          <select class="admin-status-select admin-status-${status}" data-order-status="${o.id}">
+          <select class="admin-status-select admin-status-${status}" data-order-status="${umEsc(o.id)}">
             ${options}
           </select>
         </td>
@@ -1863,13 +1911,9 @@ $(document).on('change', '[data-order-rider]', async function(){
   const $select = $(this);
   $select.prop('disabled', true);
   try{
-    await window.CCOrders.assignRider(orderId, riderId, rider ? { name: rider.name || rider.email || null, phone: rider.phone || null } : null);
+    await window.CCOrders.assignRider(orderId, riderId);
     const order = ADMIN_ORDERS.find(o => o.id === orderId);
-    if(order){
-      order.riderId = riderId;
-      order.riderName = rider ? (rider.name || rider.email || null) : null;
-      order.riderPhone = rider ? (rider.phone || null) : null;
-    }
+    if(order) order.riderId = riderId;
     const orderTag = `#${orderId.slice(0,6).toUpperCase()}`;
     logActivity('update', 'order', orderId, riderId
       ? `Assigned order ${orderTag} to rider ${rider?.name || rider?.email || riderId}`
@@ -1904,35 +1948,6 @@ function formatOrderTimestamp(val){
   return new Date(ms).toLocaleString('en-PH', { dateStyle:'medium', timeStyle:'short' });
 }
 
-/* Delivery details for the Order Detail modal: how far it is, who has
-   it, the rider's timeline, and the proof they left (note + photo) or why
-   the delivery failed. Everything here is optional — an order only shows
-   the lines it actually has. */
-function odDeliverySectionHtml(order){
-  if(order.fulfillment !== 'delivery') return '';
-  const t = order.totals || {};
-  const field = (label, value, full) => `<div class="order-detail-field${full ? ' order-detail-field-full' : ''}"><label>${label}</label><span>${value}</span></div>`;
-  const rows = [];
-  if(t.distanceKm != null) rows.push(field('Distance', `${Number(t.distanceKm).toFixed(1)} km${t.durationMin ? ` · about ${umEsc(t.durationMin)} min` : ''}${t.distanceSource === 'estimate' ? ' (estimated)' : ''}`));
-  rows.push(field('Rider', order.riderId ? umEsc(order.riderName || 'Assigned') : 'Not assigned yet'));
-  if(order.riderPhone) rows.push(field('Rider phone', umEsc(order.riderPhone)));
-  if(order.pickedUpAt) rows.push(field('Picked up', umEsc(formatOrderTimestamp(order.pickedUpAt))));
-  if(order.arrivedAt) rows.push(field('Arrived', umEsc(formatOrderTimestamp(order.arrivedAt))));
-  if(order.completedAt) rows.push(field('Delivered', umEsc(formatOrderTimestamp(order.completedAt))));
-  if(order.failedAt) rows.push(field('Delivery failed', umEsc(formatOrderTimestamp(order.failedAt))));
-  if(order.failureReason) rows.push(field('Reason', `<strong style="color:var(--adm-danger-dark);">${umEsc(order.failureReason)}</strong>`, true));
-  if(order.deliveryProof) rows.push(field('Rider note', umEsc(order.deliveryProof), true));
-  const photo = order.deliveryPhoto
-    ? `<a class="od-proof-link" href="${umEsc(order.deliveryPhoto)}" target="_blank" rel="noopener"><img class="od-proof-img" src="${umEsc(order.deliveryPhoto)}" alt="Delivery photo" loading="lazy"></a>`
-    : '';
-  return `
-    <div class="order-detail-section">
-      <h4>Delivery</h4>
-      <div class="order-detail-grid">${rows.join('')}</div>
-      ${photo}
-    </div>`;
-}
-
 function openOrderDetailModal(orderId){
   const order = ADMIN_ORDERS.find(o => o.id === orderId);
   if(!order) return;
@@ -1946,8 +1961,8 @@ function openOrderDetailModal(orderId){
   const itemsHtml = (order.items || []).map(it => `
     <div class="order-detail-item">
       <div>
-        <div class="order-detail-item-name">${it.name}${it.size ? ` <span class="cart-dd-size">(${it.size})</span>` : ''}</div>
-        ${it.optionsSummary ? `<div class="order-detail-item-opts">${it.optionsSummary}</div>` : ''}
+        <div class="order-detail-item-name">${umEsc(it.name)}${it.size ? ` <span class="cart-dd-size">(${umEsc(it.size)})</span>` : ''}</div>
+        ${it.optionsSummary ? `<div class="order-detail-item-opts">${umEsc(it.optionsSummary)}</div>` : ''}
         <div class="order-detail-item-meta">${it.qty} × ${peso(it.price)}</div>
       </div>
       <div class="order-detail-item-total">${peso(it.price * it.qty)}</div>
@@ -1956,29 +1971,27 @@ function openOrderDetailModal(orderId){
 
   $('#orderDetailTitle').text(`Order #${order.id.slice(0,6).toUpperCase()}`);
   $('#orderDetailSubtitle').html(`
-    <span class="order-status-badge admin-status-${status}">${status}</span>
+    <span class="order-status-badge admin-status-${umEsc(status)}">${umEsc(status)}</span>
     <span class="order-detail-meta">Placed ${formatOrderTimestamp(order.createdAt)}</span>
   `);
 
   $('#orderDetailBody').html(`
     <div class="pd-detail-actions">
-      <button type="button" class="btn btn-outline btn-sm" data-pd-open="${order.id}" data-pd-type="invoice">${PD_ICON_PRINTER} Invoice</button>
-      <button type="button" class="btn btn-outline btn-sm" data-pd-open="${order.id}" data-pd-type="slip">${PD_ICON_PRINTER} Packing slip</button>
+      <button type="button" class="btn btn-outline btn-sm" data-pd-open="${umEsc(order.id)}" data-pd-type="invoice">${PD_ICON_PRINTER} Invoice</button>
+      <button type="button" class="btn btn-outline btn-sm" data-pd-open="${umEsc(order.id)}" data-pd-type="slip">${PD_ICON_PRINTER} Packing slip</button>
     </div>
     ${rtDetailSectionHtml(order)}
     <div class="order-detail-section">
       <h4>Customer</h4>
       <div class="order-detail-grid">
-        <div class="order-detail-field"><label>Name</label><span>${c.name || 'Guest'}</span></div>
-        <div class="order-detail-field"><label>Phone</label><span>${c.phone || '—'}</span></div>
-        <div class="order-detail-field"><label>Email</label><span>${c.email || '—'}</span></div>
+        <div class="order-detail-field"><label>Name</label><span>${umEsc(c.name || 'Guest')}</span></div>
+        <div class="order-detail-field"><label>Phone</label><span>${umEsc(c.phone || '—')}</span></div>
+        <div class="order-detail-field"><label>Email</label><span>${umEsc(c.email || '—')}</span></div>
         <div class="order-detail-field"><label>Fulfillment</label><span>${isDelivery ? 'Delivery' : 'Store Pickup'}</span></div>
-        ${isDelivery ? `<div class="order-detail-field order-detail-field-full"><label>Delivery Address</label><span>${c.address || '—'}</span></div>` : ''}
-        <div class="order-detail-field"><label>Payment Method</label><span>${order.paymentMethod || '—'}</span></div>
+        ${isDelivery ? `<div class="order-detail-field order-detail-field-full"><label>Delivery Address</label><span>${umEsc(c.address || '—')}</span></div>` : ''}
+        <div class="order-detail-field"><label>Payment Method</label><span>${umEsc(order.paymentMethod || '—')}</span></div>
       </div>
     </div>
-
-    ${odDeliverySectionHtml(order)}
 
     <div class="order-detail-section">
       <h4>Items (${itemCount})</h4>
@@ -2005,9 +2018,6 @@ $(document).on('click', '#orderDetailClose', closeOrderDetailModal);
 $(document).on('click', '#orderDetailOverlay', function(e){
   if(e.target === this) closeOrderDetailModal();
 });
-$(document).on('keydown', function(e){
-  if(e.key === 'Escape' && $('#orderDetailOverlay').hasClass('open')) closeOrderDetailModal();
-});
 
 $(document).on('change', '[data-order-status]', async function(){
   const orderId = $(this).data('order-status');
@@ -2026,7 +2036,7 @@ $(document).on('change', '[data-order-status]', async function(){
   } catch(err){
     console.error(err);
     showToast('Could not update order status. Please try again.', 'error');
-    $select.prop('disabled', false);
+    renderAdminOrdersTable(); // snap the dropdown back to the real status
   }
 });
 
@@ -2267,9 +2277,6 @@ $(document).on('click', '.pd-tab', function(){
 $(document).on('click', '#pdPrintBtn', pdPrint);
 $(document).on('click', '#pdClose, #pdCloseBtn', pdClose);
 $(document).on('click', '#pdOverlay', function(e){ if(e.target === this) pdClose(); });
-$(document).on('keydown', function(e){
-  if(e.key === 'Escape' && $('#pdOverlay').hasClass('open')) pdClose();
-});
 
 /* ----- Bulk selection in the Orders table ----- */
 /* The checkbox column header is added here rather than in
@@ -2630,9 +2637,6 @@ function rtNotifyCustomer(ret, status){
 $(document).on('click', '[data-rt-open]', function(){ rtOpen(String($(this).data('rt-open'))); });
 $(document).on('click', '#rtClose', rtClose);
 $(document).on('click', '#rtOverlay', function(e){ if(e.target === this) rtClose(); });
-$(document).on('keydown', function(e){
-  if(e.key === 'Escape' && $('#rtOverlay').hasClass('open') && !$('#admConfirmOverlay').hasClass('open')) rtClose();
-});
 
 $(document).on('click', '[data-rt-act]', async function(){
   const act = $(this).data('rt-act');
@@ -2707,10 +2711,7 @@ $(document).on('click', '[data-rt-act]', async function(){
       const updates = pickedItems.flatMap(it => rtStockUpdatesFor(it));
       if(updates.length){
         await window.CCProducts.incrementStock(updates);
-        await loadProductsFromFirestore();
-        if(typeof renderAdminProductsTable === 'function') renderAdminProductsTable();
-        if(typeof renderInventoryAlerts === 'function') renderInventoryAlerts();
-        renderAdminOverviewStats();
+        await admReloadCatalog();
       }
     } catch(err){
       console.error('Restock failed after refund was recorded.', err);
@@ -2750,165 +2751,108 @@ $(function(){
   renderSizePriceRows($('#apCategory').val(), null);
 });
 
-/* ================= SEED STARTER CATALOG ================= */
+/* ================= MAINTENANCE TOOLS =================
+   One-off migration buttons (Overview > Maintenance Tools). They all follow
+   the same shape, so admRunTool() does the busy/idle button, status line,
+   activity-log entry and catalog refresh once instead of seven times.
+   Each tool's own docs live on the matching CCProducts / CCOrders function. */
+async function admRunTool(btnSel, statusSel, o){
+  const $btn = $(btnSel), $status = $(statusSel);
+  $btn.prop('disabled', true).text(o.busy);
+  $status.text(o.scanning);
+  try{
+    const result = await o.run();
+    const logText = o.log ? o.log(result) : '';
+    if(logText) logActivity('update', o.entity || 'product', 'maintenance', logText); // rule: every admin write is logged
+    if(o.reload !== false) await admReloadCatalog();
+    $status.text(o.done(result));
+  } catch(err){
+    console.error(err);
+    $status.text(o.fail);
+  } finally {
+    $btn.prop('disabled', false).text(o.idle);
+  }
+}
+const admPlural = (n, word) => `${n} ${word}${n === 1 ? '' : 's'}`;
+
+/* Writes SEED_PRODUCTS to Firestore. If a seed id matches a live product it
+   can be overwritten (stock and edits included), hence the confirm. */
 $(document).on('click', '#adminSeedBtn', async function(){
-  const $btn = $(this);
-  const $status = $('#adminSeedStatus');
-  $btn.prop('disabled', true).text('Seeding...');
-  $status.text('Pushing starter catalog to Firestore — this can take a moment.');
-  try{
-    await window.CCProducts.seedProducts(SEED_PRODUCTS);
-    await loadProductsFromFirestore();
-    if(typeof renderCategories === 'function') renderCategories();
-    if(typeof renderBestSellers === 'function') renderBestSellers();
-    if(typeof renderMenuPage === 'function') renderMenuPage();
-    if(typeof renderMerchPage === 'function') renderMerchPage();
-    buildComboProducts();
-    if(typeof renderFeaturedCombos === 'function') renderFeaturedCombos();
-    renderAdminProductsTable();
-    renderAdminOverviewStats();
-    $status.text(`Done — ${SEED_PRODUCTS.length} products are now in Firestore.`);
-  } catch(err){
-    console.error(err);
-    $status.text('Something went wrong while seeding. Check the console for details.');
-  } finally {
-    $btn.prop('disabled', false).text('Seed Starter Catalog');
-  }
+  const ok = await showConfirm({
+    title: 'Seed the starter catalog?',
+    message: 'This pushes the demo starter products to Firestore. A starter product whose id matches one you already have can overwrite it, including its stock and any edits. Only do this on an empty or test catalog.',
+    confirmText: 'Seed Catalog', danger: true
+  });
+  if(!ok) return;
+  admRunTool(this, '#adminSeedStatus', {
+    busy: 'Seeding...', idle: 'Seed Starter Catalog',
+    scanning: 'Pushing starter catalog to Firestore — this can take a moment.',
+    run: () => window.CCProducts.seedProducts(SEED_PRODUCTS),
+    log: () => `Seeded the starter catalog (${SEED_PRODUCTS.length} products)`,
+    done: () => `Done — ${SEED_PRODUCTS.length} products are now in Firestore.`,
+    fail: 'Something went wrong while seeding. Check the console for details.'
+  });
 });
 
-/* ================= CLEAN UP LEGACY FOOD FIELDS ================= */
-/* Strips Ingredients/Allergens off any non-food (merch) product that
-   still has them — leftover from before the admin form limited those
-   fields to food categories. See the comment on
-   CCProducts.cleanupLegacyFoodFields for why this has to walk every
-   product instead of only fixing the ones re-saved through the form. */
-$(document).on('click', '#adminCleanupFieldsBtn', async function(){
-  const $btn = $(this);
-  const $status = $('#adminCleanupStatus');
-  $btn.prop('disabled', true).text('Cleaning...');
-  $status.text('Scanning products for stray Ingredients/Allergens fields...');
-  try{
-    const cleanedIds = await window.CCProducts.cleanupLegacyFoodFields(FOOD_CATEGORIES);
-    await loadProductsFromFirestore();
-    if(typeof renderMenuPage === 'function') renderMenuPage();
-    if(typeof renderMerchPage === 'function') renderMerchPage();
-    buildComboProducts();
-    if(typeof renderFeaturedCombos === 'function') renderFeaturedCombos();
-    renderAdminProductsTable();
-    renderAdminOverviewStats();
-    $status.text(cleanedIds.length
-      ? `Done — removed Ingredients/Allergens from ${cleanedIds.length} product${cleanedIds.length === 1 ? '' : 's'}: ${cleanedIds.join(', ')}.`
-      : 'Done — no merch products had leftover Ingredients/Allergens fields.');
-  } catch(err){
-    console.error(err);
-    $status.text('Something went wrong while cleaning up. Check the console for details.');
-  } finally {
-    $btn.prop('disabled', false).text('Clean Up Legacy Fields');
-  }
+/* Strips Ingredients/Allergens off non-food (merch) products that still have them. */
+$(document).on('click', '#adminCleanupFieldsBtn', function(){
+  admRunTool(this, '#adminCleanupStatus', {
+    busy: 'Cleaning...', idle: 'Clean Up Legacy Fields',
+    scanning: 'Scanning products for stray Ingredients/Allergens fields...',
+    run: () => window.CCProducts.cleanupLegacyFoodFields(FOOD_CATEGORIES),
+    log: ids => ids.length && `Maintenance: removed legacy Ingredients/Allergens from ${admPlural(ids.length, 'product')}`,
+    done: ids => ids.length
+      ? `Done — removed Ingredients/Allergens from ${admPlural(ids.length, 'product')}: ${ids.join(', ')}.`
+      : 'Done — no merch products had leftover Ingredients/Allergens fields.',
+    fail: 'Something went wrong while cleaning up. Check the console for details.'
+  });
 });
 
-/* ================= FIX MISSING riderId FIELD ON OLDER ORDERS ================= */
-/* See the comment on CCOrders.backfillMissingRiderId — delivery orders
-   placed before createOrder() started writing riderId: null explicitly
-   never matched fetchAvailableDeliveries()'s riderId == null query (or
-   the matching firestore.rules check), so they never appeared in any
-   rider's Available Deliveries list at all. This adds the missing
-   field to any delivery order that still lacks it. */
-$(document).on('click', '#adminBackfillRiderIdBtn', async function(){
-  const $btn = $(this);
-  const $status = $('#adminBackfillRiderIdStatus');
-  $btn.prop('disabled', true).text('Fixing...');
-  $status.text('Scanning delivery orders for a missing riderId field...');
-  try{
-    const fixedIds = await window.CCOrders.backfillMissingRiderId();
-    $status.text(fixedIds.length
-      ? `Done — fixed ${fixedIds.length} delivery order${fixedIds.length === 1 ? '' : 's'}: ${fixedIds.join(', ')}.`
-      : 'Done — every delivery order already had the riderId field.');
-  } catch(err){
-    console.error(err);
-    $status.text('Something went wrong while fixing older orders. Check the console for details.');
-  } finally {
-    $btn.prop('disabled', false).text('Fix Older Delivery Orders');
-  }
+/* Delivery orders placed before createOrder() wrote riderId:null never matched
+   the riders' "available deliveries" query. This adds the missing field. */
+$(document).on('click', '#adminBackfillRiderIdBtn', function(){
+  admRunTool(this, '#adminBackfillRiderIdStatus', {
+    busy: 'Fixing...', idle: 'Fix Older Delivery Orders', entity: 'order', reload: false,
+    scanning: 'Scanning delivery orders for a missing riderId field...',
+    run: () => window.CCOrders.backfillMissingRiderId(),
+    log: ids => ids.length && `Maintenance: added missing riderId to ${admPlural(ids.length, 'delivery order')}`,
+    done: ids => ids.length
+      ? `Done — fixed ${admPlural(ids.length, 'delivery order')}: ${ids.join(', ')}.`
+      : 'Done — every delivery order already had the riderId field.',
+    fail: 'Something went wrong while fixing older orders. Check the console for details.'
+  });
 });
 
-/* ================= FLATTEN LEGACY PER-SIZE PRICING ================= */
-/* Some Shirts/Caps/Shorts/Socks products may still carry old per-size
-   pricing (a `sizes` array of {size, price} objects with different
-   prices per size) from before per-size pricing was reverted. This
-   rewrites every such product to the flat, single-price model: each
-   size becomes a plain string and the product's one Price field
-   applies to all of them. See CCProducts.flattenSizePricing for how
-   the flat price is chosen. SIZED_CATEGORIES comes from script.js,
-   loaded before this file. */
-$(document).on('click', '#adminGraduatePricingBtn', async function(){
-  const $btn = $(this);
-  const $status = $('#adminGraduatePricingStatus');
-  $btn.prop('disabled', true).text('Updating...');
-  $status.text('Scanning Shirts/Caps/Shorts/Socks for old per-size pricing...');
-  try{
-    const updatedIds = await window.CCProducts.flattenSizePricing(SIZED_CATEGORIES);
-    await loadProductsFromFirestore();
-    if(typeof renderCategories === 'function') renderCategories();
-    if(typeof renderBestSellers === 'function') renderBestSellers();
-    if(typeof renderMenuPage === 'function') renderMenuPage();
-    if(typeof renderMerchPage === 'function') renderMerchPage();
-    buildComboProducts();
-    if(typeof renderFeaturedCombos === 'function') renderFeaturedCombos();
-    renderAdminProductsTable();
-    renderAdminOverviewStats();
-    $status.text(updatedIds.length
-      ? `Done — flattened per-size pricing on ${updatedIds.length} product${updatedIds.length === 1 ? '' : 's'}: ${updatedIds.join(', ')}.`
-      : 'Done — every sized product already has flat pricing.');
-  } catch(err){
-    console.error(err);
-    $status.text('Something went wrong while updating. Check the console for details.');
-  } finally {
-    $btn.prop('disabled', false).text('Flatten Per-Size Pricing');
-  }
+/* Rewrites old per-size pricing on Shirts/Caps/Shorts/Socks to one flat price. */
+$(document).on('click', '#adminGraduatePricingBtn', function(){
+  admRunTool(this, '#adminGraduatePricingStatus', {
+    busy: 'Updating...', idle: 'Flatten Per-Size Pricing',
+    scanning: 'Scanning Shirts/Caps/Shorts/Socks for old per-size pricing...',
+    run: () => window.CCProducts.flattenSizePricing(SIZED_CATEGORIES),
+    log: ids => ids.length && `Maintenance: flattened per-size pricing on ${admPlural(ids.length, 'product')}`,
+    done: ids => ids.length
+      ? `Done — flattened per-size pricing on ${admPlural(ids.length, 'product')}: ${ids.join(', ')}.`
+      : 'Done — every sized product already has flat pricing.',
+    fail: 'Something went wrong while updating. Check the console for details.'
+  });
 });
 
-/* ================= NORMALIZE DRINK SIZES ================= */
-/* Rewrites every Coffee/Non-Coffee/Tea product onto exactly three
-   selectable sizes — 16oz, 20oz, 24oz — so the size selector on the
-   product page always has something real to show, no matter what
-   state that drink's `sizes` array was previously in. See
-   CCProducts.normalizeDrinkSizes for how the new prices are derived
-   from whatever the drink was already charging. */
-$(document).on('click', '#adminNormalizeSizesBtn', async function(){
-  const $btn = $(this);
-  const $status = $('#adminNormalizeSizesStatus');
-  $btn.prop('disabled', true).text('Fixing...');
-  $status.text('Scanning Coffee/Non-Coffee/Tea drinks for their size options...');
-  try{
-    const updatedIds = await window.CCProducts.normalizeDrinkSizes(DRINK_CATEGORIES);
-    await loadProductsFromFirestore();
-    if(typeof renderMenuPage === 'function') renderMenuPage();
-    renderAdminProductsTable();
-    renderAdminOverviewStats();
-    $status.text(updatedIds.length
-      ? `Done — fixed sizes on ${updatedIds.length} drink${updatedIds.length === 1 ? '' : 's'}: ${updatedIds.join(', ')}.`
-      : 'Done — every drink already has 16oz/20oz/24oz sizes.');
-  } catch(err){
-    console.error(err);
-    $status.text('Something went wrong while fixing sizes. Check the console for details.');
-  } finally {
-    $btn.prop('disabled', false).text('Fix Drink Sizes (16/20/24oz)');
-  }
+/* Puts every Coffee/Non-Coffee/Tea drink on exactly 16oz / 20oz / 24oz. */
+$(document).on('click', '#adminNormalizeSizesBtn', function(){
+  admRunTool(this, '#adminNormalizeSizesStatus', {
+    busy: 'Fixing...', idle: 'Fix Drink Sizes (16/20/24oz)',
+    scanning: 'Scanning Coffee/Non-Coffee/Tea drinks for their size options...',
+    run: () => window.CCProducts.normalizeDrinkSizes(DRINK_CATEGORIES),
+    log: ids => ids.length && `Maintenance: normalized sizes on ${admPlural(ids.length, 'drink')}`,
+    done: ids => ids.length
+      ? `Done — fixed sizes on ${admPlural(ids.length, 'drink')}: ${ids.join(', ')}.`
+      : 'Done — every drink already has 16oz/20oz/24oz sizes.',
+    fail: 'Something went wrong while fixing sizes. Check the console for details.'
+  });
 });
 
-/* ================= FIX BROKEN PRODUCT IMAGES ================= */
-/* Repairs products still carrying a bare local filename in img/imgs
-   (leftover from before Cloudinary uploads existed, or from a seed
-   run before SEED_PRODUCTS was fixed to use a real placeholder) —
-   these never resolve on this host and show as a broken-image icon
-   everywhere that product appears. Swaps in the same "photo coming
-   soon" placeholder the seed data now uses; never touches a product
-   that already has a real Cloudinary URL. See
-   CCProducts.fixBrokenProductImages for exactly how a broken
-   reference is detected. Admins can still upload a real photo for
-   any of these afterward through the normal Edit form — this just
-   stops the broken-icon in the meantime. */
+/* Gives products with NO image at all the "photo coming soon" placeholder.
+   Real images (including plain filenames like "croissant.jpg") are left alone. */
 $(document).on('click', '#adminFixImagesBtn', async function(){
   const missingCount = PRODUCTS.filter(p =>
     !p.img || (Array.isArray(p.imgs) && p.imgs.some(src => !src))
@@ -2922,179 +2866,41 @@ $(document).on('click', '#adminFixImagesBtn', async function(){
     danger: false
   });
   if(!ok) return;
-
-  const $btn = $(this);
-  const $status = $('#adminFixImagesStatus');
-  $btn.prop('disabled', true).text('Fixing...');
-  $status.text('Scanning every product for missing image references...');
-  try{
-    const fixedIds = await window.CCProducts.fixBrokenProductImages();
-    await loadProductsFromFirestore();
-    if(typeof renderMenuPage === 'function') renderMenuPage();
-    if(typeof renderMerchPage === 'function') renderMerchPage();
-    buildComboProducts();
-    if(typeof renderFeaturedCombos === 'function') renderFeaturedCombos();
-    renderAdminProductsTable();
-    renderAdminOverviewStats();
-    $status.text(fixedIds.length
-      ? `Done — placeholder added for ${fixedIds.length} product${fixedIds.length === 1 ? '' : 's'} with no image: ${fixedIds.join(', ')}. Upload real photos for these any time from Edit.`
-      : 'Done — no products were missing an image.');
-  } catch(err){
-    console.error(err);
-    $status.text('Something went wrong while fixing images. Check the console for details.');
-  } finally {
-    $btn.prop('disabled', false).text('Fix Broken Product Images');
-  }
+  admRunTool(this, '#adminFixImagesStatus', {
+    busy: 'Fixing...', idle: 'Fix Broken Product Images',
+    scanning: 'Scanning every product for missing image references...',
+    run: () => window.CCProducts.fixBrokenProductImages(),
+    log: ids => ids.length && `Maintenance: added a placeholder image to ${admPlural(ids.length, 'product')}`,
+    done: ids => ids.length
+      ? `Done — placeholder added for ${admPlural(ids.length, 'product')} with no image: ${ids.join(', ')}. Upload real photos for these any time from Edit.`
+      : 'Done — no products were missing an image.',
+    fail: 'Something went wrong while fixing images. Check the console for details.'
+  });
 });
 
-/* ================= FILL IN DRINK CUSTOMIZATIONS ================= */
-/* Fills in whatever Coffee/Non-Coffee/Tea drink is still missing its
-   option groups (Sweetness Level, Ice Level, and Milk Type when the
-   drink contains milk), calories, about text, or nutrition — without
-   touching any of those fields on a drink that already has them. See
-   CCProducts.fillMissingDrinkDetails for exactly what gets generated
-   and why nothing already-filled-in is ever overwritten. Everything
-   it adds shows up as normal, editable fields on that drink's Edit
-   form afterward (the Option Groups Builder, and the Calories/About/
-   Nutrition inputs) — this is just a starting point, not a lock-in. */
-$(document).on('click', '#adminFillDrinkDetailsBtn', async function(){
-  const $btn = $(this);
-  const $status = $('#adminFillDrinkDetailsStatus');
-  $btn.prop('disabled', true).text('Filling...');
-  $status.text('Scanning Coffee/Non-Coffee/Tea drinks for missing customization details...');
-  try{
-    const updatedIds = await window.CCProducts.fillMissingDrinkDetails(DRINK_CATEGORIES);
-    await loadProductsFromFirestore();
-    if(typeof renderMenuPage === 'function') renderMenuPage();
-    renderAdminProductsTable();
-    renderAdminOverviewStats();
-    $status.text(updatedIds.length
-      ? `Done — filled in details on ${updatedIds.length} drink${updatedIds.length === 1 ? '' : 's'}: ${updatedIds.join(', ')}. Open any of them with Edit to adjust.`
-      : 'Done — every drink already has its customization details filled in.');
-  } catch(err){
-    console.error(err);
-    $status.text('Something went wrong while filling in details. Check the console for details.');
-  } finally {
-    $btn.prop('disabled', false).text('Fill In Drink Customizations');
-  }
+/* Fills in missing option groups / calories / about text / nutrition on
+   drinks, never overwriting anything already filled in. */
+$(document).on('click', '#adminFillDrinkDetailsBtn', function(){
+  admRunTool(this, '#adminFillDrinkDetailsStatus', {
+    busy: 'Filling...', idle: 'Fill In Drink Customizations',
+    scanning: 'Scanning Coffee/Non-Coffee/Tea drinks for missing customization details...',
+    run: () => window.CCProducts.fillMissingDrinkDetails(DRINK_CATEGORIES),
+    log: ids => ids.length && `Maintenance: filled in customization details on ${admPlural(ids.length, 'drink')}`,
+    done: ids => ids.length
+      ? `Done — filled in details on ${admPlural(ids.length, 'drink')}: ${ids.join(', ')}. Open any of them with Edit to adjust.`
+      : 'Done — every drink already has its customization details filled in.',
+    fail: 'Something went wrong while filling in details. Check the console for details.'
+  });
 });
 
 /* ================= SETTINGS ================= */
-/* Delivery pricing (route-based): base fee for the first few km, then a
-   per-km charge, rounded up to the next few pesos, nothing past a max
-   distance — measured from the shop's pin. The same formula runs in the
-   storefront (script.js) and, authoritatively, on the server
-   (api/_lib/deliveryFee.js). */
-const AS_DEFAULT_SHOP = { lat: 14.6760, lng: 121.0437 };
-let asShopMap = null;
-let asShopMarker = null;
-
-function asReadPricing(){
-  return {
-    baseFee: parseFloat($('#asBaseFee').val()),
-    baseKm: parseFloat($('#asBaseKm').val()),
-    perKm: parseFloat($('#asPerKm').val()),
-    roundTo: parseFloat($('#asRoundTo').val()),
-    maxKm: parseFloat($('#asMaxKm').val()),
-    shopLat: parseFloat($('#asShopLat').val()),
-    shopLng: parseFloat($('#asShopLng').val())
-  };
-}
-
-function asFeeFor(km, p){
-  const raw = p.baseFee + Math.max(0, km - p.baseKm) * p.perKm;
-  return Math.ceil((raw - 1e-9) / p.roundTo) * p.roundTo;
-}
-
-function asRenderFeePreview(){
-  const p = asReadPricing();
-  const ok = [p.baseFee, p.baseKm, p.perKm, p.roundTo, p.maxKm].every(Number.isFinite) && p.roundTo >= 1 && p.maxKm > 0;
-  if(!ok){ $('#asFeePreview').html(''); return; }
-  const samples = [1, 2, 3, 4, 5, 7, 10].filter(km => km <= p.maxKm);
-  if(!samples.includes(p.maxKm)) samples.push(p.maxKm);
-  $('#asFeePreview').html(samples.map(km => `<span class="as-preview-chip"><b>${km} km</b> ${peso(asFeeFor(km, p))}</span>`).join('')
-    + `<span class="as-preview-chip as-preview-none">over ${p.maxKm} km: not delivered</span>`);
-}
-
-function asSetShopPin(lat, lng, moveMap){
-  $('#asShopLat').val(Number(lat).toFixed(6));
-  $('#asShopLng').val(Number(lng).toFixed(6));
-  if(asShopMarker) asShopMarker.setLatLng([lat, lng]);
-  if(asShopMap && moveMap) asShopMap.setView([lat, lng], 16);
-  const placeholder = Math.abs(lat - AS_DEFAULT_SHOP.lat) < 1e-6 && Math.abs(lng - AS_DEFAULT_SHOP.lng) < 1e-6;
-  $('#asShopCoords').html(placeholder
-    ? '⚠️ This is still the <strong>placeholder pin</strong> — move it to your shop, then save.'
-    : `Shop pin: ${Number(lat).toFixed(5)}, ${Number(lng).toFixed(5)}`);
-}
-
-function asInitShopMap(lat, lng){
-  if(typeof L === 'undefined' || !document.getElementById('asShopMap')) return;
-  if(!asShopMap){
-    asShopMap = L.map('asShopMap').setView([lat, lng], 15);
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-      maxZoom: 19,
-      attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
-    }).addTo(asShopMap);
-    asShopMarker = L.marker([lat, lng], { draggable: true }).addTo(asShopMap);
-    asShopMarker.on('dragend', () => { const p = asShopMarker.getLatLng(); asSetShopPin(p.lat, p.lng, false); });
-    asShopMap.on('click', (e) => asSetShopPin(e.latlng.lat, e.latlng.lng, false));
-    // The Settings tab is hidden (0x0) until opened — re-measure whenever it
-    // becomes visible so tiles don't render into a collapsed box.
-    if(typeof ResizeObserver !== 'undefined'){
-      new ResizeObserver(() => asShopMap.invalidateSize()).observe(document.getElementById('asShopMap'));
-    }
-  }
-  asSetShopPin(lat, lng, true);
-  setTimeout(() => asShopMap.invalidateSize(), 200);
-}
-
-$(document).on('input', '#asBaseFee, #asBaseKm, #asPerKm, #asRoundTo, #asMaxKm', asRenderFeePreview);
-$(document).on('change', '#asShopLat, #asShopLng', function(){
-  const lat = parseFloat($('#asShopLat').val()), lng = parseFloat($('#asShopLng').val());
-  if(Number.isFinite(lat) && Number.isFinite(lng) && Math.abs(lat) <= 90 && Math.abs(lng) <= 180) asSetShopPin(lat, lng, true);
-});
-
-async function asSearchShop(){
-  const q = $('#asShopSearch').val().trim();
-  if(!q) return;
-  const $btn = $('#asShopSearchBtn').prop('disabled', true).text('Searching...');
-  try{
-    const res = await fetch(`https://nominatim.openstreetmap.org/search?format=jsonv2&limit=1&q=${encodeURIComponent(q)}`);
-    const results = await res.json();
-    if(!results.length){ showToast('Could not find that address. Drag the pin instead.', 'warning'); return; }
-    asSetShopPin(parseFloat(results[0].lat), parseFloat(results[0].lon), true);
-  } catch(err){
-    console.error(err);
-    showToast('Address search failed. Please try again.', 'error');
-  } finally {
-    $btn.prop('disabled', false).text('Search');
-  }
-}
-$(document).on('click', '#asShopSearchBtn', asSearchShop);
-$(document).on('keydown', '#asShopSearch', function(e){ if(e.key === 'Enter'){ e.preventDefault(); asSearchShop(); } });
-$(document).on('click', '#asShopLocateBtn', function(){
-  if(!navigator.geolocation){ showToast('Your browser does not support location access.', 'warning'); return; }
-  const $btn = $(this).prop('disabled', true).text('Locating...');
-  navigator.geolocation.getCurrentPosition(
-    (pos) => { asSetShopPin(pos.coords.latitude, pos.coords.longitude, true); $btn.prop('disabled', false).text('Use my location'); },
-    () => { showToast('Could not access your location. Drag the pin instead.', 'warning'); $btn.prop('disabled', false).text('Use my location'); }
-  );
-});
-
-/* Populates the delivery pricing form from Firestore each time the
+/* Populates the delivery fee input from Firestore each time the
    dashboard is (re)rendered, e.g. on navigating to the Admin page. */
 async function loadAndRenderAdminSettings(){
   try{
     const settings = await window.CCSettings.fetchSettings();
-    const dp = settings.deliveryPricing;
-    DELIVERY_FEE = dp.baseFee;
-    $('#asBaseFee').val(dp.baseFee);
-    $('#asBaseKm').val(dp.baseKm);
-    $('#asPerKm').val(dp.perKm);
-    $('#asRoundTo').val(dp.roundTo);
-    $('#asMaxKm').val(dp.maxKm);
-    asInitShopMap(Number(dp.shopLat), Number(dp.shopLng));
-    asRenderFeePreview();
+    DELIVERY_FEE = settings.deliveryFee;
+    $('#asDeliveryFee').val(settings.deliveryFee);
     LOW_STOCK_THRESHOLD = Number.isInteger(settings.lowStockThreshold) ? settings.lowStockThreshold : window.CCSettings.DEFAULT_LOW_STOCK_THRESHOLD;
     $('#asLowStock').val(LOW_STOCK_THRESHOLD);
     // Products render before settings finish loading, so redo the parts
@@ -3103,51 +2909,35 @@ async function loadAndRenderAdminSettings(){
     renderInventoryAlerts();
   } catch(err){
     console.error('Could not load settings from Firestore.', err);
-    // Fall back to the built-in defaults so the form isn't left blank.
-    const d = window.CCSettings.DEFAULT_DELIVERY_PRICING;
-    $('#asBaseFee').val(d.baseFee); $('#asBaseKm').val(d.baseKm); $('#asPerKm').val(d.perKm);
-    $('#asRoundTo').val(d.roundTo); $('#asMaxKm').val(d.maxKm);
-    asInitShopMap(d.shopLat, d.shopLng);
-    asRenderFeePreview();
+    // Fall back to whatever's cached (or the built-in default) so the
+    // field isn't left blank if the fetch above failed.
+    $('#asDeliveryFee').val(DELIVERY_FEE);
   }
 }
 
 $(document).on('submit', '#adminSettingsForm', async function(e){
   e.preventDefault();
-  const p = asReadPricing();
-  const $status = $('#adminSettingsStatus');
-  if(![p.baseFee, p.baseKm, p.perKm].every(n => Number.isFinite(n) && n >= 0)){
-    $status.text('Base fee, base distance and per-km charge must be zero or more.');
-    return;
-  }
-  if(!Number.isFinite(p.roundTo) || p.roundTo < 1){
-    $status.text('Round up to must be at least ₱1.');
-    return;
-  }
-  if(!Number.isFinite(p.maxKm) || p.maxKm <= 0 || p.maxKm < p.baseKm){
-    $status.text('Maximum distance must be greater than zero and at least the base distance.');
-    return;
-  }
-  if(!Number.isFinite(p.shopLat) || !Number.isFinite(p.shopLng) || Math.abs(p.shopLat) > 90 || Math.abs(p.shopLng) > 180){
-    $status.text('Set the shop location on the map first.');
+  const fee = parseFloat($('#asDeliveryFee').val());
+  if(isNaN(fee) || fee < 0){
+    $('#adminSettingsStatus').text('Enter a valid, non-negative delivery fee.');
     return;
   }
   const $btn = $('#adminSettingsSubmitBtn');
+  const $status = $('#adminSettingsStatus');
   $btn.prop('disabled', true).text('Saving...');
   $status.text('');
   try{
-    const current = (await window.CCSettings.fetchSettings()).deliveryPricing;
-    const pricing = { ...current, ...p };
-    await window.CCSettings.updateDeliveryPricing(pricing);
-    logActivity('update', 'settings', 'deliveryPricing',
-      `Updated delivery pricing: ${peso(p.baseFee)} for the first ${p.baseKm} km, +${peso(p.perKm)}/km after, rounded up to ${peso(p.roundTo)}, max ${p.maxKm} km`);
-    DELIVERY_FEE = p.baseFee;
-    $status.text('Saved — new orders will be priced by distance.');
+    await window.CCSettings.updateDeliveryFee(fee);
+    logActivity('update', 'settings', 'deliveryFee', `Updated delivery fee to ${peso(fee)}`);
+    // Update the in-memory value script.js reads at checkout, so the
+    // new fee takes effect immediately without a page reload.
+    DELIVERY_FEE = fee;
+    $status.text('Saved — new orders will use this delivery fee.');
   } catch(err){
     console.error(err);
     $status.text('Something went wrong while saving. Check the console for details.');
   } finally {
-    $btn.prop('disabled', false).text('Save Delivery Pricing');
+    $btn.prop('disabled', false).text('Save Delivery Fee');
   }
 });
 
@@ -3214,8 +3004,8 @@ function renderPromoSelectedChips(){
     const name = p ? p.name : id;
     return `
       <span class="promo-pick-chip">
-        <span class="promo-pick-chip-name">${name}</span>
-        <button type="button" data-promo-unpick="${id}" aria-label="Remove ${name}">×</button>
+        <span class="promo-pick-chip-name">${umEsc(name)}</span>
+        <button type="button" data-promo-unpick="${umEsc(id)}" aria-label="Remove ${umEsc(name)}">×</button>
       </span>`;
   }).join(''));
 }
@@ -3242,10 +3032,10 @@ function renderPromoProductList(searchTerm){
     const catLabel = (catMeta && catMeta.sub) || p.cat || '';
     return `
       <label class="promo-pick-row${isPicked ? ' is-picked' : ''}">
-        <input type="checkbox" value="${p.id}" data-promo-pick ${isPicked ? 'checked' : ''}>
-        <img class="promo-pick-row-thumb" src="${resolveImageSrc(thumb)}" alt="">
-        <span class="promo-pick-row-name" title="${p.name}">${p.name}</span>
-        <span class="promo-pick-row-cat">${catLabel}</span>
+        <input type="checkbox" value="${umEsc(p.id)}" data-promo-pick ${isPicked ? 'checked' : ''}>
+        <img class="promo-pick-row-thumb" src="${umEsc(resolveImageSrc(thumb))}" alt="">
+        <span class="promo-pick-row-name" title="${umEsc(p.name)}">${umEsc(p.name)}</span>
+        <span class="promo-pick-row-cat">${umEsc(catLabel)}</span>
         <span class="promo-pick-row-price">${priceLabel(p)}</span>
       </label>`;
   }).join(''));
@@ -3408,10 +3198,6 @@ $(document).on('click', '#promoPreviewModalClose, #promoPreviewModalDismiss, #pr
 $(document).on('click', '#promoPreviewOverlay', function(e){
   if(e.target === this) closePromoPopupPreview();
 });
-$(document).on('keydown', function(e){
-  if(e.key === 'Escape' && $('#promoPreviewOverlay').hasClass('open')) closePromoPopupPreview();
-});
-
 /* ================= POPULAR THIS WEEK (homepage carousel) ================= */
 /* Same picker pattern as the launch popup above — separate state
    since this list isn't capped by a fixed layout the way the popup's
@@ -3427,8 +3213,8 @@ function renderBsSelectedChips(){
     const name = p ? p.name : id;
     return `
       <span class="promo-pick-chip">
-        <span class="promo-pick-chip-name">${name}</span>
-        <button type="button" data-bs-unpick="${id}" aria-label="Remove ${name}">×</button>
+        <span class="promo-pick-chip-name">${umEsc(name)}</span>
+        <button type="button" data-bs-unpick="${umEsc(id)}" aria-label="Remove ${umEsc(name)}">×</button>
       </span>`;
   }).join(''));
 }
@@ -3452,10 +3238,10 @@ function renderBsProductList(searchTerm){
     const catLabel = (catMeta && catMeta.sub) || p.cat || '';
     return `
       <label class="promo-pick-row${isPicked ? ' is-picked' : ''}">
-        <input type="checkbox" value="${p.id}" data-bs-pick ${isPicked ? 'checked' : ''}>
-        <img class="promo-pick-row-thumb" src="${resolveImageSrc(thumb)}" alt="">
-        <span class="promo-pick-row-name" title="${p.name}">${p.name}</span>
-        <span class="promo-pick-row-cat">${catLabel}</span>
+        <input type="checkbox" value="${umEsc(p.id)}" data-bs-pick ${isPicked ? 'checked' : ''}>
+        <img class="promo-pick-row-thumb" src="${umEsc(resolveImageSrc(thumb))}" alt="">
+        <span class="promo-pick-row-name" title="${umEsc(p.name)}">${umEsc(p.name)}</span>
+        <span class="promo-pick-row-cat">${umEsc(catLabel)}</span>
         <span class="promo-pick-row-price">${priceLabel(p)}</span>
       </label>`;
   }).join(''));
@@ -3578,12 +3364,6 @@ function currentAdminUid(){
   return (window.currentUser && window.currentUser.uid) || null;
 }
 
-/* Names/phones are typed by customers and shown here to admins, so they
-   are escaped before going into innerHTML. */
-function umEsc(s){
-  return String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' }[c]));
-}
-
 let ADMIN_ACCOUNTS = [];
 let adminAccountSearch = ''; // current text in the User Management search box
 let umEditingUid = null;
@@ -3594,6 +3374,7 @@ async function loadAndRenderAdminAccounts(){
   $('#adminAdminsBody').html(`<tr><td colspan="4" class="admin-empty-row">Loading accounts...</td></tr>`);
   try{
     ADMIN_ACCOUNTS = await window.CCAccounts.listUserProfiles();
+    ADMIN_RIDERS = ADMIN_ACCOUNTS.filter(u => u.role === 'rider' && !u.disabled); // same list, no second read needed
   } catch(err){
     console.error(err);
     const msg = umEsc(err.message || 'Could not load accounts.');
@@ -3756,6 +3537,7 @@ $(document).on('click', '[data-um-suspend]', async function(){
     if(user) user.disabled = nextDisabled;
     showToast(`${user?.email || uid} is now ${nextDisabled ? 'suspended' : 'active'}.`, 'success');
     renderAdminAccountsTable();
+    admSyncRiders();
   } catch(err){
     console.error(err);
     showToast(err.message || 'Could not update that account.', 'error');
@@ -3790,6 +3572,7 @@ $(document).on('change', '[data-um-role]', async function(){
     if(user) user.role = newRole;
     showToast(`${user?.email || uid} is now ${newRole === 'rider' ? 'a rider' : 'a customer'}.`, 'success');
     renderAdminAccountsTable();
+    admSyncRiders();
   } catch(err){
     console.error(err);
     showToast(err.message || "Could not change that account's role.", 'error');
@@ -3878,14 +3661,6 @@ $(document).on('click', '[data-um-remove-admin]', async function(){
   }
 });
 
-/* Escape closes the two modals above, unless a confirm dialog sitting on
-   top of them is the thing being dismissed (admin-ui.js handles that one). */
-$(document).on('keydown', function(e){
-  if(e.key !== 'Escape' || $('#admConfirmOverlay').hasClass('open')) return;
-  if($('#umEditOverlay').hasClass('open')) umCloseEdit();
-  if($('#umAddAdminOverlay').hasClass('open')) umCloseAddAdmin();
-});
-
 /* ================= COMBOS ================= */
 let adminEditingComboId = null; // set while editing an existing combo, null when adding a new one
 const PASTRY_CATEGORY = 'Pastries';
@@ -3901,10 +3676,10 @@ function renderComboProductDropdowns(){
   const prevDrink = $('#acDrink').val();
   const prevPastry = $('#acPastry').val();
   $('#acDrink').html(drinks.length
-    ? drinks.map(p => `<option value="${p.id}">${p.name}</option>`).join('')
+    ? drinks.map(p => `<option value="${umEsc(p.id)}">${umEsc(p.name)}</option>`).join('')
     : '<option value="" disabled>No drinks in the catalog yet</option>');
   $('#acPastry').html(pastries.length
-    ? pastries.map(p => `<option value="${p.id}">${p.name}</option>`).join('')
+    ? pastries.map(p => `<option value="${umEsc(p.id)}">${umEsc(p.name)}</option>`).join('')
     : '<option value="" disabled>No pastries in the catalog yet</option>');
   if(prevDrink) $('#acDrink').val(prevDrink);
   if(prevPastry) $('#acPastry').val(prevPastry);
@@ -3935,15 +3710,15 @@ function renderAdminCombosTable(){
     const pastry = PRODUCTS.find(p => p.id === c.pastryId);
     const broken = !drink || !pastry;
     return `
-      <tr data-combo-row="${c.id}">
+      <tr data-combo-row="${umEsc(c.id)}">
         <td class="admin-td-product">
           <div class="admin-td-product-inner">
-            <img src="${resolveImageSrc(c.img || blankPlaceholder(c.id, 'Combo'))}" alt="${c.name}">
-            <span>${c.name}</span>
+            <img src="${umEsc(resolveImageSrc(c.img || blankPlaceholder(c.id, 'Combo')))}" alt="${umEsc(c.name)}">
+            <span>${umEsc(c.name)}</span>
           </div>
         </td>
-        <td>${drink ? drink.name : '<span class="admin-stock-badge admin-stock-out">Missing</span>'}</td>
-        <td>${pastry ? pastry.name : '<span class="admin-stock-badge admin-stock-out">Missing</span>'}</td>
+        <td>${drink ? umEsc(drink.name) : '<span class="admin-stock-badge admin-stock-out">Missing</span>'}</td>
+        <td>${pastry ? umEsc(pastry.name) : '<span class="admin-stock-badge admin-stock-out">Missing</span>'}</td>
         <td>${Number(c.discountPercent) || 0}%</td>
         <td>
           ${broken
@@ -3953,13 +3728,13 @@ function renderAdminCombosTable(){
               : '<span class="admin-stock-badge admin-stock-unknown">Inactive</span>'}
         </td>
         <td class="admin-td-actions">
-          <button class="admin-icon-btn" data-admin-combo-toggle="${c.id}" title="${c.active ? 'Deactivate' : 'Activate'}" aria-label="${c.active ? 'Deactivate' : 'Activate'} ${c.name}">
+          <button class="admin-icon-btn" data-admin-combo-toggle="${umEsc(c.id)}" title="${c.active ? 'Deactivate' : 'Activate'}" aria-label="${c.active ? 'Deactivate' : 'Activate'} ${umEsc(c.name)}">
             <svg width="15" height="15" viewBox="0 0 24 24" fill="none"><path d="M5 12h14" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>${c.active ? '' : '<path d="M12 5v14" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>'}</svg>
           </button>
-          <button class="admin-icon-btn" data-admin-combo-edit="${c.id}" title="Edit" aria-label="Edit ${c.name}">
+          <button class="admin-icon-btn" data-admin-combo-edit="${umEsc(c.id)}" title="Edit" aria-label="Edit ${umEsc(c.name)}">
             <svg width="15" height="15" viewBox="0 0 24 24" fill="none"><path d="M4 20l1-4L16.5 4.5a1.5 1.5 0 0 1 2 0l1 1a1.5 1.5 0 0 1 0 2L8 19l-4 1Z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/></svg>
           </button>
-          <button class="admin-icon-btn admin-icon-btn-danger" data-admin-combo-delete="${c.id}" title="Delete" aria-label="Delete ${c.name}">
+          <button class="admin-icon-btn admin-icon-btn-danger" data-admin-combo-delete="${umEsc(c.id)}" title="Delete" aria-label="Delete ${umEsc(c.name)}">
             <svg width="15" height="15" viewBox="0 0 24 24" fill="none"><path d="M5 7h14M9 7V5a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2m-8 0v12a1 1 0 0 0 1 1h6a1 1 0 0 0 1-1V7" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
           </button>
         </td>
@@ -4067,7 +3842,7 @@ $(document).on('submit', '#adminAddComboForm', async function(e){
   const fields = {
     name: $('#acName').val().trim(),
     drinkId, pastryId,
-    discountPercent: Number($('#acDiscount').val()) || 0,
+    discountPercent: Math.min(90, Math.max(0, Number($('#acDiscount').val()) || 0)), // same 0-90 range as the input
     active: $('#acActive').val() === 'true',
     desc: $('#acDesc').val().trim() || `${drink.name} + ${pastry.name}`,
     img: $('#acImg').val().trim()
@@ -4285,9 +4060,6 @@ $(document).on('click keydown', '[data-inbox-open]', async function(e){
 });
 $(document).on('click', '#inboxClose', inboxCloseModal);
 $(document).on('click', '#inboxOverlay', function(e){ if(e.target === this) inboxCloseModal(); });
-$(document).on('keydown', function(e){
-  if(e.key === 'Escape' && $('#inboxOverlay').hasClass('open')) inboxCloseModal();
-});
 
 $(document).on('click', '#inboxSendReply', async function(){
   const m = ADMIN_INBOX.find(x => x.id === inboxOpenId);
@@ -4333,4 +4105,26 @@ $(document).on('click', '#inboxToggleStatus', async function(){
   } finally {
     $btn.prop('disabled', false);
   }
+});
+
+/* ================= ESCAPE KEY =================
+   One handler for every modal (there used to be seven). Esc closes only the
+   top-most open modal, and does nothing while a confirm dialog is open:
+   admin-ui.js closes the confirm itself and stops this handler from also
+   closing the modal underneath it (which used to throw away a half-typed
+   rejection note, reply, etc.). */
+const ADMIN_ESC_CLOSERS = [
+  ['#pdOverlay', pdClose],
+  ['#rtOverlay', rtClose],
+  ['#inboxOverlay', inboxCloseModal],
+  ['#umEditOverlay', umCloseEdit],
+  ['#umAddAdminOverlay', umCloseAddAdmin],
+  ['#promoPreviewOverlay', closePromoPopupPreview],
+  ['#orderDetailOverlay', closeOrderDetailModal],
+  ['#categoryModalOverlay', closeCategoryModal]
+];
+$(document).on('keydown', function(e){
+  if(e.key !== 'Escape' || $('#admConfirmOverlay').hasClass('open')) return;
+  const hit = ADMIN_ESC_CLOSERS.find(([sel]) => $(sel).hasClass('open'));
+  if(hit) hit[1]();
 });
