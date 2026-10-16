@@ -45,7 +45,7 @@ module.exports = async (req, res) => {
 
   let session;
   try{
-    const sessRes = await fetch(`https://api.paymongo.com/v2/checkout_sessions/${order.paymongoCheckoutSessionId}`, {
+    const sessRes = await fetch(`https://api.paymongo.com/v1/checkout_sessions/${order.paymongoCheckoutSessionId}`, {
       headers: { 'Authorization': authHeader }
     });
     const sessData = await sessRes.json();

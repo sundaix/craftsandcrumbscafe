@@ -113,7 +113,7 @@ module.exports = async (req, res) => {
 
   let pmRes, pmData;
   try{
-    pmRes = await fetch('https://api.paymongo.com/v2/checkout_sessions', {
+    pmRes = await fetch('https://api.paymongo.com/v1/checkout_sessions', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
