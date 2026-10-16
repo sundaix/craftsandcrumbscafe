@@ -263,8 +263,6 @@ async function fetchUserRecord(uid){
    and window.currentRole in sync, then tells script.js to
    re-render anything that depends on auth state (nav, admin link). */
 onAuthStateChanged(auth, async (user) => {
-  // TEMP DIAGNOSTIC — remove once the inactivity-logout bug is found.
-  console.warn('[auth] onAuthStateChanged fired. user:', user ? user.uid : null, 'at', new Date().toISOString());
   window.currentUser = user;
   window.currentRole = null;
   // Fires immediately — everything that only needs the Auth user
@@ -279,8 +277,6 @@ onAuthStateChanged(auth, async (user) => {
     : { role: null, otpVerified: false, disabled: false, unknown: false };
 
   if(disabled){
-    // TEMP DIAGNOSTIC
-    console.warn('[auth] Signing out — disabled:true on user record.', { role, otpVerified, unknown });
     // Blocked via the admin dashboard's Accounts tab (see
     // accounts-service.js). Firestore rules already stop a blocked
     // account from writing anything, but that alone would leave them
@@ -298,8 +294,6 @@ onAuthStateChanged(auth, async (user) => {
   }
 
   window.currentRole = role;
-  // TEMP DIAGNOSTIC
-  console.warn('[auth] role resolved:', role, 'unknown:', !!unknown, 'otpVerified:', otpVerified);
   // Fires once the role/verification status is known — used for
   // admin-only UI (the admin nav icon) and the unverified nudge,
   // both of which can safely lag behind by a moment. `unknown: true`

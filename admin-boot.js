@@ -2,9 +2,21 @@ const $gate = $('#admGate');
 const $login = $('#admLoginScreen');
 const $shell = $('#admShell');
 let dashboardBooted = false; // guards against re-running the initial data load on every future auth event
-let adminAccessRechecked = false; // guards the one-time "double check before denying" grace period below
+let adminAccessRechecked = false; // guards the "double check before denying" grace period below (one recheck per verdict)
+let roleCheckedUid = null; // which account the grace-period state above belongs to
+let gateTimer = null; // gives up on the loading gate if the role check never resolves
+// auth.js retries the role read for up to ~28s before it reports "unknown", so wait
+// longer than that: a shorter timeout would show the sign-in form to an admin who is
+// in fact signed in and just on a slow connection.
+const GATE_TIMEOUT_MS = 35000;
+
+function clearGateTimer(){
+  clearTimeout(gateTimer);
+  gateTimer = null;
+}
 
 function showLoginScreen(errorMsg){
+  clearGateTimer();
   $gate.hide();
   $shell.hide();
   $login.show();
@@ -19,9 +31,20 @@ function showLoadingGate(){
   $login.hide();
   $shell.hide();
   $gate.show();
+  // Without this, an "unknown" role (offline / slow reconnect) left the
+  // spinner up forever with no way out. After GATE_TIMEOUT_MS fall back to
+  // the sign-in form. This never signs anyone out; a late authRoleReady
+  // still takes over normally. Not restarted if already running.
+  if(!gateTimer){
+    gateTimer = setTimeout(() => {
+      gateTimer = null;
+      if(!dashboardBooted) showLoginScreen("We couldn't verify your account. Check your connection, then sign in again.");
+    }, GATE_TIMEOUT_MS);
+  }
 }
 
 async function bootDashboard(){
+  clearGateTimer();
   $login.hide();
   $gate.hide();
   $shell.show();
@@ -35,7 +58,15 @@ async function bootDashboard(){
   } catch(err){
     console.error('Could not load categories from Firestore.', err);
   }
-  await loadProductsFromFirestore(); // from shared-catalog.js
+  // Real catalog only. loadProductsFromFirestore() (shared-catalog.js) falls
+  // back to the demo seed list when the network fails, which would show
+  // fake products with Edit/Delete buttons to the admin.
+  try{
+    setCatalogProducts(await window.CCProducts.fetchAllProducts());
+  } catch(err){
+    console.error('Could not load products from Firestore.', err);
+    showToast("Couldn't load the product catalog. Refresh the page before editing products.", 'error', 8000);
+  }
 
   renderAdminDashboard(); // from admin.js
 }
@@ -48,11 +79,21 @@ document.addEventListener('authStateReady', function(e){
 });
 
 document.addEventListener('authRoleReady', function(e){
-  const { user, role, unknown } = e.detail;
+  const { user, role, unknown, blocked } = e.detail;
   if(!user || user.isAnonymous){
     adminAccessRechecked = false; // fresh sign-in later gets its own grace check
-    showLoginScreen();
+    roleCheckedUid = null;
+    // auth.js signs a suspended account out and says so with blocked:true;
+    // without this the admin just landed on a blank login form, no reason given.
+    showLoginScreen(blocked ? 'This account has been suspended.' : undefined);
     return;
+  }
+  if(user.uid !== roleCheckedUid){
+    // A different account signed in (e.g. a non-admin got "no access" and
+    // then logged in as an admin without logging out first): it gets its
+    // own grace check instead of inheriting the previous account's verdict.
+    roleCheckedUid = user.uid;
+    adminAccessRechecked = false;
   }
   if(unknown){
     // auth.js couldn't confirm the role at all (e.g. right after the
@@ -61,40 +102,38 @@ document.addEventListener('authRoleReady', function(e){
     // someone out here was the "logged out after inactivity" bug:
     // don't force a logout on an unknown state, just wait for the
     // next authRoleReady (which fires again on the next token
-    // refresh/retry) rather than guessing.
+    // refresh/retry) rather than guessing. The gate times out (above)
+    // so this can't spin forever.
     if(!dashboardBooted) showLoadingGate();
     return;
   }
   if(role !== 'admin'){
     if(!adminAccessRechecked){
-      // First non-admin verdict for this sign-in — the very first
-      // role read right after logging in can occasionally land before
-      // Firestore is fully consistent (e.g. a role that was just
-      // granted hasn't propagated yet), coming back with a stale
-      // default instead of "unknown". Rather than flash "no access"
-      // at someone who really is an admin, double-check once before
-      // deciding — this is the ONLY retry; a second non-admin verdict
-      // is treated as real.
+      // First non-admin verdict — the very first role read right after
+      // logging in (or after a token refresh) can occasionally land before
+      // Firestore is fully consistent and come back with a stale default
+      // instead of "unknown". Rather than flash "no access" at someone who
+      // really is an admin, double-check once before deciding. A second
+      // non-admin verdict is treated as real. If the dashboard is already
+      // open, keep it on screen while the recheck runs.
       adminAccessRechecked = true;
-      showLoadingGate();
+      if(!dashboardBooted) showLoadingGate();
       window.CCAuth.recheckRole();
       return;
     }
-    // TEMP DIAGNOSTIC
+    // Deliberately no logoutUser() here: admin, rider and customer share
+    // one Firebase Auth session on this origin, so signOut() kills every
+    // other open tab's session too (the old "logged out after inactivity"
+    // bug). firestore.rules already stops a non-admin doing anything real,
+    // so just show the message.
     console.warn('[admin-boot] role was', role, 'not admin (confirmed on recheck).');
-    // Used to also call window.CCAuth.logoutUser() here, but admin,
-    // rider, and customer all share one Firebase Auth session on this
-    // origin — signOut() isn't scoped to this tab, it kills every
-    // other open tab's session too. That was the real cause of the
-    // "logged out after inactivity" reports: having more than one of
-    // these apps open at once, whichever one's role check lost the
-    // race would sign everyone out. firestore.rules already blocks a
-    // non-admin from doing anything real, so there's no security need
-    // to force a client-side sign-out here — just show the message.
     showLoginScreen('This account does not have admin access.');
     return;
   }
-  adminAccessRechecked = true; // confirmed admin — no need to grace-check again this sign-in
+  // Confirmed admin. Reset (rather than set) the flag so that a LATER
+  // non-admin verdict, e.g. a stale read after a token refresh, still gets
+  // its one recheck instead of instantly hiding the dashboard mid-work.
+  adminAccessRechecked = false;
   bootDashboard();
 });
 
@@ -111,10 +150,14 @@ $(document).on('submit', '#admLoginForm', async function(e){
     // once auth.js's onAuthStateChanged + role lookup resolve.
   } catch(err){
     console.error(err);
-    const message = (err.code === 'auth/invalid-credential' || err.code === 'auth/wrong-password' || err.code === 'auth/user-not-found')
-      ? 'Incorrect email or password.'
-      : 'Could not sign in. Please try again.';
-    $('#admLoginError').text(message).addClass('show');
+    const messages = {
+      'auth/invalid-credential': 'Incorrect email or password.',
+      'auth/wrong-password': 'Incorrect email or password.',
+      'auth/user-not-found': 'Incorrect email or password.',
+      'auth/too-many-requests': 'Too many attempts. Wait a few minutes and try again.',
+      'auth/network-request-failed': 'No connection. Check your internet and try again.'
+    };
+    $('#admLoginError').text(messages[err.code] || 'Could not sign in. Please try again.').addClass('show');
   } finally {
     $btn.prop('disabled', false).text('Sign In');
   }
@@ -129,6 +172,7 @@ $(document).on('click', '#admLogoutBtn', async function(){
   if(!ok) return;
   dashboardBooted = false;
   adminAccessRechecked = false;
+  roleCheckedUid = null;
   await window.CCAuth.logoutUser();
 });
 
