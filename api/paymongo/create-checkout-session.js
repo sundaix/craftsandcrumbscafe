@@ -113,7 +113,7 @@ module.exports = async (req, res) => {
 
   let pmRes, pmData;
   try{
-    pmRes = await fetch('https://api.paymongo.com/v2/checkout_sessions', {
+    pmRes = await fetch('https://api.paymongo.com/v1/checkout_sessions', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -154,6 +154,7 @@ module.exports = async (req, res) => {
   }
 
   const session = pmData.data;
+  console.log('Created checkout session', session.id, 'key=' + secretKey.slice(0, 8), 'test=' + wantsTest);
   await orderRef.update({
     paymongoCheckoutSessionId: session.id,
     paymentProvider: `paymongo_${paymentMethodType}`,
