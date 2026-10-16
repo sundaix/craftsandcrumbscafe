@@ -3024,6 +3024,22 @@ function finalizeStockAndEmail(orderPayload, orderId){
    landing back from a real GCash checkout. Verification happens
    server-side (api/paymongo/verify-payment) — this only reacts to
    the result, it never marks anything paid itself. */
+/* QR Ph / GCash can take a few seconds to settle after the customer lands
+   back on the site, and verify-payment answers 'not-paid-yet' until it does.
+   Ask again every 3s (up to ~36s) instead of giving up on the first answer.
+   Returns the LAST Response so the caller can read it with res.json(). */
+async function verifyPaymongoWithRetry(orderId){
+  let res;
+  for(let i = 0; i < 12; i++){
+    res = await fetch(`/api/paymongo/verify-payment?order_id=${encodeURIComponent(orderId)}`);
+    let d = null;
+    try{ d = await res.clone().json(); } catch(e){ /* non-JSON: stop retrying */ }
+    if(!(d && d.error === 'not-paid-yet')) break;
+    await new Promise(r => setTimeout(r, 3000));
+  }
+  return res;
+}
+
 async function handlePaymongoReturn(){
   const params = new URLSearchParams(window.location.search);
   const status = params.get('paymongo_return');
@@ -3043,7 +3059,7 @@ async function handlePaymongoReturn(){
 
   showToast('Confirming your GCash payment…', 'info');
   try{
-    const res = await fetch(`/api/paymongo/verify-payment?order_id=${encodeURIComponent(orderId)}`);
+    const res = await verifyPaymongoWithRetry(orderId);
     const data = await res.json();
     if(!res.ok || !data.ok){
       showToast("We couldn't confirm your GCash payment yet. If money left your account, please contact us with your order number.", 'error');

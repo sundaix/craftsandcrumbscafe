@@ -31,13 +31,16 @@ module.exports = async (req, res) => {
   const db = admin.firestore();
 
   // ----- which PayMongo key does this request use? -----
-  const wantsTest = testMode === true;
+  // PAYMONGO_DEMO_MODE=true forces EVERY checkout onto the test key, so
+  // trial users can pay with PayMongo's simulated QR Ph without real money.
+  const demoMode = process.env.PAYMONGO_DEMO_MODE === 'true';
+  const wantsTest = demoMode || testMode === true;
   let secretKey;
   if(wantsTest){
     if(!process.env.PAYMONGO_TEST_SECRET_KEY){
       return res.status(500).json({ error: 'paymongo-test-not-configured' });
     }
-    if(!(await isAdminToken(db, idToken))){
+    if(!demoMode && !(await isAdminToken(db, idToken))){
       return res.status(403).json({ error: 'test-mode-admin-only' });
     }
     secretKey = process.env.PAYMONGO_TEST_SECRET_KEY;
