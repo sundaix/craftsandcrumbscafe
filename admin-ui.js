@@ -23,7 +23,8 @@
     if(!next){ active = false; return; }
     active = true;
     clearTimeout(hideTimer);
-    $toast.attr('class', 'adm-toast adm-toast-' + next.type);
+    $toast.attr('class', 'adm-toast adm-toast-' + next.type)
+      .attr('role', next.type === 'error' || next.type === 'warning' ? 'alert' : 'status');
     $('#admToastIconSvg').html(ICONS[next.type] || ICONS.success);
     $('#admToastMsg').text(next.msg);
     // Force reflow so the show/hide transition re-triggers even for
@@ -48,7 +49,7 @@
   /* ---------- Confirm dialog ---------- */
   const $confirm = $(`
     <div class="adm-confirm-overlay" id="admConfirmOverlay">
-      <div class="adm-confirm-dialog" role="alertdialog" aria-modal="true">
+      <div class="adm-confirm-dialog" role="alertdialog" aria-modal="true" aria-labelledby="admConfirmTitle" aria-describedby="admConfirmMsg">
         <div class="adm-confirm-icon" id="admConfirmIcon">
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none"><path d="M12 9v4.5M12 16.3v.1" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><path d="M10.6 3.7a1.6 1.6 0 0 1 2.8 0l8.6 15A1.6 1.6 0 0 1 20.6 21H3.4a1.6 1.6 0 0 1-1.4-2.3l8.6-15Z" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/></svg>
         </div>
@@ -63,18 +64,28 @@
   `).appendTo('body');
 
   let resolveFn = null;
+  let lastFocus = null; // whatever had focus before the dialog opened, so we can hand it back
   function close(result){
     $confirm.removeClass('open');
-    if(resolveFn){ resolveFn(result); resolveFn = null; }
+    if(resolveFn){ const done = resolveFn; resolveFn = null; done(result); }
+    if(lastFocus && document.contains(lastFocus)) lastFocus.focus();
+    lastFocus = null;
   }
 
   window.showConfirm = function({ title = 'Are you sure?', message = "This action can't be undone.", confirmText = 'Confirm', cancelText = 'Cancel', danger = false } = {}){
+    // A second confirm opened while one is still showing (e.g. a double
+    // click): settle the first as "cancelled". Before, its promise was
+    // overwritten and never resolved, leaving that handler awaiting forever.
+    if(resolveFn) close(false);
+    lastFocus = document.activeElement;
     $('#admConfirmTitle').text(title);
     $('#admConfirmMsg').text(message);
     $('#admConfirmOk').text(confirmText).toggleClass('btn-danger', danger).toggleClass('btn-primary', !danger);
     $('#admConfirmCancel').text(cancelText);
     $('#admConfirmIcon').toggleClass('danger', danger);
     $confirm.addClass('open');
+    // Destructive actions start on Cancel so a stray Enter can't confirm them.
+    setTimeout(() => $(danger ? '#admConfirmCancel' : '#admConfirmOk').trigger('focus'), 0);
     return new Promise((resolve) => { resolveFn = resolve; });
   };
 
@@ -83,7 +94,13 @@
   $(document).on('click', '#admConfirmOverlay', function(e){
     if(e.target.id === 'admConfirmOverlay') close(false);
   });
+  /* Registered before admin.js's own Escape handler (this file loads first),
+     so stopImmediatePropagation() keeps that one from ALSO closing the modal
+     the confirm was opened from. */
   $(document).on('keydown', function(e){
-    if(e.key === 'Escape' && $confirm.hasClass('open')) close(false);
+    if(e.key === 'Escape' && $confirm.hasClass('open')){
+      e.stopImmediatePropagation();
+      close(false);
+    }
   });
 })();

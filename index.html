@@ -122,28 +122,29 @@
     </div>
   </section>
 
-  <section class="reveal best-sellers">
+  <section class="reveal bs-section" aria-labelledby="bestSellersHeading">
     <div class="container">
-      <div class="section-head">
-        <div>
-          <div class="eyebrow" id="bestSellersEyebrow">Loved by regulars</div>
-          <h2 id="bestSellersHeading">Popular this week</h2>
-          <p id="bestSellersSubtext">Favorites our regulars keep reordering.</p>
+      <div class="bs-head">
+        <div class="bs-head-text">
+          <div class="bs-eyebrow" id="bestSellersEyebrow">Loved by regulars</div>
+          <h2 class="bs-title" id="bestSellersHeading">Popular this week</h2>
+          <p class="bs-sub" id="bestSellersSubtext">Favorites our regulars keep reordering.</p>
         </div>
-        <button class="btn btn-outline" data-nav="menu" id="bestSellersViewMenuBtn">View full menu</button>
+        <button type="button" class="bs-viewall" data-nav="menu" id="bestSellersViewMenuBtn">View full menu</button>
       </div>
 
-      <div class="carousel" id="bestSellerCarousel" role="region" aria-roledescription="carousel" aria-label="Popular this week">
-        <div class="carousel-track-wrap">
-          <div class="carousel-track" id="bestSellerGrid"></div>
+      <div class="bs-carousel" id="bestSellerCarousel" role="region" aria-roledescription="carousel" aria-label="Popular this week">
+        <div class="bs-viewport">
+          <div class="bs-track" id="bestSellerGrid"></div>
         </div>
-        <div class="carousel-controls">
-          <div class="carousel-progress" aria-hidden="true"><div class="carousel-progress-fill" id="bsProgressFill"></div></div>
-          <div class="carousel-arrows">
-            <button class="carousel-arrow prev" id="bsPrev" aria-label="Previous">
+        <div class="bs-controls">
+          <div class="bs-count" aria-hidden="true"><b id="bsCurrent">01</b><span>/</span><i id="bsTotal">08</i></div>
+          <div class="bs-progress" aria-hidden="true"><div class="bs-progress-fill" id="bsProgressFill"></div></div>
+          <div class="bs-arrows">
+            <button type="button" class="carousel-arrow bs-arrow prev" id="bsPrev" aria-label="Previous">
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M15 5l-7 7 7 7" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
             </button>
-            <button class="carousel-arrow next" id="bsNext" aria-label="Next">
+            <button type="button" class="carousel-arrow bs-arrow next" id="bsNext" aria-label="Next">
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M9 5l7 7-7 7" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
             </button>
           </div>
@@ -185,6 +186,9 @@
         <h2>From a class requirement to our first real café</h2>
         <p>Crafts & Crumbs started out as a group project in one of our college classes, just an assignment to design an online ordering system for a small coffee shop. We built it, presented it, and then kept working on it anyway because we liked where it was going.</p>
         <p>That extra time turned the class project into a working online café, and the orders from friends and classmates convinced us to keep pushing. We're now putting that same plan into motion for our first physical café, so people can walk in and get the same coffee and pastries they've been ordering online.</p>
+        <div class="about-cta">
+          <button type="button" class="btn btn-primary" data-nav="team">Meet the team <svg width="13" height="13" viewBox="0 0 24 24" fill="none"><path d="M5 12h14M13 6l6 6-6 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
+        </div>
         <div class="about-stats">
           <div><strong>2023</strong><span>Started as a class project</span></div>
           <div><strong>50+</strong><span>Recipes made in-house</span></div>
@@ -336,13 +340,6 @@
           <label for="coAddress">Delivery address</label>
           <div id="coSavedAddressPicker" class="saved-address-picker" style="display:none;"></div>
           <input id="coAddress" type="text" placeholder="Street, Barangay, City">
-          <div class="co-pin-row" id="coPinRow">
-            <button type="button" class="btn btn-outline btn-sm" id="coPinOnMapBtn">
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" style="margin-right:6px; vertical-align:-2px;"><path d="M12 21s-6-5.6-6-10.5A6 6 0 0 1 12 4.5a6 6 0 0 1 6 6C18 15.4 12 21 12 21z" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/><circle cx="12" cy="10.5" r="2.2" stroke="currentColor" stroke-width="1.7"/></svg>Pin on map
-            </button>
-            <span class="co-pin-status" id="coPinStatus"></span>
-          </div>
-          <p class="form-hint" style="margin-top:8px;">We calculate your delivery fee from the pin: ₱40 for the first 2 km, then ₱10 per extra km (up to 10 km).</p>
         </div>
       </div>
 
@@ -431,6 +428,169 @@
       <button type="button" class="btn btn-primary btn-sm" id="addAddressBtn">+ Add New Address</button>
     </div>
     <div id="addressesList" class="addresses-list"></div>
+  </div>
+</div>
+
+<!-- my messages page (customer inbox) -->
+<div class="page" data-page="messages">
+  <div class="container order-history-wrap">
+    <div class="section-head">
+      <div>
+        <div class="eyebrow">Your Account</div>
+        <h1>My Messages</h1>
+        <p class="wishlist-count">Your conversations with the store, and our replies.</p>
+      </div>
+      <button type="button" class="btn btn-primary btn-sm" data-nav="contact">+ New Message</button>
+    </div>
+    <div id="myMessagesList" class="cm-list"></div>
+    <div id="myMessageThread" class="cm-thread" style="display:none;"></div>
+  </div>
+</div>
+
+<!-- team page -->
+<div class="page" data-page="team">
+  <div class="team-hero">
+    <div class="team-hero-glow" aria-hidden="true"></div>
+    <div class="container">
+      <div class="breadcrumb"><a data-nav="home">Home</a> / Meet the Team</div>
+      <div class="eyebrow">The people behind the counter</div>
+      <h1>Meet the <em>Team</em></h1>
+      <p class="team-hero-lead">We're five students who turned a class project into a working online café, and we're still building. Say hello to the people behind every order.</p>
+      <div class="team-hero-stats">
+        <div><strong>5</strong><span>Team members</span></div>
+        <div><strong>3</strong><span>Crafts: coffee, pastry, merch</span></div>
+        <div><strong>1</strong><span>Café in the making</span></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="container">
+    <!-- EDIT ME: for each person, change the role, bio, go-to order and fun fact.
+         Photos: add the files team-1.jpg ... team-5.jpg to the project root (square, about 600x600).
+         The order below matches team-1 ... team-5. If a photo is a .png, change the src to match. -->
+    <div class="team-grid">
+
+      <article class="team-card reveal" style="--i:0">
+        <div class="team-photo">
+          <span class="team-photo-ring" aria-hidden="true"></span>
+          <div class="team-photo-frame"><img src="team-1.jpg" alt="Sophia" loading="lazy" onerror="this.remove()"></div>
+          <span class="team-photo-num">01</span>
+        </div>
+        <h3 class="team-name">Sophia</h3>
+        <p class="team-role">Role / Title</p>
+        <p class="team-bio">Add a short line about this teammate here.</p>
+        <ul class="team-meta">
+          <li><span>Go-to order</span><b>Add here</b></li>
+          <li><span>Fun fact</span><b>Add here</b></li>
+        </ul>
+      </article>
+
+      <article class="team-card reveal" style="--i:1">
+        <div class="team-photo">
+          <span class="team-photo-ring" aria-hidden="true"></span>
+          <div class="team-photo-frame"><img src="team-2.jpg" alt="Jiro" loading="lazy" onerror="this.remove()"></div>
+          <span class="team-photo-num">02</span>
+        </div>
+        <h3 class="team-name">Jiro</h3>
+        <p class="team-role">Role / Title</p>
+        <p class="team-bio">Add a short line about this teammate here.</p>
+        <ul class="team-meta">
+          <li><span>Go-to order</span><b>Add here</b></li>
+          <li><span>Fun fact</span><b>Add here</b></li>
+        </ul>
+      </article>
+
+      <article class="team-card reveal" style="--i:2">
+        <div class="team-photo">
+          <span class="team-photo-ring" aria-hidden="true"></span>
+          <div class="team-photo-frame"><img src="team-3.jpg" alt="Jade" loading="lazy" onerror="this.remove()"></div>
+          <span class="team-photo-num">03</span>
+        </div>
+        <h3 class="team-name">Jade</h3>
+        <p class="team-role">Role / Title</p>
+        <p class="team-bio">Add a short line about this teammate here.</p>
+        <ul class="team-meta">
+          <li><span>Go-to order</span><b>Add here</b></li>
+          <li><span>Fun fact</span><b>Add here</b></li>
+        </ul>
+      </article>
+
+      <article class="team-card reveal" style="--i:3">
+        <div class="team-photo">
+          <span class="team-photo-ring" aria-hidden="true"></span>
+          <div class="team-photo-frame"><img src="team-4.jpg" alt="George" loading="lazy" onerror="this.remove()"></div>
+          <span class="team-photo-num">04</span>
+        </div>
+        <h3 class="team-name">George</h3>
+        <p class="team-role">Role / Title</p>
+        <p class="team-bio">Add a short line about this teammate here.</p>
+        <ul class="team-meta">
+          <li><span>Go-to order</span><b>Add here</b></li>
+          <li><span>Fun fact</span><b>Add here</b></li>
+        </ul>
+      </article>
+
+      <article class="team-card reveal" style="--i:4">
+        <div class="team-photo">
+          <span class="team-photo-ring" aria-hidden="true"></span>
+          <div class="team-photo-frame"><img src="team-5.jpg" alt="Karl" loading="lazy" onerror="this.remove()"></div>
+          <span class="team-photo-num">05</span>
+        </div>
+        <h3 class="team-name">Karl</h3>
+        <p class="team-role">Role / Title</p>
+        <p class="team-bio">Add a short line about this teammate here.</p>
+        <ul class="team-meta">
+          <li><span>Go-to order</span><b>Add here</b></li>
+          <li><span>Fun fact</span><b>Add here</b></li>
+        </ul>
+      </article>
+
+    </div>
+
+    <div class="team-block reveal">
+      <div class="eyebrow">How we got here</div>
+      <h2 class="team-h2">From a class assignment to a café</h2>
+      <div class="team-steps">
+        <div class="team-step">
+          <span class="team-step-when">2023</span>
+          <h3>A class assignment</h3>
+          <p>The brief: design an online ordering system for a small coffee shop. We built it, presented it, and kept going.</p>
+        </div>
+        <div class="team-step">
+          <span class="team-step-when">Today</span>
+          <h3>A working online café</h3>
+          <p>Orders from friends and classmates convinced us to keep pushing, one pastry at a time.</p>
+        </div>
+        <div class="team-step">
+          <span class="team-step-when">Next</span>
+          <h3>Our first physical café</h3>
+          <p>Walk in and get the same coffee and pastries you've been ordering online.</p>
+        </div>
+      </div>
+    </div>
+
+    <div class="team-block reveal">
+      <div class="eyebrow">Built from scratch</div>
+      <h2 class="team-h2">Every page, made by us</h2>
+      <p class="team-built-copy">From the menu to checkout, the whole site was built by the five of us.</p>
+      <div class="team-chips">
+        <span>HTML, CSS &amp; JavaScript</span>
+        <span>Firebase</span>
+        <span>PayMongo payments</span>
+        <span>OpenStreetMap maps</span>
+        <span>EmailJS</span>
+      </div>
+    </div>
+
+    <div class="team-cta reveal">
+      <div class="team-cta-glow" aria-hidden="true"></div>
+      <h2>Want to say hello?</h2>
+      <p>Questions, ideas, or a catering request? We read every message.</p>
+      <div class="team-cta-actions">
+        <button type="button" class="btn team-btn-solid" data-nav="contact">Contact Us</button>
+        <button type="button" class="btn btn-secondary-outline" data-nav="menu">Order Now</button>
+      </div>
+    </div>
   </div>
 </div>
 
@@ -561,13 +721,32 @@
   <div class="container contact-layout">
     <div class="form-card contact-form-card">
       <h3>Send a message</h3>
+      <p class="contact-note" id="contactNote"></p>
       <form id="contactForm">
         <div class="form-row">
           <div class="form-group"><label for="cName">Full name</label><input id="cName" type="text" placeholder="Juan Dela Cruz" required></div>
           <div class="form-group"><label for="cEmail">Email address</label><input id="cEmail" type="email" placeholder="you@email.com" required></div>
         </div>
-        <div class="form-group"><label for="cSubject">Subject</label><input id="cSubject" type="text" placeholder="What's this about?" required></div>
+        <div class="form-group">
+          <label for="cSubject">Subject</label>
+          <select id="cSubject" required>
+            <option value="" disabled selected>Choose a subject</option>
+            <option value="Order issue">Order issue</option>
+            <option value="Delivery question">Delivery question</option>
+            <option value="Payment issue">Payment issue</option>
+            <option value="Product question">Product question</option>
+            <option value="Catering / bulk order">Catering / bulk order</option>
+            <option value="Feedback or suggestion">Feedback or suggestion</option>
+            <option value="Account help">Account help</option>
+            <option value="Others">Others</option>
+          </select>
+        </div>
+        <div class="form-group" id="cSubjectOtherWrap" style="display:none;">
+          <label for="cSubjectOther">Tell us the subject</label>
+          <input id="cSubjectOther" type="text" maxlength="100" placeholder="What's this about?">
+        </div>
         <div class="form-group"><label for="cMessage">Message</label><textarea id="cMessage" rows="5" placeholder="Tell us a bit more..." required></textarea></div>
+        <div class="cf-hp" aria-hidden="true"><label for="cWebsite">Leave this field empty</label><input id="cWebsite" type="text" tabindex="-1" autocomplete="off"></div>
         <button type="submit" class="btn btn-primary btn-full">Send Message</button>
       </form>
     </div>
@@ -1084,6 +1263,7 @@
 <script type="module" src="wishlist-service.js"></script>
 <script type="module" src="addresses-service.js"></script>
 <script type="module" src="review-service.js"></script>
+<script type="module" src="contact-service.js"></script>
 
 <script src="email-notifications.js"></script>
 <script src="image-upload-service.js"></script>
