@@ -2988,11 +2988,51 @@ function renderCheckoutSummary(){
 
 $(document).on('click', '#placeOrderBtn', placeOrder);
 
-function showOrderConfirmationUI(orderId, fulfillment, total){
+/* The confirmation page has three looks, set through data-state:
+   'pending' (checking the payment), 'failed' / 'partial' (a short
+   notice, no order details) and 'paid' (the full order summary). */
+function setConfirmationNotice(orderId, state, title, message){
   $('#confOrderNum').text('#CC-' + orderId.slice(0,6).toUpperCase());
-  $('#confFulfillment').text(fulfillment === 'delivery' ? 'Delivery' : 'Store Pickup');
-  $('#confTotal').text(peso(total));
+  $('#confTitle').text(title);
+  $('#confMsg').text(message);
+  $('.confirm-wrap').attr('data-state', state);
   navigate('confirmation');
+}
+
+function showOrderConfirmationPending(orderId){
+  setConfirmationNotice(orderId, 'pending', 'Confirming your payment',
+    'Hang tight while we confirm your payment. This usually takes a few seconds.');
+}
+
+function showOrderConfirmationUI(orderId, order){
+  const isDelivery = order.fulfillment === 'delivery';
+  const totals = order.totals || {};
+  const when = order.paidAt || order.createdAt;
+  const ms = when && typeof when.seconds === 'number' ? when.seconds * 1000 : new Date().getTime();
+
+  const lines = (order.items || []).map(it => {
+    const label = escapeHtml(it.name) + (it.size ? ` (${escapeHtml(it.size)})` : '') + ` × ${escapeHtml(it.qty)}`;
+    const opts = it.optionsSummary ? `<br><small class="sum-row-opts">${escapeHtml(it.optionsSummary)}</small>` : '';
+    return `<div class="sum-row"><span>${label}${opts}</span><span>${peso(it.price * it.qty)}</span></div>`;
+  }).join('');
+
+  $('#confSummary').html(`
+    <h3>Order Summary</h3>
+    ${lines}
+    <div class="sum-row"><span>Subtotal</span><span>${peso(totals.subtotal || 0)}</span></div>
+    <div class="sum-row"><span>${isDelivery ? 'Delivery fee' : 'Pickup fee'}</span><span>${peso(totals.deliveryFee || 0)}</span></div>
+    <div class="sum-row total"><span>Total paid</span><span>${peso(totals.total || 0)}</span></div>
+  `);
+
+  $('#confDate').text(new Date(ms).toLocaleString('en-PH', { month:'short', day:'numeric', year:'numeric', hour:'numeric', minute:'2-digit' }));
+  $('#confFulfillment').text(isDelivery ? 'Delivery' : 'Store Pickup');
+  $('#confAddress').text((order.customer && order.customer.address) || '');
+  $('#confAddressRow').toggle(isDelivery);
+  $('#confPayment').text(order.paymentMethod || 'PayMongo');
+  $('#confOrdersBtn').toggle(!!(window.currentUser && !window.currentUser.isAnonymous));
+
+  setConfirmationNotice(orderId, 'paid', 'Order placed, thank you!',
+    "We've started crafting your order. You'll get a text once it's ready.");
 }
 
 /* Stock decrement + confirmation email — the "this order is really
@@ -3040,11 +3080,19 @@ async function verifyPaymongoWithRetry(orderId){
   return res;
 }
 
-async function handlePaymongoReturn(){
+/* Reads ?paymongo_return=...&order_id=... without touching the URL, so
+   init can decide early (before the slow Firestore loads) which page to
+   show. Returns null on a normal page load. */
+function readPaymongoReturn(){
   const params = new URLSearchParams(window.location.search);
   const status = params.get('paymongo_return');
   const orderId = params.get('order_id');
-  if(!status || !orderId) return;
+  return status && orderId ? { status, orderId } : null;
+}
+
+async function handlePaymongoReturn(ret){
+  if(!ret) return;
+  const { status, orderId } = ret;
 
   // Strip the query params right away so refreshing the page doesn't
   // re-trigger this (verify-payment is idempotent regardless, but no
@@ -3052,31 +3100,33 @@ async function handlePaymongoReturn(){
   window.history.replaceState({}, '', window.location.pathname + window.location.hash);
 
   if(status === 'cancelled'){
-    showToast('GCash payment was cancelled — your order was not confirmed.', 'warning');
+    showToast('Payment was cancelled. Your order was not confirmed.', 'warning');
     return;
   }
   if(status !== 'success') return;
 
-  showToast('Confirming your GCash payment…', 'info');
+  const failMsg = "We couldn't confirm your payment yet. If money left your account, please contact us with your order number.";
   try{
     const res = await verifyPaymongoWithRetry(orderId);
     const data = await res.json();
     if(!res.ok || !data.ok){
-      showToast("We couldn't confirm your GCash payment yet. If money left your account, please contact us with your order number.", 'error');
+      setConfirmationNotice(orderId, 'failed', "We couldn't confirm your payment", failMsg);
       return;
     }
+    await window.CCAuth.waitForAuthReady();
     const order = await window.CCOrders.fetchOrder(orderId);
     if(!order){
-      showToast('Payment confirmed, but the order details could not be loaded.', 'warning');
+      setConfirmationNotice(orderId, 'partial', 'Payment confirmed',
+        "Your payment went through, but we couldn't load the order details. Keep your order number for reference.");
       return;
     }
-    showOrderConfirmationUI(orderId, order.fulfillment, order.totals.total);
+    showOrderConfirmationUI(orderId, order);
     if(!data.alreadyPaid){
       finalizeStockAndEmail(order, orderId);
     }
   } catch(err){
     console.error(err);
-    showToast("We couldn't confirm your GCash payment. Please contact us if you were charged.", 'error');
+    setConfirmationNotice(orderId, 'failed', "We couldn't confirm your payment", failMsg);
   }
 }
 
@@ -4099,6 +4149,13 @@ async function loadCategoriesFromFirestore(){
 
 $(async function(){
 
+  // Back from PayMongo: go straight to the confirmation page instead of
+  // sitting on Home while the slow loads below and the payment check run.
+  const paymongoReturn = readPaymongoReturn();
+  if(paymongoReturn && paymongoReturn.status === 'success'){
+    showOrderConfirmationPending(paymongoReturn.orderId);
+  }
+
   renderCategories();
   updateCartCount();
   initReveal();
@@ -4127,8 +4184,8 @@ $(async function(){
   await loadSettingsFromFirestore();
   await loadCombosFromFirestore();
   renderAll();
-  initPromoOverlay();
-  handlePaymongoReturn();
+  if(!paymongoReturn) initPromoOverlay(); // the popup would cover the order summary
+  handlePaymongoReturn(paymongoReturn);
 });
 /* ================= PROMO LAUNCH BANNER ================= */
 /* Fancy "New" popup shown once per browser session on page load, its
