@@ -62,7 +62,9 @@ function persistCart(){
 function mergeCarts(base, incoming){
   const merged = base.map(c => ({ ...c }));
   incoming.forEach(line => {
-    const match = merged.find(c => c.id === line.id && c.size === line.size);
+    // Options count too: the same drink with different milk or syrup is a
+    // separate cart line, exactly like addToCart() treats it.
+    const match = merged.find(c => c.id === line.id && c.size === line.size && optionsKey(c.options) === optionsKey(line.options));
     if(match){ match.qty += line.qty; } else { merged.push({ ...line }); }
   });
   return merged;
@@ -77,12 +79,22 @@ function rerenderActiveCartPage(){
 /* Called from authStateReady on every login/logout/page load. Cart
    now lives in Firestore (cart-service.js) instead of localStorage,
    so the same cart shows up on web and mobile. */
+let cartSyncingUid = null; // uid whose saved cart is being loaded right now
 async function syncCartToAccount(realUser){
   if(realUser){
     if(cartOwnerUid === realUser.uid) return; // already this account's cart, nothing to do
-    const saved = await window.CCCart.fetchCart(realUser.uid);
-    cart = mergeCarts(saved, cart); // keep anything just added as a guest, add back what was saved
-    cartOwnerUid = realUser.uid;
+    // A second sign-in event while the first load is still running would
+    // merge the saved cart into a cart that already contains it, doubling
+    // every quantity. Only one load per account at a time.
+    if(cartSyncingUid === realUser.uid) return;
+    cartSyncingUid = realUser.uid;
+    try{
+      const saved = await window.CCCart.fetchCart(realUser.uid);
+      cart = mergeCarts(saved, cart); // keep anything just added as a guest, add back what was saved
+      cartOwnerUid = realUser.uid;
+    } finally {
+      cartSyncingUid = null;
+    }
     persistCart();
     updateCartCount();
     rerenderActiveCartPage();
