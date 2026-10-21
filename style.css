@@ -2493,6 +2493,8 @@
   .auth-link{ color:var(--sage); font-weight:600; cursor:pointer; }
   .verify-resend-btn{ background:none; border:none; padding:0; font: inherit; }
   .verify-resend-btn[disabled]{ color:var(--text-faint); cursor:not-allowed; }
+  .auth-divider{ display:flex; align-items:center; gap:14px; margin:22px 0 18px; color:var(--text-faint); font-size:12.5px; }
+  .auth-divider::before, .auth-divider::after{ content:''; flex:1; height:1px; background:var(--line); }
   .auth-switch{ text-align:center; font-size:13.5px; color:var(--text-soft); margin-top:22px; }
 
   /* ---------- Toast (centered, premium, cafe-themed) ---------- */
