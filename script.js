@@ -1139,6 +1139,7 @@ const TOAST_DEFAULT_DURATIONS = { success:2400, cart:2400, info:2600, warning:32
 const _toastQueue = [];
 let _toastActive = false;
 let _toastHideTimer = null;
+let _toastShownAt = 0;
 
 function showToast(msg, type='success', duration){
   const iconType = TOAST_ICONS[type] ? type : 'success';
@@ -1176,17 +1177,38 @@ function _advanceToastQueue(){
     $('#toastIconSvg').html(TOAST_ICONS[next.type]);
     $veil.addClass('show');
 
-    _toastHideTimer = setTimeout(() => {
-      $t.removeClass('show').addClass('hide');
-      $veil.removeClass('show');
-      // give the exit animation room to finish before the next toast
-      setTimeout(_advanceToastQueue, 360);
-    }, next.ms);
+    _toastShownAt = Date.now();
+    _toastHideTimer = setTimeout(_hideToast, next.ms);
   };
 
   if(wasShowing) requestAnimationFrame(() => requestAnimationFrame(present));
   else present();
 }
+
+/* The one way a toast leaves: the timer, the X, a click anywhere and the
+   Escape key all come through here, so every exit plays the same fade-out
+   and the next queued toast waits for it to finish. Does nothing if the
+   toast is already on its way out. */
+function _hideToast(){
+  const $t = $('#toast');
+  if(!_toastActive || !$t.hasClass('show')) return;
+  clearTimeout(_toastHideTimer);
+  $t.removeClass('show').addClass('hide');
+  $('#toastVeil').removeClass('show');
+  // give the exit animation room to finish before the next toast
+  setTimeout(_advanceToastQueue, 360);
+}
+
+// Click or tap anywhere (the X included) closes the toast early. Capture
+// phase so it still runs when another handler stops the click from
+// bubbling. The short delay keeps the click that opened the toast from
+// closing it straight away.
+document.addEventListener('click', function(){
+  if(Date.now() - _toastShownAt > 350) _hideToast();
+}, true);
+document.addEventListener('keydown', function(e){
+  if(e.key === 'Escape') _hideToast();
+});
 
 function addToCart(id, qty=1, size=null, options=null, unitPrice=null, silent=false){
   const p = findProduct(id);
