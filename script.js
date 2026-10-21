@@ -3312,8 +3312,43 @@ $('#registerForm').on('submit', async function(e){
   }
 });
 
+/* "Continue with Google" / "Sign up with Google". One handler for both
+   pages: Google's popup shows the account chooser, and new accounts get
+   their profile created inside CCAuth.signInWithGoogle(). */
+$(document).on('click', '.google-signin-btn', async function(){
+  const $btn = $(this);
+  const label = $btn.text();
+  $btn.prop('disabled', true).text('Opening Google...');
+  const roleReady = waitForNextRoleReady(15000);
+  try{
+    const user = await window.CCAuth.signInWithGoogle();
+    const roleInfo = await roleReady;
+    // Suspended accounts already got their message from the authRoleReady handler.
+    if(roleInfo && roleInfo.blocked) return;
+    showToast('Welcome, ' + (user.displayName || 'friend') + '! You are signed in.', 'success');
+    const verified = await window.CCAuth.isOtpVerified();
+    if(!verified){
+      goToVerifyEmail(user.email);
+    } else {
+      navigate('home');
+    }
+  } catch(err){
+    roleReady.cancel();
+    const code = err && err.code || '';
+    // Closing the Google window on purpose isn't an error worth a toast.
+    if(!code.includes('popup-closed-by-user') && !code.includes('cancelled-popup-request')){
+      showToast(friendlyAuthError(err), 'error');
+    }
+  } finally {
+    $btn.prop('disabled', false).text(label);
+  }
+});
+
 function friendlyAuthError(err){
   const code = err && err.code || '';
+  if(code.includes('popup-blocked')) return 'Your browser blocked the Google window. Please allow pop-ups for this site and try again.';
+  if(code.includes('account-exists-with-different-credential')) return 'An account with this email already exists. Please log in with your password instead.';
+  if(code.includes('unauthorized-domain') || code.includes('operation-not-allowed')) return 'Google sign-in is not set up for this website yet.';
   if(code === 'profile-write-failed') return 'Account created, but a browser extension (ad blocker / privacy shield) blocked the connection to the database. Please disable it for this site and try logging in.';
   if(code.includes('email-already-in-use')) return 'That email is already registered.';
   if(code.includes('invalid-email')) return 'Please enter a valid email address.';
