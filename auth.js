@@ -326,4 +326,4 @@ export async function recheckRole(){
 }
 
 /* Expose to non-module scripts (script.js) via window */
-window.CCAuth = { registerUser, loginUser, logoutUser, ensureSignedIn, resendOtp, verifyOtp, isOtpVerified, sendResetPasswordEmail, recheckRole };
+window.CCAuth = { registerUser, loginUser, logoutUser, ensureSignedIn, waitForAuthReady, resendOtp, verifyOtp, isOtpVerified, sendResetPasswordEmail, recheckRole };
