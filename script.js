@@ -3124,6 +3124,28 @@ function readPaymongoReturn(){
   return status && orderId ? { status, orderId } : null;
 }
 
+/* Empties the cart once a payment is confirmed. For a logged-in account the
+   saved cart is loaded in the background after the page opens, so wait for
+   that first (up to ~8s); clearing earlier would let the late load bring
+   the items back. */
+async function clearCartAfterPayment(){
+  try{
+    const user = await window.CCAuth.waitForAuthReady();
+    if(user && !user.isAnonymous){
+      for(let i = 0; i < 40 && cartOwnerUid !== user.uid; i++){
+        await new Promise(r => setTimeout(r, 200));
+      }
+      if(cartOwnerUid !== user.uid){
+        await window.CCCart.saveCart(user.uid, []);
+      }
+    }
+  } catch(err){
+    console.error('Could not clear the saved cart after payment.', err);
+  }
+  cart = [];
+  updateCartCount(); // also saves the empty cart when the account's cart is loaded
+}
+
 async function handlePaymongoReturn(ret){
   if(!ret) return;
   const { status, orderId } = ret;
@@ -3135,6 +3157,7 @@ async function handlePaymongoReturn(ret){
 
   if(status === 'cancelled'){
     showToast('Payment was cancelled. Your order was not confirmed.', 'warning');
+    navigate('cart'); // the items are still there
     return;
   }
   if(status !== 'success') return;
@@ -3147,6 +3170,7 @@ async function handlePaymongoReturn(ret){
       setConfirmationNotice(orderId, 'failed', "We couldn't confirm your payment", failMsg);
       return;
     }
+    await clearCartAfterPayment();
     await window.CCAuth.waitForAuthReady();
     const order = await window.CCOrders.fetchOrder(orderId);
     if(!order){
@@ -3229,11 +3253,9 @@ async function placeOrder(){
     });
     const data = await res.json();
     if(!res.ok || !data.checkoutUrl) throw new Error(data.error || 'checkout-session-failed');
-    // The order already exists independently in Firestore at this
-    // point, so the cart's job here is done.
-    cart = [];
-    persistCart();
-    updateCartCount();
+    // The cart is NOT cleared here. If the customer cancels, goes back or
+    // the payment fails, their items must still be in the cart. It is
+    // cleared once the payment is confirmed (see handlePaymongoReturn).
     checkoutSelectedAddressId = null;
     window.location.href = data.checkoutUrl;
     return;
