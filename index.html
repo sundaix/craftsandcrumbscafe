@@ -374,15 +374,19 @@
     <div class="confirm-icon">
       <svg width="34" height="34" viewBox="0 0 24 24" fill="none"><path d="M5 13l4 4L19 7" stroke="#F7F5F1" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
     </div>
-    <h1>Order placed, thank you!</h1>
-    <p>We've started crafting your order. You'll get a text once it's ready.</p>
+    <h1 id="confTitle">Order placed, thank you!</h1>
+    <p id="confMsg">We've started crafting your order. You'll get a text once it's ready.</p>
     <div class="confirm-card">
       <div class="confirm-row"><span>Order number</span><span id="confOrderNum">—</span></div>
-      <div class="confirm-row"><span>Estimated preparation time</span><span>15–20 minutes</span></div>
-      <div class="confirm-row"><span>Fulfillment</span><span id="confFulfillment">—</span></div>
-      <div class="confirm-row"><span>Total paid</span><span id="confTotal">—</span></div>
+      <div class="confirm-row confirm-paid-only"><span>Date</span><span id="confDate">—</span></div>
+      <div class="confirm-row confirm-paid-only"><span>Estimated preparation time</span><span>15–20 minutes</span></div>
+      <div class="confirm-row confirm-paid-only"><span>Fulfillment</span><span id="confFulfillment">—</span></div>
+      <div class="confirm-row confirm-paid-only" id="confAddressRow"><span>Deliver to</span><span id="confAddress">—</span></div>
+      <div class="confirm-row confirm-paid-only"><span>Payment method</span><span id="confPayment">—</span></div>
     </div>
+    <div class="confirm-card confirm-paid-only" id="confSummary"></div>
     <button class="btn btn-primary" data-nav="menu">Continue Shopping</button>
+    <button class="btn btn-outline" id="confOrdersBtn" data-nav="order-history" style="display:none;">View My Orders</button>
   </div>
 </div>
 
