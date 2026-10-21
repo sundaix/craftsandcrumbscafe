@@ -3,6 +3,8 @@ import {
   createUserWithEmailAndPassword,
   signInWithEmailAndPassword,
   signInAnonymously,
+  GoogleAuthProvider,
+  signInWithPopup,
   signOut,
   onAuthStateChanged,
   updateProfile,
@@ -91,6 +93,39 @@ export async function registerUser(fullName, email, phone, password){
 export async function loginUser(email, password){
   const cred = await signInWithEmailAndPassword(auth, email, password);
   return cred.user;
+}
+
+/* Google sign-in for both "Log in" and "Create account". The popup shows
+   Google's own account chooser (the Gmail accounts already signed in on
+   this browser). prompt: 'select_account' makes the chooser appear every
+   time, even when only one account is signed in. */
+export async function signInWithGoogle(){
+  const provider = new GoogleAuthProvider();
+  provider.setCustomParameters({ prompt: 'select_account' });
+  const cred = await signInWithPopup(auth, provider);
+  const user = cred.user;
+
+  // Google has already verified the email, so no OTP step for these accounts.
+  // First time with this Google account: create the same profile doc that
+  // registerUser() makes. Returning user: keep their doc as it is.
+  const ref = doc(db, "users", user.uid);
+  const snap = await getDoc(ref);
+  if(!snap.exists()){
+    await setDoc(ref, {
+      fullName: user.displayName || '',
+      email: user.email,
+      phone: '',
+      role: 'customer',
+      createdAt: new Date().toISOString(),
+      otpVerified: !!user.emailVerified
+    });
+  } else if(!snap.data().otpVerified && user.emailVerified){
+    await updateDoc(ref, { otpVerified: true, otpCode: null, otpAttempts: 0 });
+  }
+  // onAuthStateChanged read the profile before it existed (or before the
+  // update above), so refresh the role and verified status once more.
+  await recheckRole();
+  return user;
 }
 
 export async function logoutUser(){
@@ -326,4 +361,4 @@ export async function recheckRole(){
 }
 
 /* Expose to non-module scripts (script.js) via window */
-window.CCAuth = { registerUser, loginUser, logoutUser, ensureSignedIn, waitForAuthReady, resendOtp, verifyOtp, isOtpVerified, sendResetPasswordEmail, recheckRole };
+window.CCAuth = { registerUser, loginUser, signInWithGoogle, logoutUser, ensureSignedIn, waitForAuthReady, resendOtp, verifyOtp, isOtpVerified, sendResetPasswordEmail, recheckRole };
