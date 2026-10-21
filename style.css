@@ -2457,7 +2457,15 @@
   .confirm-row{ display:flex; justify-content:space-between; font-size:13.5px; padding:10px 0; border-bottom:1px solid var(--line); }
   .confirm-row:last-child{ border-bottom:none; }
   .confirm-row span:first-child{ color:var(--text-soft); }
-  .confirm-row span:last-child{ font-weight:600; }
+  .confirm-row span:last-child{ font-weight:600; text-align:right; max-width:60%; }
+  .confirm-card h3{ font-size:16px; margin-bottom:16px; }
+  .confirm-wrap .btn + .btn{ margin-left:10px; }
+  /* While the payment is still being checked, only the order number shows. */
+  .confirm-wrap[data-state="pending"] .confirm-paid-only,
+  .confirm-wrap[data-state="partial"] .confirm-paid-only,
+  .confirm-wrap[data-state="failed"] .confirm-paid-only{ display:none; }
+  .confirm-wrap[data-state="pending"] .confirm-icon{ background:var(--text-faint); }
+  .confirm-wrap[data-state="failed"] .confirm-icon{ background:var(--danger); }
 
   /* ---------- OTP code entry ---------- */
   .otp-input-row{ display:flex; justify-content:center; gap:10px; margin-bottom:18px; }
