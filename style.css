@@ -3580,6 +3580,20 @@ select.cc-dd-picked{ animation:ccDdPick .4s cubic-bezier(.22,1,.36,1); }
 .toast.show .toast-msg{ animation:ccToastTxt .5s .14s var(--ease-dlg) backwards; }
 .toast-msg{ font-size:14.5px; letter-spacing:.005em; }
 
+/* Close "X". The toast itself ignores the mouse, so the button only turns
+   clickable while the toast is actually showing (an invisible, faded-out
+   toast must never catch clicks). */
+.toast-close{
+  position:absolute; top:10px; right:10px; width:28px; height:28px;
+  border:none; border-radius:50%; background:transparent; color:var(--text-faint);
+  display:flex; align-items:center; justify-content:center;
+  cursor:pointer; pointer-events:none;
+  transition:background .2s ease, color .2s ease;
+}
+.toast.show .toast-close{ pointer-events:auto; }
+.toast-close svg{ width:14px; height:14px; }
+.toast-close:hover, .toast-close:focus-visible{ background:rgba(33,28,22,.08); color:var(--ink); }
+
 .toast-veil{
   background:radial-gradient(circle at 50% 46%, rgba(33,28,22,.16), rgba(33,28,22,0) 64%);
   transition:opacity .5s var(--ease-dlg);
